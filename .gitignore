@@ -1,0 +1,39 @@
+# System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Environment Variables
+.env
+.env.backup*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Go (Backend)
+/backend/main
+/backend/*.exe
+/backend/*.test
+/backend/vendor/
+/backend/go.work
+
+# User Uploads (Backend)
+/backend/uploads/
+/backend/static/
+
+# Flutter (Frontend)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+.pub-cache/
+.pub/
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*.iml

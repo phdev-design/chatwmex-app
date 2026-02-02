@@ -1,0 +1,27 @@
+# .github/workflows/sync-to-gitlab.yml
+name: Sync to GitLab
+
+on:
+  # 當推送到 main 分支時觸發
+  push:
+    branches:
+      - main
+  # 讓你可以手動觸發
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to GitLab
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_ACCESS_TOKEN }}
+        # !! 請將下面的 URL 換成您自己的 GitLab 倉庫地址 !!
+        run: |
+          git push https://oauth2:${GITLAB_TOKEN}@gitlab.com/phdev.design/chatwmex-app-backend.git --all --force
+          git push https://oauth2:${GITLAB_TOKEN}@gitlab.com/phdev.design/chatwmex-app-backend.git --tags --force

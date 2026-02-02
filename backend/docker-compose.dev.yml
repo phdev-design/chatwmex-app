@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  chatwmex-backend:
+    # 使用本地構建的映像
+    build: .
+    container_name: chatwmex-backend-dev
+    ports:
+      - "8080:8080"  # 開發環境直接使用 8080 端口
+    environment:
+      # 環境配置
+      - ENVIRONMENT=development
+      - DOCKER_ENV=true
+      - CONTAINER=true
+      
+      # 数据库配置
+      - MONGO_URI=mongodb://cph0325:pp325325@143.198.17.2:27017
+      - MONGO_DB_NAME=chat2mex_db_test
+      - JWT_SECRET=a_very_secret_key_that_should_be_changed
+      - ENCRYPTION_SECRET=this-is-a-32-byte-secret-key-!!!
+      
+      # 開發環境配置
+      - USE_CLOUDFLARE=false
+      - TEST_HOST=127.0.0.1:8080
+      - STORAGE_BASE_URL=http://127.0.0.1:8080/uploads
+      
+      # 文件上传配置
+      - UPLOAD_PATH=./uploads
+      - MAX_VOICE_FILE_SIZE=5242880
+      
+      # 服务器配置
+      - SERVER_PORT=:8080
+      - LOG_LEVEL=debug
+    volumes:
+      - ./uploads:/root/uploads  # 持久化上传文件
+      - ./uploads/audio:/root/uploads/audio  # 確保語音文件目錄存在
+      - ./uploads/avatars:/root/uploads/avatars  # 確保頭像目錄存在
+    restart: unless-stopped
+    networks:
+      - chatwmex-network
+
+networks:
+  chatwmex-network:
+    driver: bridge

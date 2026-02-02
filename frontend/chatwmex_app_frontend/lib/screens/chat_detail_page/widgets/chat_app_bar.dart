@@ -1,0 +1,129 @@
+// lib/screens/chat_detail_page/widgets/chat_app_bar.dart
+import 'package:flutter/material.dart';
+import '../../../models/chat_room.dart';
+import '../dialogs/group_management_dialogs.dart';
+
+class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String chatDisplayName;
+  final bool isConnected;
+  final ChatRoom chatRoom;
+  final String? currentUserId; // 🔥 添加這個參數
+  final VoidCallback onShowDebugInfo;
+  final VoidCallback onShowGroupInfo;
+
+  const ChatAppBar({
+    super.key,
+    required this.chatDisplayName,
+    required this.isConnected,
+    required this.chatRoom,
+    this.currentUserId, // 🔥 添加這個參數
+    required this.onShowDebugInfo,
+    required this.onShowGroupInfo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            chatDisplayName,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          if (!isConnected)
+            Text(
+              '連線中斷',
+              style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+            )
+          else if (chatRoom.isGroup && chatRoom.participants.isNotEmpty)
+            Text(
+              '${chatRoom.participants.length} 位成員',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.bug_report),
+          onPressed: onShowDebugInfo,
+          tooltip: '調試信息',
+        ),
+        if (chatRoom.isGroup)
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'group_info':
+                  onShowGroupInfo();
+                  break;
+                case 'invite_members':
+                  showInviteMembersDialog(
+                    context,
+                    chatRoomId: chatRoom.id,
+                    currentParticipants: chatRoom.participants,
+                    currentUserId: currentUserId,
+                  );
+                  break;
+                case 'edit_name':
+                  showEditGroupNameDialog(
+                    context,
+                    chatRoomId: chatRoom.id,
+                    currentName: chatRoom.name,
+                  );
+                  break;
+                case 'leave_group':
+                  showLeaveGroupDialog(context, chatRoomId: chatRoom.id);
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'group_info',
+                child: ListTile(
+                  leading: Icon(Icons.info),
+                  title: Text('群組資訊'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'invite_members',
+                child: ListTile(
+                  leading: Icon(Icons.person_add),
+                  title: Text('邀請成員'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'edit_name',
+                child: ListTile(
+                  leading: Icon(Icons.edit),
+                  title: Text('修改群組名稱'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'leave_group',
+                child: ListTile(
+                  leading: Icon(Icons.exit_to_app, color: Colors.red),
+                  title: Text('離開群組', style: TextStyle(color: Colors.red)),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          )
+        else
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: onShowGroupInfo,
+            tooltip: '用戶資訊',
+          ),
+      ],
+    );
+  }
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+}

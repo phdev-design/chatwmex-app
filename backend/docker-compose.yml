@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  chatwmex-backend:
+    # 使用 GitLab Container Registry 中的映像
+    image: ${CI_REGISTRY_IMAGE:-registry.gitlab.com/phdev.design/chatwmex-app-backend}:${CI_COMMIT_SHA:-latest}
+    container_name: chatwmex-backend
+    ports:
+      - "2025:8080"  # 外部端口 2025 映射到容器内部端口 8080
+    environment:
+      # Docker 環境標識
+      - DOCKER_ENV=true
+      - CONTAINER=true
+      
+      # 数据库配置
+      - MONGO_URI=mongodb://cph0325:pp325325@143.198.17.2:27017
+      - MONGO_DB_NAME=chatwme_db
+      - JWT_SECRET=a_very_secret_key_that_should_be_changed
+      - ENCRYPTION_SECRET=this-is-a-32-byte-secret-key-!!!
+      
+      # CloudFlare 配置
+      - USE_CLOUDFLARE=true
+      - STORAGE_BASE_URL=https://api-chatwmex.phdev.uk/uploads
+      
+      # 文件上传配置
+      - UPLOAD_PATH=./uploads
+      - MAX_VOICE_FILE_SIZE=5242880
+      
+      # 服务器配置
+      - SERVER_PORT=:8080
+      - LOG_LEVEL=info
+    volumes:
+      - ./uploads:/root/uploads  # 持久化上传文件
+      - ./uploads/audio:/root/uploads/audio  # 確保語音文件目錄存在
+      - ./uploads/avatars:/root/uploads/avatars  # 確保頭像目錄存在
+    restart: unless-stopped
+    networks:
+      - chatwmex-network
+
+networks:
+  chatwmex-network:
+    driver: bridge

@@ -1,0 +1,73 @@
+name: chat2mex_app_frontend
+description: Chat2MeX - 一個現代化的即時通訊應用
+publish_to: 'none'
+version: 1.0.20+20
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.13.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  intl: ^0.18.0  # 添加這行
+  
+  
+  # 狀態管理
+  provider: ^6.1.2
+  
+  # 網路請求
+  http: ^1.2.1
+  
+  # Socket.IO 即時通訊 - 降級到 v2.x 兼容版本
+  socket_io_client: ^1.0.2          # 回退到 v1.x 版本，兼容 v2.x 服務器
+  
+  # 本地存儲
+  shared_preferences: ^2.2.2
+  
+  # UI 圖標
+  cupertino_icons: ^1.0.6
+  
+  # 通知系統
+  flutter_local_notifications: ^19.4.2
+  
+  # 權限處理
+  permission_handler: ^11.3.1
+  
+  # 背景任務
+  workmanager: ^0.5.2
+  
+  # 音頻相關
+  flutter_sound: ^9.28.0           # 用於語音錄製
+  just_audio: ^0.10.5               # 用於語音播放（取代 audioplayers）
+  audio_session: ^0.2.2             # 用於音頻會話配置
+  # 🔥 新增：音頻播放庫
+  audioplayers: ^6.0.0  
+  # 文件相關
+  path_provider: ^2.1.2
+  path: ^1.9.0
+  # 🔥 新增：Emoji Picker
+  emoji_picker_flutter: ^2.0.0  
+  # 網絡和文件上傳
+  dio: ^5.4.1
+  
+  # 設備信息
+  device_info_plus: ^10.1.0
+  package_info_plus: ^8.0.0
+  connectivity_plus: ^6.0.5
+  
+  # 圖片選擇器
+  image_picker: ^1.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  # 🔥 新增：音頻資源配置
+  assets:
+    - assets/audio/
+    - assets/audio/mixkit-long-pop-2358.wav
