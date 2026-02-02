@@ -2,19 +2,17 @@ package websockets
 
 import (
 	"context"
+
 	// "encoding/json"
 	"fmt"
 	"log"
 	"net/url"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
-	"chatwme/backend/models"
+	"chatwme/backend/services"
 	"chatwme/backend/utils"
 
 	socketio "github.com/googollee/go-socket.io"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -32,7 +30,7 @@ type ChatMessagePayload struct {
 }
 
 // NewSocketIOServer 建立并配置一个新的 Socket.IO 伺服器
-func NewSocketIOServer() *socketio.Server {
+func NewSocketIOServer(chatService *services.ChatService) *socketio.Server {
 	server := socketio.NewServer(nil)
 
 	// 在現有的事件處理中添加語音消息支持
@@ -141,14 +139,22 @@ func NewSocketIOServer() *socketio.Server {
 
 		log.Printf("Message from %s (UserID: %s) in room %s: %s", user.Username, user.ID, payload.Room, payload.Content)
 
-		// 載入設定以取得加密金鑰
-		cfg := config.LoadConfig()
-		encryptionKey := []byte(cfg.EncryptionSecret)
-
-		// 將訊息内容加密
-		encryptedContent, err := utils.Encrypt(payload.Content, encryptionKey)
+		roomObjectID, err := primitive.ObjectIDFromHex(payload.Room)
 		if err != nil {
-			log.Printf("Error encrypting message from UserID %s: %v", user.ID, err)
+			log.Printf("Invalid Room ObjectID for message: %s, Error: %v", payload.Room, err)
+			return
+		}
+
+		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer authCancel()
+
+		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
+		if err != nil {
+			log.Printf("Failed to validate room access for UserID %s in room %s: %v", user.ID, payload.Room, err)
+			return
+		}
+		if !isMember {
+			log.Printf("Unauthorized message attempt by UserID %s in room %s", user.ID, payload.Room)
 			return
 		}
 
@@ -158,23 +164,10 @@ func NewSocketIOServer() *socketio.Server {
 			messageType = "text"
 		}
 
-		// 1. 建立要儲存到資料庫的訊息物件 (使用加密後的内容)
-		messageToSave := models.Message{
-			ID:         primitive.NewObjectID(),
-			SenderID:   user.ID,
-			SenderName: user.Username, // 添加發送者用戶名
-			Room:       payload.Room,
-			Content:    encryptedContent, // 儲存加密後的内容
-			Timestamp:  time.Now(),
-			Type:       messageType,
-		}
+		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer messageCancel()
 
-		// 2. 存入 MongoDB
-		collection := database.GetCollection("messages", cfg.MongoDbName)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		_, err = collection.InsertOne(ctx, messageToSave)
+		messageToSave, err := chatService.SaveMessage(messageCtx, user.ID, user.Username, payload.Room, payload.Content, messageType)
 		if err != nil {
 			log.Printf("Failed to save message to database: %v", err)
 			return
@@ -199,28 +192,10 @@ func NewSocketIOServer() *socketio.Server {
 
 		// 5. 同步更新聊天室資訊
 		go func() {
-			roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
-			roomObjectID, err := primitive.ObjectIDFromHex(payload.Room)
-			if err != nil {
-				log.Printf("Invalid Room ObjectID for update: %s, Error: %v", payload.Room, err)
-				return
-			}
-
 			updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer updateCancel()
 
-			// 更新聊天室的 last_message, last_message_time
-			roomUpdate := bson.M{
-				"$set": bson.M{
-					"last_message":      payload.Content, // 使用原始内容
-					"last_message_time": messageToSave.Timestamp,
-					"updated_at":        time.Now(),
-				},
-				// 注意：這裡不增加 unread_count，因為會在前端根據發送者來決定
-			}
-
-			_, err = roomCollection.UpdateOne(updateCtx, bson.M{"_id": roomObjectID}, roomUpdate)
-			if err != nil {
+			if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, payload.Content, messageToSave.Timestamp); err != nil {
 				log.Printf("Failed to update room last message: %v", err)
 			} else {
 				log.Printf("Room %s last message updated successfully", payload.Room)

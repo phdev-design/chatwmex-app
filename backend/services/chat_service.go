@@ -1,0 +1,85 @@
+package services
+
+import (
+	"context"
+	"time"
+
+	"chatwme/backend/config"
+	"chatwme/backend/database"
+	"chatwme/backend/models"
+	"chatwme/backend/utils"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+)
+
+type ChatService struct {
+	mongoDbName   string
+	encryptionKey []byte
+}
+
+func NewChatService(cfg config.AppConfig, encryptionKey []byte) *ChatService {
+	return &ChatService{
+		mongoDbName:   cfg.MongoDbName,
+		encryptionKey: encryptionKey,
+	}
+}
+
+func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roomID, content, messageType string) (models.Message, error) {
+	encryptedContent, err := utils.Encrypt(content, s.encryptionKey)
+	if err != nil {
+		return models.Message{}, err
+	}
+
+	message := models.Message{
+		ID:         primitive.NewObjectID(),
+		SenderID:   senderID,
+		SenderName: senderName,
+		Room:       roomID,
+		Content:    encryptedContent,
+		Timestamp:  time.Now(),
+		Type:       messageType,
+	}
+
+	collection := database.GetCollection("messages", s.mongoDbName)
+	if _, err := collection.InsertOne(ctx, message); err != nil {
+		return models.Message{}, err
+	}
+
+	return message, nil
+}
+
+func (s *ChatService) UpdateRoomLastMessage(ctx context.Context, roomID primitive.ObjectID, lastMessage string, lastMessageTime time.Time) error {
+	collection := database.GetCollection("chat_rooms", s.mongoDbName)
+	update := bson.M{
+		"$set": bson.M{
+			"last_message":      lastMessage,
+			"last_message_time": lastMessageTime,
+			"updated_at":        time.Now(),
+		},
+	}
+
+	_, err := collection.UpdateOne(ctx, bson.M{"_id": roomID}, update)
+	return err
+}
+
+func (s *ChatService) IsUserInRoom(ctx context.Context, roomID primitive.ObjectID, userID string) (bool, error) {
+	collection := database.GetCollection("chat_rooms", s.mongoDbName)
+	filter := bson.M{
+		"_id": roomID,
+		"$or": []bson.M{
+			{"participants": userID},
+			{"created_by": userID},
+		},
+	}
+
+	err := collection.FindOne(ctx, filter).Err()
+	if err == nil {
+		return true, nil
+	}
+	if err == mongo.ErrNoDocuments {
+		return false, nil
+	}
+	return false, err
+}

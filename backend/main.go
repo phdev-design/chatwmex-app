@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"chatwme/backend/config"
 	"chatwme/backend/database"
 	"chatwme/backend/routes"
+	"chatwme/backend/services"
 	"chatwme/backend/websockets"
 )
 
@@ -25,6 +27,10 @@ func main() {
 	if uploadPath == "" {
 		uploadPath = "./uploads"
 	}
+	uploadPath = filepath.Clean(uploadPath)
+	if uploadPath == "." || uploadPath == string(filepath.Separator) {
+		uploadPath = "./uploads"
+	}
 
 	// 創建目錄結構
 	dirs := []string{
@@ -33,7 +39,7 @@ func main() {
 	}
 
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0777); err != nil {
+		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Printf("Warning: Could not create directory %s: %v", dir, err)
 		} else {
 			log.Printf("✓ Created directory: %s", dir)
@@ -62,7 +68,10 @@ func main() {
 
 	// 3. 初始化 Socket.IO 伺服器
 	log.Println("Initializing Socket.IO server...")
-	socketServer := websockets.NewSocketIOServer()
+	keyHash := sha256.Sum256([]byte(cfg.EncryptionSecret))
+	encryptionKey := keyHash[:]
+	chatService := services.NewChatService(cfg, encryptionKey)
+	socketServer := websockets.NewSocketIOServer(chatService)
 
 	// 啟動 Socket.IO 伺服器
 	go func() {
