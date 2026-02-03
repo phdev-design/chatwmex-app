@@ -374,16 +374,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
       }
 
       // 2. 发送图片消息
-      final messageData = {
-        'room': currentRoomId,
-        'content': '[图片]',
-        'file_url': imageUrl,
-        'type': 'image',
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-
-      // 通过 Socket 发送
-      ChatService().socket.emit('image_message', messageData);
+      chatService.sendImageMessage(currentRoomId, imageUrl);
 
       // 3. 乐观更新 UI (可选，这里我们等待服务器回传或 Socket 广播)
       // 如果需要立即显示，可以在这里手动添加到 _messagesNotifier

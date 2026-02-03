@@ -2,6 +2,7 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import '../main.dart'; // 🔥 引入 main.dart 以使用 navigatorKey
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -201,6 +202,21 @@ class ApiClientService {
 
     print("🚪 [ApiClientService] Tokens and user data cleared.");
     _authEventController.add(null);
+
+    // 🔥 強制跳轉回登入頁面
+    // 使用 Future.microtask 確保在當前調用堆棧完成後執行導航
+    Future.microtask(() {
+      if (navigatorKey.currentState != null) {
+        print(
+            "🚪 [ApiClientService] Navigating to login page via GlobalKey...");
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/login',
+          (route) => false,
+        );
+      } else {
+        print("⚠️ [ApiClientService] NavigatorState is null, cannot navigate.");
+      }
+    });
   }
 
   // ==================== User Data Management ====================

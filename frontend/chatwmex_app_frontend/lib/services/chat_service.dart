@@ -858,6 +858,20 @@ class ChatService {
     }
   }
 
+  void sendImageMessage(String roomId, String imageUrl) {
+    final messageData = {
+      'room': roomId,
+      'content': '[图片]',
+      'file_url': imageUrl,
+      'type': 'image',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    if (!_socketClient.emit('image_message', messageData)) {
+      throw Exception('Socket not connected');
+    }
+  }
+
   // 🔥 發送 Reaction
   void sendReaction(String messageId, String emoji) {
     if (!_socketClient.isConnected) {
