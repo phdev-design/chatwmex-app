@@ -140,12 +140,25 @@ class MessageCacheService {
   }
 
   Future<void> clearAllCache() async {
-    // Ideally drop tables or delete all rows.
-    // For now we might not need this often.
-    // We can implement delete all in DB helper if needed.
-    print(
-        'MessageCacheService: Clear cache requested but not fully implemented for SQLite yet.');
+    try {
+      print('MessageCacheService: 清除所有本地緩存 (SQLite)...');
+      await _dbHelper.clearAllData();
+      
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      for (String key in keys) {
+        if (key.startsWith(_lastSyncPrefix)) {
+          await prefs.remove(key);
+        }
+      }
+      print('MessageCacheService: 本地緩存已清除');
+    } catch (e) {
+      print('MessageCacheService: 清除所有緩存失敗: $e');
+    }
   }
+
+  // 🔥 Alias for clearAllCache as requested
+  Future<void> clearAllData() => clearAllCache();
 
   // 🔥 優化緩存
   Future<void> optimizeCache() async {

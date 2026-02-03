@@ -84,35 +84,43 @@ func RefreshToken(w http.ResponseWriter, r *http.Request) {
 	// 6. 將字符串 ID 轉換為 ObjectID
 	userObjectID, err := primitive.ObjectIDFromHex(claims.UserID)
 	if err != nil {
-		log.Printf("❌ [RefreshToken] 無效的用戶 ID: %s", claims.UserID)
+		log.Printf("❌ [RefreshToken] 無效的用戶 ID 格式: %s (Hex 轉換失敗)", claims.UserID)
 		http.Error(w, `{"error": "無效的用戶 ID"}`, http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("🔍 [RefreshToken] 查詢用戶 - Token UserID: %s, ObjectID: %s", claims.UserID, userObjectID.Hex())
 
 	// 7. 查找用戶
 	var user models.User
 	err = userCollection.FindOne(ctx, bson.M{"_id": userObjectID}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			log.Printf("❌ [RefreshToken] 用戶不存在: %s", claims.UserID)
+			log.Printf("❌ [RefreshToken] 用戶不存在 (DB Query Failed) - ID: %s", userObjectID.Hex())
 			http.Error(w, `{"error": "用戶不存在"}`, http.StatusNotFound)
 		} else {
-			log.Printf("❌ [RefreshToken] 查找用戶時發生錯誤: %v", err)
-			http.Error(w, `{"error": "查找用戶時發生錯誤"}`, http.StatusInternalServerError)
+			log.Printf("❌ [RefreshToken] 查找用戶時發生 DB 錯誤: %v", err)
+			http.Error(w, `{"error": "系統錯誤"}`, http.StatusInternalServerError)
 		}
 		return
 	}
 
 	// 8. 檢查用戶狀態
 	if user.IsDeleted {
-		log.Printf("❌ [RefreshToken] 用戶帳號已刪除: %s", claims.UserID)
-		http.Error(w, `{"error": "用戶帳號已刪除"}`, http.StatusForbidden)
+		log.Printf("⛔ [RefreshToken] 用戶已刪除 - ID: %s", user.ID.Hex())
+		http.Error(w, `{"error": "帳號已刪除"}`, http.StatusForbidden)
 		return
 	}
 
+	// 注意：需要確保舊數據有 IsActive 字段，或者默認為 true (如果是指針的話)。
+	// 根據 RegisterUser 實現，新用戶 IsActive=true。
+	// 但如果 DB 中有舊數據沒有 IsActive 字段，且它不是指針，Go 會讀取為 false。
+	// 這裡假設所有活躍用戶的 IsActive 應該為 true。
+	// 為了兼容性，如果 IsActive 為 false 但沒有明確被封禁，可能會誤殺。
+	// 暫時嚴格執行：如果 !IsActive 則禁止刷新。
 	if !user.IsActive {
-		log.Printf("❌ [RefreshToken] 用戶帳號已停用: %s", claims.UserID)
-		http.Error(w, `{"error": "用戶帳號已停用"}`, http.StatusForbidden)
+		log.Printf("⛔ [RefreshToken] 用戶帳號已停用 - ID: %s", user.ID.Hex())
+		http.Error(w, `{"error": "帳號已停用"}`, http.StatusForbidden)
 		return
 	}
 

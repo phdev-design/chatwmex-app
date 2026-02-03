@@ -98,6 +98,13 @@ CREATE TABLE messages (
     return result.map((json) => ChatRoom.fromMap(json)).toList();
   }
 
+  // 🔥 清除所有數據
+  Future<void> clearAllData() async {
+    final db = await instance.database;
+    await db.delete('chat_rooms');
+    await db.delete('messages');
+  }
+
   // --- Messages ---
 
   Future<void> insertMessage(Message message) async {
