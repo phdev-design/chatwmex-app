@@ -24,6 +24,7 @@ type AuthenticatedUser struct {
 
 // ChatMessagePayload 定义了从客户端接收到的聊天讯息结构
 type ChatMessagePayload struct {
+	ID        string `json:"id"` // 🔥 新增：客戶端生成的臨時 ID
 	Room      string `json:"room"`
 	Content   string `json:"content"`
 	Type      string `json:"type"`
@@ -300,6 +301,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 					"ok":         true,
 					"message_id": messageID,
 					"timestamp":  timestamp,
+					"temp_id":    payload.ID, // 🔥 新增：返回客戶端臨時 ID
 				})
 			}
 		}
@@ -357,6 +359,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		// 3. [關鍵修正] 建立要廣播給客戶端的訊息物件，確保格式與前端模型一致
 		messageToBroadcast := map[string]interface{}{
 			"id":          messageToSave.ID.Hex(),
+			"temp_id":     payload.ID, // 🔥 新增：廣播臨時 ID
 			"sender_id":   user.ID,
 			"sender_name": user.Username, // 確保包含發送者用戶名
 			"room":        payload.Room,

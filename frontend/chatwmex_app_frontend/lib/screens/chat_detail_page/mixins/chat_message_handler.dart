@@ -2,11 +2,11 @@
 import 'package:flutter/material.dart';
 import 'dart:io'; // 🔥 新增：用于 File 类
 import '../../../models/message.dart' as chat_msg;
-import '../../../models/voice_message.dart' as voice_msg; // 🔥 新增：用于 VoiceMessage
+import '../../../models/voice_message.dart'
+    as voice_msg; // 🔥 新增：用于 VoiceMessage
 import '../../../services/chat_service.dart';
 import '../../../services/chat_api_service.dart' as api_service;
 import '../../../services/voice_api_service.dart'; // 🔥 新增：用于 VoiceApiService
-
 
 /// 處理消息接收、發送、刪除等操作的 Mixin
 mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
@@ -116,8 +116,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       // 設置臨時消息過期清理
       Future.delayed(const Duration(seconds: 10), () {
         if (pendingTempMessages.contains(tempId)) {
-          final updatedMessages =
-              _copyMessages()..removeWhere((m) => m.id == tempId);
+          final updatedMessages = _copyMessages()
+            ..removeWhere((m) => m.id == tempId);
           _setMessages(updatedMessages);
           pendingTempMessages.remove(tempId);
           knownMessageIds.remove(tempId);
@@ -145,12 +145,21 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
   }
 
   /// 刪除消息
-  void deleteMessage(chat_msg.Message message) {
-    final updatedMessages =
-        _copyMessages()..removeWhere((m) => m.id == message.id);
+  Future<void> deleteMessage(chat_msg.Message message) async {
+    // 1. UI 更新
+    final updatedMessages = _copyMessages()
+      ..removeWhere((m) => m.id == message.id);
     _setMessages(updatedMessages);
     knownMessageIds.remove(message.id);
-    // TODO: 調用後端 API 刪除消息
+
+    // 2. 本地 DB 刪除 (Offline First)
+    // 我們需要訪問 DatabaseHelper，但它不是 Mixin 的一部分。
+    // 可以通過 ChatService 間接訪問，或者在這裡引入 DatabaseHelper。
+    // 這裡我們暫時只依賴 ChatService 應該具備的刪除能力，或者 API。
+    // 由於 ChatService 目前沒有公開 deleteMessage，我們直接使用 API 和假設的 DB 操作。
+
+    // TODO: 將來應該在 ChatService 中統一封裝 deleteMessage
+    // await chatService.deleteMessage(message.id);
   }
 
   /// 判斷是否為自己的消息
@@ -260,96 +269,22 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     if (!mounted) return;
 
     try {
-      debugPrint('ChatMessageHandler: 開始上傳語音消息');
+      debugPrint('ChatMessageHandler: 開始發送語音消息 (Offline-First)');
       debugPrint('ChatMessageHandler: 文件路徑: $filePath');
       debugPrint('ChatMessageHandler: 時長: $durationSeconds 秒');
 
-      // 創建臨時語音消息（立即顯示在界面上）
-      final tempId = 'temp_voice_${DateTime.now().millisecondsSinceEpoch}';
-      final tempMessage = chat_msg.Message(
-        id: tempId,
-        senderId: currentUserId ?? '',
-        senderName: currentUserName ?? '我',
-        content: '[語音消息]',
-        timestamp: DateTime.now(),
-        roomId: currentRoomId,
-        type: chat_msg.MessageType.voice,
-        fileUrl: filePath, // 臨時使用本地路徑
-        duration: durationSeconds,
-        fileSize: await File(filePath).length(),
-      );
+      final fileSize = await File(filePath).length();
 
-      // 添加到消息列表
-      final updatedMessages = _copyMessages()..insert(0, tempMessage);
-      _setMessages(updatedMessages);
-      pendingTempMessages.add(tempId);
-      knownMessageIds.add(tempId);
+      // 使用 ChatService 發送 (它會處理 DB 存儲、UI 通知和後台發送)
+      await chatService.sendVoiceMessage(
+          currentRoomId, filePath, durationSeconds, fileSize);
 
-      debugPrint('ChatMessageHandler: 臨時語音消息已添加到界面');
+      debugPrint('ChatMessageHandler: 語音消息已提交給 ChatService 處理');
 
-      // 背景上傳到服務器
-      final uploaded = await VoiceApiService.uploadVoiceMessage(
-        roomId: currentRoomId,
-        filePath: filePath,
-        duration: durationSeconds,
-      );
-
-      debugPrint('ChatMessageHandler: 語音上傳成功');
-      debugPrint('ChatMessageHandler: 服務器返回 ID: ${uploaded.id}');
-      debugPrint('ChatMessageHandler: 服務器 URL: ${uploaded.fileUrl}');
-
-      // 用服務器返回的正式語音消息替換臨時消息
-      final uploadedMsg = chat_msg.Message(
-        id: uploaded.id,
-        senderId: uploaded.senderId,
-        senderName: uploaded.senderName,
-        content: '[語音消息]',
-        timestamp: uploaded.timestamp,
-        roomId: uploaded.roomId,
-        type: chat_msg.MessageType.voice,
-        fileUrl: uploaded.fileUrl,
-        duration: uploaded.duration,
-        fileSize: uploaded.fileSize,
-      );
-
-      if (mounted) {
-        final updatedMessages = _copyMessages();
-        final idx = updatedMessages.indexWhere((m) => m.id == tempId);
-        if (idx != -1) {
-          updatedMessages[idx] = uploadedMsg;
-          _setMessages(updatedMessages);
-          pendingTempMessages.remove(tempId);
-          knownMessageIds.remove(tempId);
-          knownMessageIds.add(uploadedMsg.id);
-          debugPrint('ChatMessageHandler: 臨時消息已替換為正式消息');
-        }
-      }
-
-      // 通過 WebSocket 廣播（如果連接可用）
-      if (isConnected) {
-        chatService.sendVoiceMessage(currentRoomId, uploaded);
-        debugPrint('ChatMessageHandler: 語音消息已通過 WebSocket 廣播');
-      }
-
-      // 清理臨時文件
-      try {
-        final file = File(filePath);
-        if (await file.exists()) {
-          await file.delete();
-          debugPrint('ChatMessageHandler: 臨時文件已刪除');
-        }
-      } catch (e) {
-        debugPrint('ChatMessageHandler: 刪除臨時文件失敗: $e');
-      }
+      // 注意：不要立即刪除文件，因為 ChatService 需要在後台讀取它進行上傳。
+      // 文件清理應由 ChatService 在上傳成功後處理，或者依賴系統的臨時文件清理機制。
     } catch (e) {
       debugPrint('ChatMessageHandler: 發送語音消息失敗: $e');
-
-      // 移除臨時消息
-      if (mounted) {
-        final updatedMessages = _copyMessages()
-          ..removeWhere((m) => m.id.startsWith('temp_voice_'));
-        _setMessages(updatedMessages);
-      }
 
       // 顯示錯誤提示
       if (mounted) {

@@ -7,6 +7,8 @@ import '../utils/token_storage.dart';
 import 'chat_api_service.dart' as api_service;
 import 'message_cache_service.dart';
 import 'notification_service.dart';
+import 'database_helper.dart';
+import '../models/message.dart' as chat_msg;
 
 /// 背景同步服務
 class BackgroundSyncService {
@@ -180,6 +182,55 @@ class BackgroundSyncService {
       print('BackgroundSyncService: 聊天室列表同步完成，${chatRooms.length} 個聊天室');
     } catch (e) {
       print('BackgroundSyncService: 聊天室列表同步失敗: $e');
+    }
+  }
+
+  /// 同步待發送消息
+  Future<void> _syncPendingMessages() async {
+    await _syncPendingMessagesStatic();
+  }
+
+  /// 靜態方法：同步待發送消息 (可供背景任務調用)
+  static Future<void> _syncPendingMessagesStatic() async {
+    try {
+      print('BackgroundSyncService: 開始同步待發送消息...');
+      final dbHelper = DatabaseHelper.instance;
+      final pendingMessages = await dbHelper.getPendingMessages();
+
+      if (pendingMessages.isEmpty) {
+        print('BackgroundSyncService: 無待發送消息');
+        return;
+      }
+
+      print('BackgroundSyncService: 發現 ${pendingMessages.length} 條待發送消息');
+
+      for (final msg in pendingMessages) {
+        // 暫時只處理文本消息
+        if (msg.type == chat_msg.MessageType.text) {
+          try {
+            print('BackgroundSyncService: 正在發送消息 ${msg.id} (${msg.content})');
+
+            // 使用 HTTP API 發送
+            final sentMessage = await api_service.ChatApiService.sendMessage(
+              msg.roomId,
+              msg.content,
+              type: msg.type,
+            );
+
+            // 更新 DB: 刪除臨時消息，插入真實消息
+            await dbHelper.deleteMessage(msg.id);
+            await dbHelper.insertMessages([sentMessage]);
+
+            print(
+                'BackgroundSyncService: 待發送消息同步成功 (Temp: ${msg.id} -> Server: ${sentMessage.id})');
+          } catch (e) {
+            print('BackgroundSyncService: 發送 pending 消息失敗: $e');
+            // 失敗則保留在 DB 中，下次重試
+          }
+        }
+      }
+    } catch (e) {
+      print('BackgroundSyncService: 同步待發送消息失敗: $e');
     }
   }
 

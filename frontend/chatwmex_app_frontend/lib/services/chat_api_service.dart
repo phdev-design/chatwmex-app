@@ -334,6 +334,58 @@ class ChatApiService {
     }
   }
 
+  /// 發送圖片消息
+  static Future<Message> sendImageMessage(
+    String roomId,
+    String fileUrl,
+  ) async {
+    try {
+      final response = await apiClient.dio.post(
+        '/api/v1/rooms/$roomId/messages',
+        data: {
+          'content': '[图片]',
+          'type': 'image',
+          'file_url': fileUrl,
+        },
+      );
+
+      if (response.statusCode == 201) {
+        return Message.fromJson(response.data['message']);
+      } else {
+        throw Exception('Failed to send image message: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('ChatApiService: 發送圖片消息失敗: $e');
+      throw e;
+    }
+  }
+
+  /// 發送視頻消息
+  static Future<Message> sendVideoMessage(
+    String roomId,
+    String fileUrl,
+  ) async {
+    try {
+      final response = await apiClient.dio.post(
+        '/api/v1/rooms/$roomId/messages',
+        data: {
+          'content': '[视频]',
+          'type': 'video',
+          'file_url': fileUrl,
+        },
+      );
+
+      if (response.statusCode == 201) {
+        return Message.fromJson(response.data['message']);
+      } else {
+        throw Exception('Failed to send video message: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('ChatApiService: 發送視頻消息失敗: $e');
+      throw e;
+    }
+  }
+
   /// 發送語音消息
   static Future<Message> sendVoiceMessage(
     String roomId,
@@ -411,6 +463,42 @@ class ChatApiService {
       }
     } catch (e) {
       print('ChatApiService: 搜索用戶失敗: $e');
+      throw e;
+    }
+  }
+
+  /// 封鎖用戶
+  static Future<void> blockUser(String userId) async {
+    try {
+      await apiClient.dio.post('/api/v1/users/$userId/block');
+    } catch (e) {
+      print('ChatApiService: 封鎖用戶失敗: $e');
+      throw e;
+    }
+  }
+
+  /// 解除封鎖用戶
+  static Future<void> unblockUser(String userId) async {
+    try {
+      await apiClient.dio.post('/api/v1/users/$userId/unblock');
+    } catch (e) {
+      print('ChatApiService: 解除封鎖用戶失敗: $e');
+      throw e;
+    }
+  }
+
+  /// 獲取封鎖用戶列表
+  static Future<List<User>> getBlockedUsers() async {
+    try {
+      final response = await apiClient.dio.get('/api/v1/users/blocked');
+      if (response.statusCode == 200) {
+        final List<dynamic> usersJson = response.data ?? [];
+        return usersJson.map((json) => User.fromJson(json)).toList();
+      } else {
+        throw Exception('Failed to get blocked users: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('ChatApiService: 獲取封鎖用戶列表失敗: $e');
       throw e;
     }
   }

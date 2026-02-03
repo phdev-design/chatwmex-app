@@ -76,6 +76,72 @@ class _ChatDetailPageState extends State<ChatDetailPage>
   String? _currentUserName;
   String _chatDisplayName = '';
 
+  // 🔥 新增：封鎖狀態
+  bool _isBlocked = false;
+
+  Future<void> _checkBlockStatus() async {
+    if (widget.chatRoom.isGroup || _currentUserId == null) return;
+
+    try {
+      final blockedUsers = await api_service.ChatApiService.getBlockedUsers();
+      final otherUserId = widget.chatRoom.participants
+          .firstWhere((id) => id != _currentUserId, orElse: () => '');
+
+      if (otherUserId.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _isBlocked = blockedUsers.any((u) => u.id == otherUserId);
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to check block status: $e');
+    }
+  }
+
+  Future<void> _toggleBlockUser() async {
+    if (widget.chatRoom.isGroup || _currentUserId == null) return;
+    final otherUserId = widget.chatRoom.participants
+        .firstWhere((id) => id != _currentUserId, orElse: () => '');
+    if (otherUserId.isEmpty) return;
+
+    try {
+      if (_isBlocked) {
+        await api_service.ChatApiService.unblockUser(otherUserId);
+        if (mounted) setState(() => _isBlocked = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已解除封鎖用戶')));
+      } else {
+        // Confirm block
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('封鎖用戶'),
+            content: const Text('確定要封鎖此用戶嗎？您將無法收到對方的訊息。'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('取消')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('封鎖', style: TextStyle(color: Colors.red))),
+            ],
+          ),
+        );
+
+        if (confirm == true) {
+          await api_service.ChatApiService.blockUser(otherUserId);
+          if (mounted) setState(() => _isBlocked = true);
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('已封鎖用戶')));
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('更新封鎖狀態失敗: $e')));
+    }
+  }
+
   // === 動畫 ===
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -205,6 +271,11 @@ class _ChatDetailPageState extends State<ChatDetailPage>
 
       // 2. 初始化Socket服务
       await chatService.initialize();
+
+      // 2.5 檢查封鎖狀態
+      if (!widget.chatRoom.isGroup) {
+        _checkBlockStatus();
+      }
 
       // 3. 注册消息监听
       chatService.registerMessageListener(
@@ -438,32 +509,11 @@ class _ChatDetailPageState extends State<ChatDetailPage>
 
   // 🔥 新增：处理媒体选择和发送 (图片/视频)
   Future<void> _handleMediaSelected(File file, String type) async {
-    if (!_isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('網絡未連接，無法發送媒體文件')),
-      );
-      return;
-    }
-
     try {
-      String? mediaUrl;
       if (type == 'image') {
-        mediaUrl = await api_service.ChatApiService.uploadImage(file);
+        await chatService.sendImageMessage(currentRoomId, file.path);
       } else if (type == 'video') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('正在上傳視頻...')),
-        );
-        mediaUrl = await api_service.ChatApiService.uploadVideo(file);
-      }
-
-      if (mediaUrl == null) {
-        throw Exception('文件上傳失敗');
-      }
-
-      if (type == 'image') {
-        chatService.sendImageMessage(currentRoomId, mediaUrl);
-      } else if (type == 'video') {
-        chatService.sendVideoMessage(currentRoomId, mediaUrl);
+        await chatService.sendVideoMessage(currentRoomId, file.path);
       }
     } catch (e) {
       debugPrint('發送媒體失敗: $e');

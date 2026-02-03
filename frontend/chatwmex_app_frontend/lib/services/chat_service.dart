@@ -13,6 +13,8 @@ import 'network_monitor_service.dart';
 import 'ios_network_monitor_service.dart';
 import 'message_cache_service.dart';
 import 'api_client_service.dart';
+import 'chat_api_service.dart' as api_service;
+import '../services/voice_api_service.dart';
 import '../models/voice_message.dart' as voice_msg;
 import 'database_helper.dart'; // Added
 
@@ -197,6 +199,14 @@ class SocketClient {
       return false;
     }
     _socket!.emit(event, data);
+    return true;
+  }
+
+  bool emitWithAck(String event, dynamic data, {Function? ack}) {
+    if (_socket == null || !isConnected) {
+      return false;
+    }
+    _socket!.emitWithAck(event, data, ack: ack);
     return true;
   }
 
@@ -596,6 +606,192 @@ class ChatService {
     }
   }
 
+  // 🔥 新增：發送語音消息 (Offline-First)
+  Future<void> sendVoiceMessage(
+    String roomId,
+    String filePath,
+    int duration,
+    int fileSize,
+  ) async {
+    try {
+      final userInfo = await TokenStorage.getUser();
+      final currentUserId = userInfo?['id']?.toString() ?? '';
+      final currentUserName = userInfo?['username']?.toString() ?? 'Me';
+
+      final tempId = 'temp_voice_${_uuid.v4()}';
+      final tempMessage = chat_msg.Message(
+        id: tempId,
+        senderId: currentUserId,
+        senderName: currentUserName,
+        content: '[語音消息]',
+        timestamp: DateTime.now(),
+        roomId: roomId,
+        type: chat_msg.MessageType.voice,
+        fileUrl: filePath, // Local path
+        duration: duration,
+        fileSize: fileSize,
+        status: chat_msg.MessageStatus.sending,
+      );
+
+      // 1. Save to Local DB
+      await _dbHelper.insertMessages([tempMessage]);
+      _notifyMessageReceived(tempMessage);
+
+      // 2. If Online, Try Upload & Send
+      if (_connectionManager.isOnline) {
+        _uploadAndSendVoiceMessage(tempMessage);
+      }
+    } catch (e) {
+      print('ChatService: 發送語音消息失敗: $e');
+    }
+  }
+
+  Future<void> _uploadAndSendVoiceMessage(chat_msg.Message message) async {
+    try {
+      print('ChatService: Uploading voice message ${message.id}...');
+
+      // Upload using VoiceApiService
+      final voiceMsg = await VoiceApiService.uploadVoiceMessage(
+        roomId: message.roomId,
+        filePath: message.fileUrl!,
+        duration: message.duration ?? 0,
+      );
+
+      // Convert VoiceMessage to Message
+      final sentMessage = chat_msg.Message(
+        id: voiceMsg.id,
+        senderId: voiceMsg.senderId,
+        senderName: voiceMsg.senderName,
+        content: '[語音消息]',
+        timestamp: voiceMsg.timestamp,
+        roomId: voiceMsg.roomId,
+        type: chat_msg.MessageType.voice,
+        fileUrl: voiceMsg.fileUrl,
+        duration: voiceMsg.duration,
+        fileSize: voiceMsg.fileSize,
+        status: chat_msg.MessageStatus.sent,
+      );
+
+      print(
+          'ChatService: Voice message uploaded & sent (Temp: ${message.id} -> Server: ${sentMessage.id})');
+
+      // Update DB
+      await _dbHelper.deleteMessage(message.id);
+      await _dbHelper.insertMessages([sentMessage]);
+
+      // Notify UI
+      _notifyMessageReceived(sentMessage);
+
+      // 🔥 Broadcast to other users via Socket
+      if (_socketClient.isConnected) {
+        final messageData = {
+          'id': sentMessage.id,
+          'sender_id': sentMessage.senderId,
+          'sender_name': sentMessage.senderName,
+          'room': sentMessage.roomId,
+          'file_url': sentMessage.fileUrl,
+          'duration': sentMessage.duration,
+          'file_size': sentMessage.fileSize,
+          'timestamp': sentMessage.timestamp.toIso8601String(),
+          'type': 'voice',
+        };
+        _socketClient.emit('voice_message', messageData);
+        print('ChatService: Voice message broadcasted to room');
+      }
+    } catch (e) {
+      print('ChatService: Voice upload failed: $e');
+      // For now, keep as sending (pending) so background sync can retry.
+    }
+  }
+
+  Future<void> _uploadAndSendImageMessage(chat_msg.Message message) async {
+    try {
+      print('ChatService: Uploading image message ${message.id}...');
+
+      // 1. Upload Image
+      final imageUrl =
+          await api_service.ChatApiService.uploadImage(File(message.fileUrl!));
+      if (imageUrl == null) throw Exception('Image upload failed');
+
+      // 2. Send Message via API to get ID and storage
+      final sentMessage = await api_service.ChatApiService.sendImageMessage(
+        message.roomId,
+        imageUrl,
+      );
+
+      print(
+          'ChatService: Image message uploaded & sent (Temp: ${message.id} -> Server: ${sentMessage.id})');
+
+      // 3. Update DB
+      await _dbHelper.deleteMessage(message.id);
+      await _dbHelper.insertMessages([sentMessage]);
+
+      // 4. Notify UI
+      _notifyMessageReceived(sentMessage);
+
+      // 5. Broadcast via Socket
+      if (_socketClient.isConnected) {
+        final messageData = {
+          'id': sentMessage.id,
+          'sender_id': sentMessage.senderId,
+          'sender_name': sentMessage.senderName,
+          'room': sentMessage.roomId,
+          'file_url': sentMessage.fileUrl,
+          'content': '[图片]',
+          'type': 'image',
+          'timestamp': sentMessage.timestamp.toIso8601String(),
+        };
+        _socketClient.emit('image_message', messageData);
+      }
+    } catch (e) {
+      print('ChatService: Image upload failed: $e');
+    }
+  }
+
+  Future<void> _uploadAndSendVideoMessage(chat_msg.Message message) async {
+    try {
+      print('ChatService: Uploading video message ${message.id}...');
+
+      // 1. Upload Video
+      final videoUrl =
+          await api_service.ChatApiService.uploadVideo(File(message.fileUrl!));
+      if (videoUrl == null) throw Exception('Video upload failed');
+
+      // 2. Send Message via API
+      final sentMessage = await api_service.ChatApiService.sendVideoMessage(
+        message.roomId,
+        videoUrl,
+      );
+
+      print(
+          'ChatService: Video message uploaded & sent (Temp: ${message.id} -> Server: ${sentMessage.id})');
+
+      // 3. Update DB
+      await _dbHelper.deleteMessage(message.id);
+      await _dbHelper.insertMessages([sentMessage]);
+
+      // 4. Notify UI
+      _notifyMessageReceived(sentMessage);
+
+      // 5. Broadcast via Socket
+      if (_socketClient.isConnected) {
+        final messageData = {
+          'id': sentMessage.id,
+          'sender_id': sentMessage.senderId,
+          'sender_name': sentMessage.senderName,
+          'room': sentMessage.roomId,
+          'file_url': sentMessage.fileUrl,
+          'content': '[视频]',
+          'type': 'video',
+          'timestamp': sentMessage.timestamp.toIso8601String(),
+        };
+        _socketClient.emit('video_message', messageData);
+      }
+    } catch (e) {
+      print('ChatService: Video upload failed: $e');
+    }
+  }
+
   // 🔥 新增：發送已讀標記
   void markAsRead(String roomId) {
     if (_socketClient.socket != null && _socketClient.isConnected) {
@@ -900,6 +1096,71 @@ class ChatService {
         print('Error in connection callback $id: $e');
       }
     });
+
+    // 🔥 Online: Sync pending messages
+    if (isConnected) {
+      syncPendingMessages();
+    }
+  }
+
+  /// 同步待發送消息
+  Future<void> syncPendingMessages() async {
+    try {
+      final pendingMessages = await _dbHelper.getPendingMessages();
+      if (pendingMessages.isEmpty) return;
+
+      print('ChatService: 發現 ${pendingMessages.length} 條待發送消息，開始同步...');
+
+      for (final msg in pendingMessages) {
+        if (msg.type == chat_msg.MessageType.text) {
+          await _resendPendingMessage(msg);
+        } else if (msg.type == chat_msg.MessageType.voice) {
+          await _uploadAndSendVoiceMessage(msg);
+        } else if (msg.type == chat_msg.MessageType.image) {
+          await _uploadAndSendImageMessage(msg);
+        } else if (msg.type == chat_msg.MessageType.video) {
+          await _uploadAndSendVideoMessage(msg);
+        }
+      }
+    } catch (e) {
+      print('ChatService: 同步待發送消息失敗: $e');
+    }
+  }
+
+  Future<void> _resendPendingMessage(chat_msg.Message message) async {
+    if (!_socketClient.isConnected) return;
+
+    final messageData = {
+      'id': message.id, // 使用原始臨時 ID
+      'room': message.roomId,
+      'content': message.content,
+      'type': 'text',
+      'timestamp': message.timestamp.toIso8601String(),
+    };
+
+    _socketClient.emitWithAck('chat_message', messageData, ack: (data) async {
+      if (data != null && data['ok'] == true) {
+        final serverId = data['message_id'];
+        final serverTimestamp = data['timestamp'];
+
+        final sentMessage = message.copyWith(
+          id: serverId,
+          timestamp: serverTimestamp != null
+              ? DateTime.parse(serverTimestamp)
+              : message.timestamp,
+          status: chat_msg.MessageStatus.sent,
+        );
+
+        print('ChatService: 消息同步成功 (Temp: ${message.id} -> Server: $serverId)');
+
+        // 更新本地數據庫：刪除臨時消息，插入真實消息
+        await _dbHelper.deleteMessage(message.id);
+        await _dbHelper.insertMessages([sentMessage]);
+
+        // 通知 UI 更新 (這會觸發 handleNewMessageReceived，其中有替換邏輯)
+        _notifyMessageReceived(sentMessage);
+      }
+    });
   }
 
   void _notifyRoomUpdated(ChatRoom room) {
@@ -972,49 +1233,67 @@ class ChatService {
     });
   }
 
-  void sendVoiceMessage(String roomId, voice_msg.VoiceMessage voiceMessage) {
-    final messageData = {
-      'id': voiceMessage.id,
-      'sender_id': voiceMessage.senderId,
-      'sender_name': voiceMessage.senderName,
-      'room': roomId,
-      'file_url': voiceMessage.fileUrl,
-      'duration': voiceMessage.duration,
-      'file_size': voiceMessage.fileSize,
-      'timestamp': voiceMessage.timestamp.toIso8601String(),
-      'type': 'voice',
-    };
+  Future<void> sendImageMessage(String roomId, String filePath) async {
+    try {
+      final userInfo = await TokenStorage.getUser();
+      final currentUserId = userInfo?['id']?.toString() ?? '';
+      final currentUserName = userInfo?['username']?.toString() ?? 'Me';
 
-    if (!_socketClient.emit('voice_message', messageData)) {
-      throw Exception('Socket not connected');
+      final tempId = 'temp_image_${_uuid.v4()}';
+      final tempMessage = chat_msg.Message(
+        id: tempId,
+        senderId: currentUserId,
+        senderName: currentUserName,
+        content: '[图片]',
+        timestamp: DateTime.now(),
+        roomId: roomId,
+        type: chat_msg.MessageType.image,
+        fileUrl: filePath, // Local path
+        status: chat_msg.MessageStatus.sending,
+      );
+
+      // 1. Save to Local DB
+      await _dbHelper.insertMessages([tempMessage]);
+      _notifyMessageReceived(tempMessage);
+
+      // 2. If Online, Try Upload & Send
+      if (_connectionManager.isOnline) {
+        _uploadAndSendImageMessage(tempMessage);
+      }
+    } catch (e) {
+      print('ChatService: 發送圖片消息失敗: $e');
     }
   }
 
-  void sendImageMessage(String roomId, String imageUrl) {
-    final messageData = {
-      'room': roomId,
-      'content': '[图片]',
-      'file_url': imageUrl,
-      'type': 'image',
-      'timestamp': DateTime.now().toIso8601String(),
-    };
+  Future<void> sendVideoMessage(String roomId, String filePath) async {
+    try {
+      final userInfo = await TokenStorage.getUser();
+      final currentUserId = userInfo?['id']?.toString() ?? '';
+      final currentUserName = userInfo?['username']?.toString() ?? 'Me';
 
-    if (!_socketClient.emit('image_message', messageData)) {
-      throw Exception('Socket not connected');
-    }
-  }
+      final tempId = 'temp_video_${_uuid.v4()}';
+      final tempMessage = chat_msg.Message(
+        id: tempId,
+        senderId: currentUserId,
+        senderName: currentUserName,
+        content: '[视频]',
+        timestamp: DateTime.now(),
+        roomId: roomId,
+        type: chat_msg.MessageType.video,
+        fileUrl: filePath, // Local path
+        status: chat_msg.MessageStatus.sending,
+      );
 
-  void sendVideoMessage(String roomId, String videoUrl) {
-    final messageData = {
-      'room': roomId,
-      'content': '[视频]',
-      'file_url': videoUrl,
-      'type': 'video',
-      'timestamp': DateTime.now().toIso8601String(),
-    };
+      // 1. Save to Local DB
+      await _dbHelper.insertMessages([tempMessage]);
+      _notifyMessageReceived(tempMessage);
 
-    if (!_socketClient.emit('video_message', messageData)) {
-      throw Exception('Socket not connected');
+      // 2. If Online, Try Upload & Send
+      if (_connectionManager.isOnline) {
+        _uploadAndSendVideoMessage(tempMessage);
+      }
+    } catch (e) {
+      print('ChatService: 發送視頻消息失敗: $e');
     }
   }
 

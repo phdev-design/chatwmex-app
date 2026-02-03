@@ -329,6 +329,27 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 🔥 新增：檢查是否被聊天室中的其他參與者封鎖
+	for _, participantID := range room.Participants {
+		// 跳過自己
+		if participantID == userID {
+			continue
+		}
+
+		// 檢查 participantID 是否封鎖了 userID (sender)
+		// 注意：IsUserBlocked(blocker, blocked)
+		isBlocked, err := IsUserBlocked(ctx, store, participantID, userID)
+		if err != nil {
+			log.Printf("Error checking block status: %v", err)
+			continue
+		}
+
+		if isBlocked {
+			http.Error(w, `{"error": "消息發送失敗：您已被對方封鎖"}`, http.StatusForbidden)
+			return
+		}
+	}
+
 	// 🔥 修正：根據消息類型處理不同的內容加密
 	var encryptedContent string
 	encryptionKey := []byte(cfg.EncryptionSecret)

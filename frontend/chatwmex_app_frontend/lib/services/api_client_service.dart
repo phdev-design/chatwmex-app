@@ -92,6 +92,35 @@ class ApiClientService {
     }
   }
 
+  // 🔥 新增：發送消息 (HTTP Fallback)
+  Future<Map<String, dynamic>?> sendMessage(
+      String roomId, String content, String type,
+      {String? fileUrl, int? duration, int? fileSize}) async {
+    try {
+      final Map<String, dynamic> data = {
+        'content': content,
+        'type': type,
+      };
+
+      if (fileUrl != null) data['file_url'] = fileUrl;
+      if (duration != null) data['duration'] = duration;
+      if (fileSize != null) data['file_size'] = fileSize;
+
+      Response response = await dio.post(
+        '/api/v1/rooms/$roomId/messages',
+        data: data,
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return response.data['message'];
+      }
+      return null;
+    } catch (e) {
+      print("Error sending message via API: $e");
+      return null;
+    }
+  }
+
   // ==================== Initialization ====================
   static Future<void> initialize() async {
     try {

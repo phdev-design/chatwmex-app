@@ -1,0 +1,15 @@
+package models
+
+import (
+"time"
+
+"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+// BlockedUser represents the relationship between a blocker and a blocked user
+type BlockedUser struct {
+ID        primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+BlockerID string             `bson:"blocker_id" json:"blocker_id"` // User ID who initiates the block
+BlockedID string             `bson:"blocked_id" json:"blocked_id"` // User ID who is blocked
+CreatedAt time.Time          `bson:"created_at" json:"created_at"`
+}

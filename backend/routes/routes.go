@@ -69,6 +69,7 @@ func SetupRoutes(store database.Store) http.Handler {
 
 	// 註冊來自不同模組的路由
 	SetupUserRoutes(api)
+	SetupBlockRoutes(api)         // 🔥 新增：封鎖用戶路由
 	SetupChatRoomRoutes(api)
 	SetupChatMessageRoutes(api)
 	SetupVoiceMessageRoutes(api)  // 語音消息路由

@@ -9,6 +9,8 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final ChatRoom chatRoom;
   final String? currentUserId; // 🔥 添加這個參數
   final String? typingStatus; // 🔥 新增：Typing 狀態
+  final bool isBlocked; // 🔥 新增：封鎖狀態
+  final VoidCallback? onToggleBlock; // 🔥 新增：封鎖切換回調
   final VoidCallback onShowDebugInfo;
   final VoidCallback onShowGroupInfo;
 
@@ -19,6 +21,8 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.chatRoom,
     this.currentUserId, // 🔥 添加這個參數
     this.typingStatus, // 🔥 新增：Typing 狀態
+    this.isBlocked = false,
+    this.onToggleBlock,
     required this.onShowDebugInfo,
     required this.onShowGroupInfo,
   });
@@ -63,6 +67,35 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
           onPressed: onShowDebugInfo,
           tooltip: '調試信息',
         ),
+        if (!chatRoom.isGroup && onToggleBlock != null)
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'toggle_block') {
+                onToggleBlock!();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'toggle_block',
+                child: ListTile(
+                  leading: Icon(
+                    isBlocked ? Icons.lock_open : Icons.block,
+                    color:
+                        isBlocked ? null : Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    isBlocked ? '解除封鎖' : '封鎖用戶',
+                    style: TextStyle(
+                      color: isBlocked
+                          ? null
+                          : Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
         if (chatRoom.isGroup)
           PopupMenuButton<String>(
             onSelected: (value) {

@@ -18,7 +18,7 @@ class MessageCacheService {
     try {
       print('MessageCacheService: 初始化消息緩存服務 (SQLite)');
       // DB is initialized on first access
-      await _dbHelper.database; 
+      await _dbHelper.database;
       print('MessageCacheService: 緩存服務初始化完成');
     } catch (e) {
       print('MessageCacheService: 初始化失敗: $e');
@@ -31,13 +31,13 @@ class MessageCacheService {
     try {
       print('MessageCacheService: 緩存房間 $roomId 的 ${messages.length} 條消息');
       if (messages.isEmpty) return;
-      
+
       await _dbHelper.insertMessages(messages);
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           '$_lastSyncPrefix$roomId', DateTime.now().toIso8601String());
-          
+
       print('MessageCacheService: 消息已寫入 SQLite');
     } catch (e) {
       print('MessageCacheService: 緩存消息失敗: $e');
@@ -89,10 +89,61 @@ class MessageCacheService {
     }
   }
 
+  // 🔥 獲取最後同步時間
+  Future<DateTime?> getLastSyncTime(String roomId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final timeStr = prefs.getString('$_lastSyncPrefix$roomId');
+      if (timeStr != null) {
+        return DateTime.parse(timeStr);
+      }
+    } catch (e) {
+      print('MessageCacheService: 獲取最後同步時間失敗: $e');
+    }
+    return null;
+  }
+
+  // 🔥 設置最後同步時間
+  Future<void> setLastSyncTime(String roomId, DateTime time) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('$_lastSyncPrefix$roomId', time.toIso8601String());
+    } catch (e) {
+      print('MessageCacheService: 設置最後同步時間失敗: $e');
+    }
+  }
+
+  // 🔥 清除房間緩存
+  Future<void> clearRoomCache(String roomId) async {
+    try {
+      print('MessageCacheService: 清除房間 $roomId 的緩存');
+      await _dbHelper.deleteMessages(roomId);
+    } catch (e) {
+      print('MessageCacheService: 清除緩存失敗: $e');
+    }
+  }
+
+  // 🔥 增量同步消息
+  Future<void> syncIncrementalMessages(
+      String roomId, List<chat_msg.Message> messages) async {
+    try {
+      print('MessageCacheService: 增量同步 ${messages.length} 條消息');
+      if (messages.isEmpty) return;
+
+      await _dbHelper.insertMessages(messages);
+
+      // Update last sync time
+      await setLastSyncTime(roomId, DateTime.now());
+    } catch (e) {
+      print('MessageCacheService: 增量同步失敗: $e');
+    }
+  }
+
   Future<void> clearAllCache() async {
     // Ideally drop tables or delete all rows.
     // For now we might not need this often.
     // We can implement delete all in DB helper if needed.
-    print('MessageCacheService: Clear cache requested but not fully implemented for SQLite yet.');
+    print(
+        'MessageCacheService: Clear cache requested but not fully implemented for SQLite yet.');
   }
 }

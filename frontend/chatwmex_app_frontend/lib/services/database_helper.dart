@@ -176,6 +176,15 @@ CREATE TABLE messages (
     );
   }
 
+  Future<void> deleteMessages(String roomId) async {
+    final db = await instance.database;
+    await db.delete(
+      'messages',
+      where: 'room_id = ?',
+      whereArgs: [roomId],
+    );
+  }
+
   Future<void> close() async {
     final db = await instance.database;
     db.close();

@@ -327,23 +327,54 @@ class _MessageBubbleState extends State<MessageBubble> {
                   fontSize: 12,
                   color: widget.isMe
                       ? Colors.white.withOpacity(0.7)
-                      : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      : Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
                 ),
               ),
               if (widget.isMe) ...[
                 const SizedBox(width: 4),
-                Icon(
-                  widget.message.readBy.isNotEmpty ? Icons.done_all : Icons.check,
-                  size: 16,
-                  color: widget.message.readBy.isNotEmpty
-                      ? Colors.blue.shade100 // 在深色背景上蓝色可能看不清，调整一下
-                      : Colors.white.withOpacity(0.7),
-                ),
+                _buildStatusIcon(context),
               ],
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatusIcon(BuildContext context) {
+    // 優先處理發送狀態
+    if (widget.message.status == chat_msg.MessageStatus.sending) {
+      return Icon(
+        Icons.access_time,
+        size: 14,
+        color: Colors.white.withOpacity(0.7),
+      );
+    } else if (widget.message.status == chat_msg.MessageStatus.failed) {
+      return GestureDetector(
+        onTap: () {
+          // TODO: 點擊重發
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('消息發送失敗，請檢查網絡連接')),
+          );
+        },
+        child: Icon(
+          Icons.error_outline,
+          size: 16,
+          color: Colors.red.shade200,
+        ),
+      );
+    }
+
+    // 發送成功後顯示已讀狀態
+    return Icon(
+      widget.message.readBy.isNotEmpty ? Icons.done_all : Icons.check,
+      size: 16,
+      color: widget.message.readBy.isNotEmpty
+          ? Colors.blue.shade100
+          : Colors.white.withOpacity(0.7),
     );
   }
 
