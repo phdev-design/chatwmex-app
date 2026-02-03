@@ -6,6 +6,8 @@ import '../../models/voice_message.dart' as voice_msg;
 import '../../services/chat_service.dart';
 import '../../services/chat_api_service.dart' as api_service;
 import '../../utils/token_storage.dart';
+import 'package:chat2mex_app_frontend/services/api_client_service.dart';
+import 'dart:io';
 
 // Mixins
 import 'mixins/chat_message_handler.dart';
@@ -52,7 +54,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
       ValueNotifier<List<chat_msg.Message>>([]);
   final Set<String> _knownMessageIds = {};
   final Set<String> _pendingTempMessages = {};
-  
+
   // 🔥 新增：多選模式相關
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
@@ -252,7 +254,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
   Future<void> _handleVoiceRecordingComplete(
       String filePath, int durationSeconds) async {
     debugPrint('語音錄製完成: $filePath, 時長: $durationSeconds seconds');
-    
+
     if (durationSeconds < 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -317,8 +319,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
               setState(() {
                 final updatedMessages =
                     List<chat_msg.Message>.from(_messagesNotifier.value)
-                      ..removeWhere(
-                          (m) => _selectedMessageIds.contains(m.id));
+                      ..removeWhere((m) => _selectedMessageIds.contains(m.id));
                 _messagesNotifier.value = updatedMessages;
                 _selectedMessageIds.clear();
                 _isSelectionMode = false;
@@ -356,6 +357,44 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     );
   }
 
+  // 🔥 新增：处理图片选择和发送
+  Future<void> _handleImageSelected(File image) async {
+    if (!_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('网络未连接，无法发送图片')),
+      );
+      return;
+    }
+
+    try {
+      // 1. 上传图片
+      final imageUrl = await ApiClientService().uploadImage(image);
+      if (imageUrl == null) {
+        throw Exception('图片上传失败');
+      }
+
+      // 2. 发送图片消息
+      final messageData = {
+        'room': currentRoomId,
+        'content': '[图片]',
+        'file_url': imageUrl,
+        'type': 'image',
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      // 通过 Socket 发送
+      ChatService().socket.emit('image_message', messageData);
+
+      // 3. 乐观更新 UI (可选，这里我们等待服务器回传或 Socket 广播)
+      // 如果需要立即显示，可以在这里手动添加到 _messagesNotifier
+    } catch (e) {
+      debugPrint('发送图片失败: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('发送图片失败: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -380,7 +419,8 @@ class _ChatDetailPageState extends State<ChatDetailPage>
                 currentRoomId: currentRoomId,
                 knownMessageIdsCount: _knownMessageIds.length,
               ),
-              onShowGroupInfo: () => showGroupInfoDialog(context, widget.chatRoom),
+              onShowGroupInfo: () =>
+                  showGroupInfoDialog(context, widget.chatRoom),
             ),
       body: Column(
         children: [
@@ -448,6 +488,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
               onVoiceRecordingStateChanged: (isRecording) {
                 if (mounted) setState(() => _isRecordingVoice = isRecording);
               },
+              onImageSelected: _handleImageSelected, // 🔥 连接回调
             ),
         ],
       ),

@@ -561,6 +561,36 @@ class ChatService {
   // === 🔥 修正：合併後的事件監聽器設置 ===
 
   void _setupMessageEventListeners(IO.Socket socket) {
+    // 🔥 图片消息监听
+    socket.on('image_message', (data) {
+      try {
+        print('Received image message data: $data');
+
+        Map<String, dynamic> messageData;
+        if (data is String) {
+          messageData = jsonDecode(data);
+        } else {
+          messageData = Map<String, dynamic>.from(data);
+        }
+
+        final message = chat_msg.Message(
+          id: messageData['id'] ?? '',
+          senderId: messageData['sender_id'] ?? '',
+          senderName: messageData['sender_name'] ?? '',
+          content: '[图片]',
+          timestamp: DateTime.parse(
+              messageData['timestamp'] ?? DateTime.now().toIso8601String()),
+          roomId: messageData['room'] ?? '',
+          type: chat_msg.MessageType.image,
+          fileUrl: messageData['file_url'],
+        );
+
+        _notifyMessageReceived(message);
+      } catch (e) {
+        print('Error parsing image message: $e');
+      }
+    });
+
     socket.on('voice_message', (data) {
       try {
         print('Received voice message data: $data');

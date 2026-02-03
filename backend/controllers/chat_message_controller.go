@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -330,6 +333,25 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error": "語音消息加密失敗"}`, http.StatusInternalServerError)
 			return
 		}
+	} else if req.Type == "image" {
+		// 图片消息：构建图片信息JSON并加密
+		imageInfo := map[string]interface{}{
+			"file_url": req.FileURL,
+			"type":     "image",
+		}
+
+		contentBytes, err := json.Marshal(imageInfo)
+		if err != nil {
+			http.Error(w, `{"error": "图片消息格式处理失败"}`, http.StatusInternalServerError)
+			return
+		}
+
+		encryptedContent, err = utils.Encrypt(string(contentBytes), encryptionKey)
+		if err != nil {
+			log.Printf("Error encrypting image message: %v", err)
+			http.Error(w, `{"error": "图片消息加密失败"}`, http.StatusInternalServerError)
+			return
+		}
 	} else {
 		// 普通文本消息：直接加密內容
 		encryptedContent, err = utils.Encrypt(req.Content, encryptionKey)
@@ -379,6 +401,8 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	lastMessageContent := req.Content
 	if req.Type == "voice" {
 		lastMessageContent = "[語音消息]" // 為語音消息顯示特殊文本
+	} else if req.Type == "image" {
+		lastMessageContent = "[图片]" // 为图片消息显示特殊文本
 	}
 
 	roomUpdate := bson.M{
@@ -414,6 +438,9 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 		responseMessage["duration"] = req.Duration
 		responseMessage["file_size"] = req.FileSize
 		responseMessage["content"] = "[语音消息]" // 顯示文本
+	} else if req.Type == "image" {
+		responseMessage["file_url"] = req.FileURL
+		responseMessage["content"] = "[图片]" // 显示文本
 	}
 
 	response := map[string]interface{}{
@@ -427,4 +454,63 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Error encoding response: %v", err)
 	}
+}
+
+// UploadImage 處理圖片上傳
+func UploadImage(w http.ResponseWriter, r *http.Request) {
+	// 限制文件大小 (例如 10MB)
+	r.ParseMultipartForm(10 << 20)
+
+	file, handler, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, `{"error": "无法获取文件"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	uploadPath := os.Getenv("UPLOAD_PATH")
+	if uploadPath == "" {
+		uploadPath = "./uploads"
+	}
+
+	// 确保上传目录存在
+	if err := os.MkdirAll(uploadPath, 0755); err != nil {
+		log.Printf("Failed to create upload directory: %v", err)
+		http.Error(w, `{"error": "服务器存储错误"}`, http.StatusInternalServerError)
+		return
+	}
+
+	ext := filepath.Ext(handler.Filename)
+	// 验证文件扩展名
+	validExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
+	if !validExts[strings.ToLower(ext)] {
+		http.Error(w, `{"error": "不支持的文件类型"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 生成唯一文件名
+	filename := fmt.Sprintf("img_%d%s", time.Now().UnixNano(), ext)
+	fullPath := filepath.Join(uploadPath, filename)
+
+	dst, err := os.Create(fullPath)
+	if err != nil {
+		log.Printf("Failed to create file: %v", err)
+		http.Error(w, `{"error": "保存文件失败"}`, http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		log.Printf("Failed to copy file content: %v", err)
+		http.Error(w, `{"error": "保存文件失败"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// 返回文件的相对 URL (前端需要加上 API 基础 URL)
+	fileURL := fmt.Sprintf("/uploads/%s", filename)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"url": fileURL,
+	})
 }

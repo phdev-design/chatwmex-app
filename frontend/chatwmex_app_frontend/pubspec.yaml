@@ -50,6 +50,8 @@ dependencies:
   emoji_picker_flutter: ^2.0.0  
   # 網絡和文件上傳
   dio: ^5.4.1
+  # 🔥 新增：圖片緩存
+  cached_network_image: ^3.3.1
   
   # 設備信息
   device_info_plus: ^10.1.0

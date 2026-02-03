@@ -1,5 +1,7 @@
 // lib/pages/chat/widgets/chat_input_area.dart
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../../widgets/voice_recording_widget.dart';
 
 /// 聊天輸入區域組件
@@ -13,6 +15,7 @@ class ChatInputArea extends StatefulWidget {
   final Future<void> Function(String, int) onVoiceRecordingComplete;
   final VoidCallback onVoiceRecordingCancelled;
   final ValueChanged<bool> onVoiceRecordingStateChanged;
+  final Function(File) onImageSelected; // 🔥 新增：圖片選擇回調
 
   const ChatInputArea({
     super.key,
@@ -25,6 +28,7 @@ class ChatInputArea extends StatefulWidget {
     required this.onVoiceRecordingComplete,
     required this.onVoiceRecordingCancelled,
     required this.onVoiceRecordingStateChanged,
+    required this.onImageSelected, // 🔥 新增
   });
 
   @override
@@ -33,6 +37,43 @@ class ChatInputArea extends StatefulWidget {
 
 class _ChatInputAreaState extends State<ChatInputArea> {
   bool _hasText = false;
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage() async {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('拍照'),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? image =
+                    await _picker.pickImage(source: ImageSource.camera);
+                if (image != null) {
+                  widget.onImageSelected(File(image.path));
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('從相簿選擇'),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? image =
+                    await _picker.pickImage(source: ImageSource.gallery);
+                if (image != null) {
+                  widget.onImageSelected(File(image.path));
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -86,9 +127,9 @@ class _ChatInputAreaState extends State<ChatInputArea> {
         // 附件按鈕
         if (!widget.isRecordingVoice)
           IconButton(
-            onPressed: () {},
+            onPressed: _pickImage,
             icon: Icon(
-              Icons.add,
+              Icons.add_photo_alternate,
               color: Theme.of(context).colorScheme.primary,
             ),
           ),
@@ -106,7 +147,8 @@ class _ChatInputAreaState extends State<ChatInputArea> {
               decoration: const InputDecoration(
                 hintText: 'Message...',
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
               maxLines: 5,
               minLines: 1,
@@ -138,7 +180,8 @@ class _ChatInputAreaState extends State<ChatInputArea> {
               shape: BoxShape.circle,
             ),
             child: IconButton(
-              onPressed: widget.isConnected && _hasText ? widget.onSendMessage : null,
+              onPressed:
+                  widget.isConnected && _hasText ? widget.onSendMessage : null,
               icon: const Icon(Icons.send, color: Colors.white),
             ),
           ),

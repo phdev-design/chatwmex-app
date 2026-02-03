@@ -1,3 +1,5 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chat2mex_app_frontend/config/api_config.dart';
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import '../../../models/message.dart' as chat_msg;
@@ -38,6 +40,8 @@ class MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<MessageBubble> {
   bool _isSelected = false;
+
+  // Removed duplicate _buildMessageContent
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +143,74 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Widget _buildMessageContent(BuildContext context) {
+    // 1. 获取消息内容组件 (图片或文本)
+    Widget contentWidget;
+    if (widget.message.type == chat_msg.MessageType.image &&
+        widget.message.fileUrl != null) {
+      final imageUrl = ApiConfig.getAudioFileUrl(widget.message.fileUrl!);
+
+      contentWidget = GestureDetector(
+        onTap: () {
+          // 查看大圖
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => Scaffold(
+                appBar: AppBar(backgroundColor: Colors.black),
+                backgroundColor: Colors.black,
+                body: Center(
+                  child: Hero(
+                    tag: 'image_${widget.message.id}',
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      placeholder: (context, url) =>
+                          const CircularProgressIndicator(),
+                      errorWidget: (context, url, error) =>
+                          const Icon(Icons.error, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        child: Hero(
+          tag: 'image_${widget.message.id}',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: CachedNetworkImage(
+              imageUrl: imageUrl,
+              width: 200,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Icon(Icons.error),
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      contentWidget = Text(
+        widget.message.content,
+        style: TextStyle(
+          color: widget.isMe
+              ? Colors.white
+              : Theme.of(context).colorScheme.onSurface,
+          fontSize: 16,
+        ),
+      );
+    }
+
+    // 2. 包装在气泡样式中 (复用原有样式)
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -169,15 +241,8 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
               ),
             ),
-          Text(
-            widget.message.content,
-            style: TextStyle(
-              color: widget.isMe
-                  ? Colors.white
-                  : Theme.of(context).colorScheme.onSurface,
-              fontSize: 16,
-            ),
-          ),
+          // 使用动态内容
+          contentWidget,
           const SizedBox(height: 4),
           Text(
             formatMessageTime(widget.message.timestamp),

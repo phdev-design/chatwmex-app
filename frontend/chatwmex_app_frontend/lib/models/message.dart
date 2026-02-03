@@ -73,7 +73,7 @@ class Message {
             : DateTime.now(),
         roomId: json['room']?.toString() ?? '',
         type: messageType,
-        fileUrl: messageType == MessageType.voice ? json['file_url']?.toString() : null,
+        fileUrl: (messageType == MessageType.voice || messageType == MessageType.image) ? json['file_url']?.toString() : null,
         duration: messageType == MessageType.voice ? _parseIntField(json['duration']) : null,
         fileSize: messageType == MessageType.voice ? _parseIntField(json['file_size']) : null,
         reactions: reactions, // ✅ 賦值 reactions

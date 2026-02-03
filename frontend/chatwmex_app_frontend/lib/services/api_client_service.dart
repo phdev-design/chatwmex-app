@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 
 // ==================== SharedPreferences Keys ====================
 const String _accessTokenKey = 'auth_token';
@@ -42,16 +43,41 @@ class ApiClientService {
     print("ℹ️ [ApiClientService] Dio instance created with interceptor.");
   }
 
-  // ==================== Initialization ====================
-static Future<void> initialize() async {
-  try {
-    _instance._prefs = await SharedPreferences.getInstance();
-    _instance._startTokenRefreshTimer(); // 🔥 新增
-    print("✅ [ApiClientService] SharedPreferences initialized.");
-  } catch (e) {
-    throw Exception("Failed to initialize SharedPreferences");
+  // ... existing code ...
+
+  // 🔥 新增：上傳圖片
+  Future<String?> uploadImage(File image) async {
+    try {
+      String fileName = image.path.split('/').last;
+      FormData formData = FormData.fromMap({
+        "image": await MultipartFile.fromFile(image.path, filename: fileName),
+      });
+
+      Response response = await dio.post(
+        '/api/v1/rooms/upload/image',
+        data: formData,
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return response.data['url'];
+      }
+      return null;
+    } catch (e) {
+      print("Error uploading image: $e");
+      return null;
+    }
   }
-}
+
+  // ==================== Initialization ====================
+  static Future<void> initialize() async {
+    try {
+      _instance._prefs = await SharedPreferences.getInstance();
+      _instance._startTokenRefreshTimer(); // 🔥 新增
+      print("✅ [ApiClientService] SharedPreferences initialized.");
+    } catch (e) {
+      throw Exception("Failed to initialize SharedPreferences");
+    }
+  }
 
   bool _checkPrefsInitialized() {
     if (_prefs == null) {
@@ -67,25 +93,28 @@ static Future<void> initialize() async {
   void _startTokenRefreshTimer() {
     _tokenRefreshTimer?.cancel(); // 先取消已有的定時器，避免重複執行
     print("🔄 [ApiClientService] Starting proactive token refresh timer...");
-    
+
     // 每 5 分鐘執行一次檢查
     _tokenRefreshTimer = Timer.periodic(
       const Duration(minutes: 5),
       (timer) async {
         // 檢查 token 是否在 15 分鐘內過期
         final isExpiringSoon = await _isTokenExpiringSoon();
-        
+
         // 🔥 修正邏輯：如果 isExpiringSoon 為 true，才執行刷新
         if (isExpiringSoon) {
-          print('ℹ️ [ApiClientService] Token is expiring soon, attempting proactive refresh...');
+          print(
+              'ℹ️ [ApiClientService] Token is expiring soon, attempting proactive refresh...');
           // 只有在沒有其他刷新操作時才執行，避免衝突
           if (!_isRefreshing) {
             await attemptTokenRefresh();
           } else {
-            print('ℹ️ [ApiClientService] Token refresh is already in progress, skipping proactive refresh.');
+            print(
+                'ℹ️ [ApiClientService] Token refresh is already in progress, skipping proactive refresh.');
           }
         } else {
-           print('ℹ️ [ApiClientService] Token check: still valid, no proactive refresh needed.');
+          print(
+              'ℹ️ [ApiClientService] Token check: still valid, no proactive refresh needed.');
         }
       },
     );
@@ -99,7 +128,8 @@ static Future<void> initialize() async {
 
       final parts = token.split('.');
       if (parts.length != 3) {
-        print("❌ [ApiClientService] Invalid token format for expiration check.");
+        print(
+            "❌ [ApiClientService] Invalid token format for expiration check.");
         return false;
       }
 
@@ -120,7 +150,8 @@ static Future<void> initialize() async {
       // 🔥 如果在 15 分鐘內過期，就返回 true
       final isExpiring = expirationTime.difference(now).inMinutes < 15;
       if (isExpiring) {
-          print("⚠️ [ApiClientService] Token will expire in less than 15 minutes.");
+        print(
+            "⚠️ [ApiClientService] Token will expire in less than 15 minutes.");
       }
       return isExpiring;
     } catch (e) {
@@ -135,7 +166,6 @@ static Future<void> initialize() async {
     final padding = (4 - res.length % 4) % 4;
     return res + '=' * padding;
   }
-
 
   // ==================== Token Management ====================
   String? getAccessToken() {
@@ -217,7 +247,7 @@ static Future<void> initialize() async {
 
       if (response.statusCode == 200) {
         final responseBody = response.data;
-        
+
         final newAccessToken = responseBody['access_token'] as String?;
         final newRefreshToken = responseBody['refresh_token'] as String?;
 
@@ -234,15 +264,17 @@ static Future<void> initialize() async {
           return null;
         }
       } else {
-        print("❌ [ApiClientService] Refresh failed with status: ${response.statusCode}");
+        print(
+            "❌ [ApiClientService] Refresh failed with status: ${response.statusCode}");
         await clearTokensAndLogout();
         return null;
       }
     } on DioException catch (e) {
       print("❌ [ApiClientService] Token refresh error: ${e.message}");
-      
+
       if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
-        print("❌ [ApiClientService] Refresh token is invalid or expired, logging out.");
+        print(
+            "❌ [ApiClientService] Refresh token is invalid or expired, logging out.");
         await clearTokensAndLogout();
       }
       return null;
@@ -259,12 +291,14 @@ static Future<void> initialize() async {
       return;
     }
 
-    print("🔄 [ApiClientService] Processing ${_requestQueue.length} queued requests.");
+    print(
+        "🔄 [ApiClientService] Processing ${_requestQueue.length} queued requests.");
 
     Future.wait(_requestQueue.map((queuedRequest) {
       final requestOptions = queuedRequest['options'] as RequestOptions;
-      final completer = queuedRequest['completer'] as Completer<Response<dynamic>>;
-      
+      final completer =
+          queuedRequest['completer'] as Completer<Response<dynamic>>;
+
       requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
 
       return dio.fetch(requestOptions).then((response) {
@@ -295,8 +329,8 @@ class _AuthInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     final path = options.path.toLowerCase();
-    if (path.contains('/refresh-token') || 
-        path.contains('/login') || 
+    if (path.contains('/refresh-token') ||
+        path.contains('/login') ||
         path.contains('/register')) {
       return handler.next(options);
     }
@@ -309,8 +343,10 @@ class _AuthInterceptor extends Interceptor {
   }
 
   @override
-  Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
-    print("❌ [Interceptor] Error: ${err.requestOptions.path} - ${err.response?.statusCode}");
+  Future<void> onError(
+      DioException err, ErrorInterceptorHandler handler) async {
+    print(
+        "❌ [Interceptor] Error: ${err.requestOptions.path} - ${err.response?.statusCode}");
 
     if (err.response?.statusCode == 401) {
       if (err.requestOptions.path.contains('/refresh-token')) {
@@ -328,13 +364,14 @@ class _AuthInterceptor extends Interceptor {
           String? newAccessToken = await apiClient.attemptTokenRefresh();
 
           if (newAccessToken != null && newAccessToken.isNotEmpty) {
-            print("✅ [Interceptor] Token refreshed, processing queue and retrying original request.");
-            
+            print(
+                "✅ [Interceptor] Token refreshed, processing queue and retrying original request.");
+
             apiClient._processQueue(newAccessToken);
 
             final options = err.requestOptions;
             options.headers['Authorization'] = 'Bearer $newAccessToken';
-            
+
             try {
               final response = await apiClient.dio.fetch(options);
               return handler.resolve(response);
@@ -343,11 +380,13 @@ class _AuthInterceptor extends Interceptor {
               return handler.reject(
                 retryError is DioException
                     ? retryError
-                    : DioException(requestOptions: err.requestOptions, error: retryError),
+                    : DioException(
+                        requestOptions: err.requestOptions, error: retryError),
               );
             }
           } else {
-            print("❌ [Interceptor] Token refresh failed, clearing queue and logging out.");
+            print(
+                "❌ [Interceptor] Token refresh failed, clearing queue and logging out.");
             apiClient._requestQueue.clear();
             await apiClient.clearTokensAndLogout();
             return handler.reject(err);
@@ -364,7 +403,8 @@ class _AuthInterceptor extends Interceptor {
           return handler.reject(
             queuedError is DioException
                 ? queuedError
-                : DioException(requestOptions: err.requestOptions, error: queuedError),
+                : DioException(
+                    requestOptions: err.requestOptions, error: queuedError),
           );
         }
       }

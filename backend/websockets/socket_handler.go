@@ -70,6 +70,35 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		server.BroadcastToRoom("/", room, "voice_message", voiceMessageData)
 	})
 
+	// 🔥 新增：支持图片消息广播
+	server.OnEvent("/", "image_message", func(s socketio.Conn, payload map[string]interface{}) {
+		user, ok := s.Context().(*AuthenticatedUser)
+		if !ok || user == nil {
+			log.Printf("Error: Could not get user from context for socket %s", s.ID())
+			return
+		}
+
+		room, ok := payload["room"].(string)
+		if !ok {
+			log.Printf("Invalid room in image message from %s", user.Username)
+			return
+		}
+
+		// 广播图片消息给房间内所有用户
+		imageMessageData := map[string]interface{}{
+			"id":          payload["id"],
+			"sender_id":   user.ID,
+			"sender_name": user.Username,
+			"room":        room,
+			"file_url":    payload["file_url"],
+			"timestamp":   payload["timestamp"],
+			"type":        "image",
+		}
+
+		log.Printf("Broadcasting image message from %s in room %s", user.Username, room)
+		server.BroadcastToRoom("/", room, "image_message", imageMessageData)
+	})
+
 	// 当有新的客户端连线时触发 - 进行 Token 验证
 	server.OnConnect("/", func(s socketio.Conn) error {
 		queryValues, err := url.ParseQuery(s.URL().RawQuery)

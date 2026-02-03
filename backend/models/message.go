@@ -19,3 +19,10 @@ type Message struct {
 	DeletedAt  *time.Time         `bson:"deleted_at,omitempty" json:"deleted_at,omitempty"` // 新增：刪除時間
 	DeletedBy  *string            `bson:"deleted_by,omitempty" json:"deleted_by,omitempty"` // 新增：刪除者ID
 }
+
+// 定义消息类型常量
+const (
+	MessageTypeText  = "text"
+	MessageTypeVoice = "voice"
+	MessageTypeImage = "image"
+)
