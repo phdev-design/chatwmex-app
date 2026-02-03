@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import '../services/api_client_service.dart';
 import '../models/chat_room.dart';
 import '../models/message.dart';
@@ -20,7 +21,7 @@ class ChatApiService {
   }
 
   // ==================== 聊天室管理 ====================
-  
+
   /// 智能獲取聊天室列表（先讀取緩存，再同步服務器）
   static Future<List<ChatRoom>> getChatRooms() async {
     try {
@@ -40,14 +41,14 @@ class ChatApiService {
       return await _fetchChatRoomsFromServer();
     } catch (e) {
       print('ChatApiService: 獲取聊天室列表失敗: $e');
-      
+
       // 如果服務器請求失敗，嘗試返回緩存數據
       final cachedRooms = await MessageCacheService().getCachedChatRooms();
       if (cachedRooms.isNotEmpty) {
         print('ChatApiService: 服務器請求失敗，使用緩存數據');
         return cachedRooms;
       }
-      
+
       throw e;
     }
   }
@@ -131,6 +132,15 @@ class ChatApiService {
 
   // ==================== 消息管理 ====================
 
+  static Future<String?> uploadImage(File image) async {
+    return await apiClient.uploadImage(image);
+  }
+
+  // 🔥 新增：上傳視頻
+  static Future<String?> uploadVideo(File video) async {
+    return await apiClient.uploadVideo(video);
+  }
+
   /// 獲取聊天歷史（默認直接從服務器獲取，確保數據最新）
   static Future<List<Message>> getChatHistory(
     String roomId, {
@@ -139,7 +149,8 @@ class ChatApiService {
     bool forceRefresh = false,
   }) async {
     try {
-      print('ChatApiService: 獲取聊天歷史 - 房間: $roomId, 頁碼: $page, 強制刷新: $forceRefresh');
+      print(
+          'ChatApiService: 獲取聊天歷史 - 房間: $roomId, 頁碼: $page, 強制刷新: $forceRefresh');
 
       if (forceRefresh) {
         // 強制刷新：清除緩存並從服務器獲取
@@ -150,12 +161,13 @@ class ChatApiService {
       return await _fetchMessagesFromServer(roomId, page: page, limit: limit);
     } catch (e) {
       print('ChatApiService: 獲取聊天歷史失敗: $e');
-      
+
       // 只有在服務器請求完全失敗時才使用緩存
       try {
         print('ChatApiService: 嘗試使用緩存數據');
-        final cachedMessages = await MessageCacheService().getCachedRoomMessages(roomId);
-        
+        final cachedMessages =
+            await MessageCacheService().getCachedRoomMessages(roomId);
+
         if (cachedMessages.isNotEmpty) {
           print('ChatApiService: 使用緩存數據，共 ${cachedMessages.length} 條消息');
           return cachedMessages;
@@ -163,7 +175,7 @@ class ChatApiService {
       } catch (cacheError) {
         print('ChatApiService: 緩存讀取也失敗: $cacheError');
       }
-      
+
       throw e;
     }
   }
@@ -190,7 +202,7 @@ class ChatApiService {
         print('ChatApiService: 從服務器獲取到 ${messagesJson.length} 條消息 (頁碼: $page)');
 
         final messages = <Message>[];
-        
+
         // 逐個解析消息，確保錯誤處理
         for (int i = 0; i < messagesJson.length; i++) {
           try {
@@ -198,7 +210,7 @@ class ChatApiService {
             if (json['type'] == 'voice') {
               print('ChatApiService: 解析語音消息 - ID: ${json['id']}');
             }
-            
+
             final message = Message.fromJson(json);
             messages.add(message);
           } catch (parseError) {
@@ -208,7 +220,8 @@ class ChatApiService {
           }
         }
 
-        print('ChatApiService: 成功解析 ${messages.length}/${messagesJson.length} 條消息');
+        print(
+            'ChatApiService: 成功解析 ${messages.length}/${messagesJson.length} 條消息');
 
         // 緩存成功解析的消息
         if (messages.isNotEmpty && page == 1) {
@@ -229,12 +242,12 @@ class ChatApiService {
   static Future<List<Message>> getAllRoomMessages(String roomId) async {
     try {
       print('ChatApiService: 獲取房間 $roomId 的所有消息');
-      
+
       final allMessages = <Message>[];
       int currentPage = 1;
       const int pageSize = 100;
       bool hasMoreMessages = true;
-      
+
       while (hasMoreMessages && currentPage <= 20) {
         try {
           final messages = await _fetchMessagesFromServer(
@@ -242,40 +255,40 @@ class ChatApiService {
             page: currentPage,
             limit: pageSize,
           );
-          
+
           if (messages.isEmpty) {
             hasMoreMessages = false;
             break;
           }
-          
+
           // 去重添加消息
           for (final message in messages) {
             if (!allMessages.any((m) => m.id == message.id)) {
               allMessages.add(message);
             }
           }
-          
+
           print('ChatApiService: 第 $currentPage 頁獲取 ${messages.length} 條消息');
-          
+
           if (messages.length < pageSize) {
             hasMoreMessages = false;
           }
-          
+
           currentPage++;
         } catch (pageError) {
           print('ChatApiService: 獲取第 $currentPage 頁失敗: $pageError');
           hasMoreMessages = false;
         }
       }
-      
+
       // 按時間戳排序
       allMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      
+
       print('ChatApiService: 總共獲取 ${allMessages.length} 條消息');
-      
+
       // 更新緩存
       await MessageCacheService().cacheRoomMessages(roomId, allMessages);
-      
+
       return allMessages;
     } catch (e) {
       print('ChatApiService: 獲取所有消息失敗: $e');
@@ -371,7 +384,8 @@ class ChatApiService {
         final List<dynamic> messagesJson = response.data['messages'] ?? [];
         return messagesJson.map((json) => Message.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to load voice messages: ${response.statusCode}');
+        throw Exception(
+            'Failed to load voice messages: ${response.statusCode}');
       }
     } catch (e) {
       print('ChatApiService: 獲取語音消息失敗: $e');
@@ -460,7 +474,7 @@ class ChatApiService {
       }
 
       print('ChatApiService: 嘗試同步端點，參數: $queryParams');
-      
+
       final response = await apiClient.dio.get(
         '/api/v1/rooms/$roomId/sync',
         queryParameters: queryParams,
@@ -468,7 +482,8 @@ class ChatApiService {
 
       if (response.statusCode == 200) {
         final List<dynamic> messagesJson = response.data['messages'] ?? [];
-        final messages = messagesJson.map((json) => Message.fromJson(json)).toList();
+        final messages =
+            messagesJson.map((json) => Message.fromJson(json)).toList();
 
         // 按時間排序
         messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -483,13 +498,13 @@ class ChatApiService {
       }
     } catch (e) {
       print('ChatApiService: 同步聊天歷史失敗: $e');
-      
+
       // 如果是 404 錯誤，返回空列表而不是拋出異常
       if (e.toString().contains('404')) {
         print('ChatApiService: 同步端點不可用，返回空列表');
         return [];
       }
-      
+
       throw e;
     }
   }
@@ -501,16 +516,17 @@ class ChatApiService {
 
       final lastSync = await MessageCacheService().getLastSyncTime(roomId);
       final newMessages = await syncChatHistory(roomId, lastSync: lastSync);
-      
+
       if (newMessages.isNotEmpty) {
-        await MessageCacheService().syncIncrementalMessages(roomId, newMessages);
+        await MessageCacheService()
+            .syncIncrementalMessages(roomId, newMessages);
         print('ChatApiService: 後台同步完成，新增 ${newMessages.length} 條消息');
       } else {
         print('ChatApiService: 沒有新消息需要同步');
       }
     } catch (e) {
       print('ChatApiService: 後台同步失敗: $e');
-      
+
       if (e.toString().contains('404') || e.toString().contains('sync')) {
         print('ChatApiService: 同步端點不可用，跳過後台同步');
       } else {
@@ -593,7 +609,7 @@ class ChatApiService {
       return [];
     }
   }
-  
+
   // ==================== Reactions API (完善後) ====================
 
   /// 添加或移除消息 Reaction
@@ -607,7 +623,7 @@ class ChatApiService {
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('添加 reaction 失敗: ${response.data}');
       }
-      
+
       print('ChatApiService: 成功添加 reaction: $emoji 到消息 $messageId');
     } catch (e) {
       print('ChatApiService: 添加 reaction 失敗: $e');
@@ -616,7 +632,8 @@ class ChatApiService {
   }
 
   /// 獲取消息的所有 Reactions
-  static Future<Map<String, List<String>>> getMessageReactions(String messageId) async {
+  static Future<Map<String, List<String>>> getMessageReactions(
+      String messageId) async {
     try {
       final response = await apiClient.dio.get(
         '/api/v1/messages/$messageId/reactions',
@@ -625,7 +642,7 @@ class ChatApiService {
       if (response.statusCode == 200) {
         final data = response.data;
         final reactions = <String, List<String>>{};
-        
+
         if (data != null && data['reactions'] is Map) {
           (data['reactions'] as Map<String, dynamic>).forEach((key, value) {
             if (value is List) {
@@ -633,7 +650,7 @@ class ChatApiService {
             }
           });
         }
-        
+
         return reactions;
       } else {
         throw Exception('獲取 reactions 失敗: ${response.data}');

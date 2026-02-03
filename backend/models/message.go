@@ -18,6 +18,7 @@ type Message struct {
 	IsDeleted  bool               `bson:"is_deleted" json:"is_deleted"`                     // 新增：是否已刪除
 	DeletedAt  *time.Time         `bson:"deleted_at,omitempty" json:"deleted_at,omitempty"` // 新增：刪除時間
 	DeletedBy  *string            `bson:"deleted_by,omitempty" json:"deleted_by,omitempty"` // 新增：刪除者ID
+	ReadBy     []string           `bson:"read_by,omitempty" json:"read_by,omitempty"`       // 新增：已读用户ID列表
 }
 
 // 定义消息类型常量

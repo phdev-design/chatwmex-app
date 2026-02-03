@@ -8,6 +8,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool isConnected;
   final ChatRoom chatRoom;
   final String? currentUserId; // 🔥 添加這個參數
+  final String? typingStatus; // 🔥 新增：Typing 狀態
   final VoidCallback onShowDebugInfo;
   final VoidCallback onShowGroupInfo;
 
@@ -17,6 +18,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.isConnected,
     required this.chatRoom,
     this.currentUserId, // 🔥 添加這個參數
+    this.typingStatus, // 🔥 新增：Typing 狀態
     required this.onShowDebugInfo,
     required this.onShowGroupInfo,
   });
@@ -35,6 +37,15 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
             Text(
               '連線中斷',
               style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+            )
+          else if (typingStatus != null && typingStatus!.isNotEmpty)
+            Text(
+              typingStatus!,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.primary,
+                fontStyle: FontStyle.italic,
+              ),
             )
           else if (chatRoom.isGroup && chatRoom.participants.isNotEmpty)
             Text(

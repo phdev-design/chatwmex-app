@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'voice_message.dart';
+
+enum MessageStatus { sending, sent, failed }
 
 class Message {
   final String id;
@@ -16,6 +19,8 @@ class Message {
   final int? fileSize;
   final bool
       isDecryptionError; // ✅ Renamed from decryptionFailed per user request
+  final List<String> readBy; // 🔥 新增：已讀用戶列表
+  final MessageStatus status; // 🔥 新增：消息狀態
 
   Message({
     required this.id,
@@ -30,7 +35,58 @@ class Message {
     this.fileSize,
     this.reactions = const {},
     this.isDecryptionError = false, // ✅ Initialize
+    this.readBy = const [], // 🔥 Initialize
+    this.status = MessageStatus.sent, // 🔥 Default to sent
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'sender_id': senderId,
+      'sender_name': senderName,
+      'content': content,
+      'timestamp': timestamp.toIso8601String(),
+      'room_id': roomId,
+      'type': type.toString().split('.').last,
+      'file_url': fileUrl,
+      'duration': duration,
+      'file_size': fileSize,
+      'reactions': jsonEncode(reactions),
+      'read_by': jsonEncode(readBy),
+      'status': status.index,
+    };
+  }
+
+  factory Message.fromMap(Map<String, dynamic> map) {
+    return Message(
+      id: map['id'],
+      senderId: map['sender_id'],
+      senderName: map['sender_name'],
+      content: map['content'],
+      timestamp: DateTime.parse(map['timestamp']),
+      roomId: map['room_id'],
+      type: _parseMessageType(map['type']),
+      fileUrl: map['file_url'],
+      duration: map['duration'],
+      fileSize: map['file_size'],
+      reactions: map['reactions'] != null
+          ? Map<String, List<String>>.from(
+              (jsonDecode(map['reactions']) as Map).map(
+                (key, value) => MapEntry(
+                  key as String,
+                  (value as List).map((e) => e.toString()).toList(),
+                ),
+              ),
+            )
+          : {},
+      readBy: map['read_by'] != null
+          ? List<String>.from(jsonDecode(map['read_by']))
+          : [],
+      status: map['status'] != null
+          ? MessageStatus.values[map['status']]
+          : MessageStatus.sent,
+    );
+  }
 
   factory Message.fromJson(Map<String, dynamic> json) {
     try {
@@ -67,6 +123,10 @@ class Message {
         });
       }
 
+      // 🔥 解析 read_by
+      final readByData = json['read_by'] as List<dynamic>?;
+      final readBy = readByData?.map((e) => e.toString()).toList() ?? [];
+
       final rawContent = json['content']?.toString() ??
           (messageType == MessageType.voice ? '[語音消息]' : '');
       // Check for both Traditional and Simplified Chinese error messages
@@ -85,7 +145,8 @@ class Message {
         roomId: json['room']?.toString() ?? '',
         type: messageType,
         fileUrl: (messageType == MessageType.voice ||
-                messageType == MessageType.image)
+                messageType == MessageType.image ||
+                messageType == MessageType.video)
             ? json['file_url']?.toString()
             : null,
         duration: messageType == MessageType.voice
@@ -96,6 +157,7 @@ class Message {
             : null,
         reactions: reactions,
         isDecryptionError: isDecryptionError, // ✅ Set flag
+        readBy: readBy, // 🔥 Set readBy
       );
 
       // 🔥 嚴格驗證語音消息的完整性
@@ -178,6 +240,8 @@ class Message {
     switch (typeString) {
       case 'voice':
         return MessageType.voice;
+      case 'video':
+        return MessageType.video;
       case 'image':
         return MessageType.image;
       case 'file':
@@ -251,6 +315,8 @@ class Message {
     int? fileSize,
     Map<String, List<String>>? reactions,
     bool? isDecryptionError,
+    List<String>? readBy,
+    MessageStatus? status,
   }) {
     return Message(
       id: id ?? this.id,
@@ -265,6 +331,8 @@ class Message {
       fileSize: fileSize ?? this.fileSize,
       reactions: reactions ?? this.reactions,
       isDecryptionError: isDecryptionError ?? this.isDecryptionError,
+      readBy: readBy ?? this.readBy,
+      status: status ?? this.status,
     );
   }
 
@@ -280,4 +348,5 @@ enum MessageType {
   file,
   system,
   voice,
+  video,
 }

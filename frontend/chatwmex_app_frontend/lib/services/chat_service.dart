@@ -3,6 +3,7 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'package:uuid/uuid.dart'; // Added
 import '../config/api_config.dart';
 import '../models/message.dart' as chat_msg;
 import '../models/chat_room.dart';
@@ -13,6 +14,7 @@ import 'ios_network_monitor_service.dart';
 import 'message_cache_service.dart';
 import 'api_client_service.dart';
 import '../models/voice_message.dart' as voice_msg;
+import 'database_helper.dart'; // Added
 
 enum _SocketConnectionState {
   disconnected,
@@ -116,6 +118,7 @@ class SocketClient {
   int get reconnectAttempts => _reconnectAttempts;
   bool get hasHeartbeat => _heartbeatTimer != null;
   bool get allowReconnect => _allowReconnect;
+  IO.Socket? get socket => _socket;
 
   Future<void> connect({
     required String token,
@@ -436,6 +439,8 @@ class ChatService {
 
   final NotificationService _notificationService = NotificationService();
   final MessageCacheService _messageCache = MessageCacheService();
+  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final Uuid _uuid = const Uuid();
   final ConnectionManager _connectionManager = ConnectionManager();
   late final SocketClient _socketClient = SocketClient(
     connectionManager: _connectionManager,
@@ -446,14 +451,25 @@ class ChatService {
   // 使用 Map 來管理多個監聽器
   final Map<String, Function(chat_msg.Message)> _messageReceivedCallbacks = {};
   final Map<String, Function(ChatRoom)> _roomUpdatedCallbacks = {};
-  final Map<String, Function(String, bool)> _userStatusChangedCallbacks = {};
+  final Map<String, Function(String userId, bool isOnline)>
+      _userStatusChangedCallbacks = {};
   final Map<String, Function(bool)> _connectionChangedCallbacks = {};
 
-  // 🔥 新增：Reaction 更新回調
-  final Map<String, Function(String, Map<String, List<String>>)>
+  // 🔥 新增：Reaction 更新監聽器回調
+  final Map<String,
+          Function(String messageId, Map<String, List<String>> reactions)>
       _reactionUpdateCallbacks = {};
 
+  // 🔥 新增：消息已讀監聽器回調
+  final Map<String, Function(String roomId, String userId)>
+      _messageReadCallbacks = {};
+
+  // 🔥 新增：Typing 狀態監聽器回調
+  final Map<String, Function(String roomId, String username, bool isTyping)>
+      _typingCallbacks = {};
+
   final Map<String, String> _chatRoomNames = {};
+  String? _currentActiveChatRoomId;
 
   void updateChatRoomNames(List<ChatRoom> rooms) {
     for (var room in rooms) {
@@ -518,6 +534,28 @@ class ChatService {
         'ChatService: 移除 Reaction 監聽器 $id，當前總數: ${_reactionUpdateCallbacks.length}');
   }
 
+  // 🔥 新增：註冊消息已讀監聽器
+  void registerMessageReadListener(
+      String id, Function(String roomId, String userId) callback) {
+    _messageReadCallbacks[id] = callback;
+    print('ChatService: 註冊消息已讀監聽器 $id');
+  }
+
+  void unregisterMessageReadListener(String id) {
+    _messageReadCallbacks.remove(id);
+  }
+
+  // 🔥 新增：註冊 Typing 狀態監聽器
+  void registerTypingListener(String id,
+      Function(String roomId, String username, bool isTyping) callback) {
+    _typingCallbacks[id] = callback;
+    print('ChatService: 註冊 Typing 監聽器 $id');
+  }
+
+  void unregisterTypingListener(String id) {
+    _typingCallbacks.remove(id);
+  }
+
   // === 初始化方法 ===
 
   Future<void> initialize() async {
@@ -558,6 +596,28 @@ class ChatService {
     }
   }
 
+  // 🔥 新增：發送已讀標記
+  void markAsRead(String roomId) {
+    if (_socketClient.socket != null && _socketClient.isConnected) {
+      print('ChatService: 發送 mark_read 事件 (room: $roomId)');
+      _socketClient.socket!.emit('mark_read', {'room': roomId});
+    }
+  }
+
+  // 🔥 新增：發送開始輸入狀態
+  void sendTypingStart(String roomId) {
+    if (_socketClient.socket != null && _socketClient.isConnected) {
+      _socketClient.socket!.emit('typing_start', {'room': roomId});
+    }
+  }
+
+  // 🔥 新增：發送停止輸入狀態
+  void sendTypingEnd(String roomId) {
+    if (_socketClient.socket != null && _socketClient.isConnected) {
+      _socketClient.socket!.emit('typing_end', {'room': roomId});
+    }
+  }
+
   // === 🔥 修正：合併後的事件監聽器設置 ===
 
   void _setupMessageEventListeners(IO.Socket socket) {
@@ -588,6 +648,55 @@ class ChatService {
         _notifyMessageReceived(message);
       } catch (e) {
         print('Error parsing image message: $e');
+      }
+    });
+
+    // 🔥 消息已读监听
+    socket.on('message_read', (data) {
+      try {
+        print('Received message_read event: $data');
+        String? roomId;
+        String? userId;
+
+        if (data is Map) {
+          roomId = data['room']?.toString();
+          userId = data['user_id']?.toString();
+        }
+
+        if (roomId != null && userId != null) {
+          _notifyMessageRead(roomId, userId);
+        }
+      } catch (e) {
+        print('Error handling message_read: $e');
+      }
+    });
+
+    // 🔥 Typing 事件监听
+    socket.on('typing_start', (data) {
+      try {
+        if (data is Map) {
+          final roomId = data['room']?.toString();
+          final username = data['sender_name']?.toString();
+          if (roomId != null && username != null) {
+            _notifyTyping(roomId, username, true);
+          }
+        }
+      } catch (e) {
+        print('Error handling typing_start: $e');
+      }
+    });
+
+    socket.on('typing_end', (data) {
+      try {
+        if (data is Map) {
+          final roomId = data['room']?.toString();
+          final username = data['sender_name']?.toString();
+          if (roomId != null && username != null) {
+            _notifyTyping(roomId, username, false);
+          }
+        }
+      } catch (e) {
+        print('Error handling typing_end: $e');
       }
     });
 
@@ -720,6 +829,29 @@ class ChatService {
     });
 
     _handleNotificationForMessage(message);
+  }
+
+  // 🔥 新增：通知消息已读
+  void _notifyMessageRead(String roomId, String userId) {
+    print('ChatService: 通知 ${_messageReadCallbacks.length} 個消息已讀監聽器');
+    _messageReadCallbacks.forEach((id, callback) {
+      try {
+        callback(roomId, userId);
+      } catch (e) {
+        print('ChatService: 消息已讀監聽器 $id 調用失敗: $e');
+      }
+    });
+  }
+
+  // 🔥 新增：通知 Typing 狀態
+  void _notifyTyping(String roomId, String username, bool isTyping) {
+    _typingCallbacks.forEach((id, callback) {
+      try {
+        callback(roomId, username, isTyping);
+      } catch (e) {
+        print('ChatService: Typing 監聽器 $id 調用失敗: $e');
+      }
+    });
   }
 
   // 🔥 新增：通知 Reaction 更新
@@ -868,6 +1000,20 @@ class ChatService {
     };
 
     if (!_socketClient.emit('image_message', messageData)) {
+      throw Exception('Socket not connected');
+    }
+  }
+
+  void sendVideoMessage(String roomId, String videoUrl) {
+    final messageData = {
+      'room': roomId,
+      'content': '[视频]',
+      'file_url': videoUrl,
+      'type': 'video',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    if (!_socketClient.emit('video_message', messageData)) {
       throw Exception('Socket not connected');
     }
   }

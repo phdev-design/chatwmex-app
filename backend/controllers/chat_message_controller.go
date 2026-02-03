@@ -176,6 +176,7 @@ func GetMessagesByRoom(w http.ResponseWriter, r *http.Request) {
 			"room":        msg.Room,
 			"timestamp":   msg.Timestamp.Format(time.RFC3339),
 			"type":        msg.Type,
+			"read_by":     msg.ReadBy, // 🔥 新增：已读状态
 		}
 
 		if msg.Type == "voice" {
@@ -211,6 +212,26 @@ func GetMessagesByRoom(w http.ResponseWriter, r *http.Request) {
 					messageObj["duration"] = 0
 					messageObj["file_size"] = 0
 				}
+			}
+		} else if msg.Type == "image" {
+			// 图片消息
+			var imageInfo map[string]interface{}
+			if err := json.Unmarshal([]byte(decryptedContent), &imageInfo); err == nil {
+				messageObj["content"] = "[图片]"
+				messageObj["file_url"] = imageInfo["file_url"]
+			} else {
+				messageObj["content"] = "[图片解析失败]"
+			}
+		} else if msg.Type == "video" {
+			// 视频消息
+			var videoInfo map[string]interface{}
+			if err := json.Unmarshal([]byte(decryptedContent), &videoInfo); err == nil {
+				messageObj["content"] = "[视频]"
+				messageObj["file_url"] = videoInfo["file_url"]
+				messageObj["duration"] = videoInfo["duration"]
+				messageObj["file_size"] = videoInfo["file_size"]
+			} else {
+				messageObj["content"] = "[视频解析失败]"
 			}
 		} else {
 			// 普通文本消息
@@ -352,6 +373,27 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error": "图片消息加密失败"}`, http.StatusInternalServerError)
 			return
 		}
+	} else if req.Type == "video" {
+		// 视频消息：构建视频信息JSON并加密
+		videoInfo := map[string]interface{}{
+			"file_url":  req.FileURL,
+			"duration":  req.Duration,
+			"file_size": req.FileSize,
+			"type":      "video",
+		}
+
+		contentBytes, err := json.Marshal(videoInfo)
+		if err != nil {
+			http.Error(w, `{"error": "视频消息格式处理失败"}`, http.StatusInternalServerError)
+			return
+		}
+
+		encryptedContent, err = utils.Encrypt(string(contentBytes), encryptionKey)
+		if err != nil {
+			log.Printf("Error encrypting video message: %v", err)
+			http.Error(w, `{"error": "视频消息加密失败"}`, http.StatusInternalServerError)
+			return
+		}
 	} else {
 		// 普通文本消息：直接加密內容
 		encryptedContent, err = utils.Encrypt(req.Content, encryptionKey)
@@ -400,9 +442,11 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	// 更新聊天室的最後消息
 	lastMessageContent := req.Content
 	if req.Type == "voice" {
-		lastMessageContent = "[語音消息]" // 為語音消息顯示特殊文本
+		lastMessageContent = "[语音消息]" // 為語音消息顯示特殊文本
 	} else if req.Type == "image" {
 		lastMessageContent = "[图片]" // 为图片消息显示特殊文本
+	} else if req.Type == "video" {
+		lastMessageContent = "[视频]" // 为视频消息显示特殊文本
 	}
 
 	roomUpdate := bson.M{
@@ -430,6 +474,7 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 		"content":     req.Content, // 返回原始內容/顯示文本
 		"timestamp":   newMessage.Timestamp.Format(time.RFC3339),
 		"type":        req.Type,
+		"read_by":     []string{}, // 🔥 新增：初始已读列表为空
 	}
 
 	// 如果是語音消息，添加語音相關字段
@@ -441,6 +486,11 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	} else if req.Type == "image" {
 		responseMessage["file_url"] = req.FileURL
 		responseMessage["content"] = "[图片]" // 显示文本
+	} else if req.Type == "video" {
+		responseMessage["file_url"] = req.FileURL
+		responseMessage["duration"] = req.Duration
+		responseMessage["file_size"] = req.FileSize
+		responseMessage["content"] = "[视频]" // 显示文本
 	}
 
 	response := map[string]interface{}{
@@ -490,6 +540,65 @@ func UploadImage(w http.ResponseWriter, r *http.Request) {
 
 	// 生成唯一文件名
 	filename := fmt.Sprintf("img_%d%s", time.Now().UnixNano(), ext)
+	fullPath := filepath.Join(uploadPath, filename)
+
+	dst, err := os.Create(fullPath)
+	if err != nil {
+		log.Printf("Failed to create file: %v", err)
+		http.Error(w, `{"error": "保存文件失败"}`, http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		log.Printf("Failed to copy file content: %v", err)
+		http.Error(w, `{"error": "保存文件失败"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// 返回文件的相对 URL (前端需要加上 API 基础 URL)
+	fileURL := fmt.Sprintf("/uploads/%s", filename)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"url": fileURL,
+	})
+}
+
+// UploadVideo 处理视频上传
+func UploadVideo(w http.ResponseWriter, r *http.Request) {
+	// 限制文件大小 (例如 100MB)
+	r.ParseMultipartForm(100 << 20)
+
+	file, handler, err := r.FormFile("video")
+	if err != nil {
+		http.Error(w, `{"error": "无法获取文件"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	uploadPath := os.Getenv("UPLOAD_PATH")
+	if uploadPath == "" {
+		uploadPath = "./uploads"
+	}
+
+	// 确保上传目录存在
+	if err := os.MkdirAll(uploadPath, 0755); err != nil {
+		log.Printf("Failed to create upload directory: %v", err)
+		http.Error(w, `{"error": "服务器存储错误"}`, http.StatusInternalServerError)
+		return
+	}
+
+	ext := filepath.Ext(handler.Filename)
+	// 验证文件扩展名
+	validExts := map[string]bool{".mp4": true, ".mov": true, ".avi": true, ".mkv": true, ".webm": true}
+	if !validExts[strings.ToLower(ext)] {
+		http.Error(w, `{"error": "不支持的文件类型"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 生成唯一文件名
+	filename := fmt.Sprintf("vid_%d%s", time.Now().UnixNano(), ext)
 	fullPath := filepath.Join(uploadPath, filename)
 
 	dst, err := os.Create(fullPath)

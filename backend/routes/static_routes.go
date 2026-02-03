@@ -43,6 +43,12 @@ func SetupStaticRoutes(router *mux.Router) {
 				w.Header().Set("Content-Type", "audio/mp4")
 			} else if filepath.Ext(r.URL.Path) == ".mp3" {
 				w.Header().Set("Content-Type", "audio/mpeg")
+			} else if filepath.Ext(r.URL.Path) == ".mp4" {
+				w.Header().Set("Content-Type", "video/mp4")
+			} else if filepath.Ext(r.URL.Path) == ".mov" {
+				w.Header().Set("Content-Type", "video/quicktime")
+			} else if filepath.Ext(r.URL.Path) == ".webm" {
+				w.Header().Set("Content-Type", "video/webm")
 			}
 			
 			// 允许跨域访问

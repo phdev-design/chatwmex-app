@@ -8,6 +8,7 @@ import '../utils/message_formatter.dart';
 import 'message_reactions_widget.dart';
 import 'full_emoji_picker_dialog.dart';
 import 'telegram_style_context_menu.dart';
+import 'video_message_bubble.dart'; // 🔥 新增：視頻消息氣泡
 import 'package:flutter/services.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -260,6 +261,14 @@ class _MessageBubbleState extends State<MessageBubble> {
           ),
         ),
       );
+    } else if (widget.message.type == chat_msg.MessageType.video &&
+        widget.message.fileUrl != null) {
+      // 🔥 新增：視頻消息渲染
+      final videoUrl = ApiConfig.getAudioFileUrl(widget.message.fileUrl!);
+      contentWidget = VideoMessageBubble(
+        videoUrl: videoUrl,
+        isMe: widget.isMe,
+      );
     } else {
       contentWidget = Text(
         widget.message.content,
@@ -308,14 +317,30 @@ class _MessageBubbleState extends State<MessageBubble> {
           // 使用动态内容
           contentWidget,
           const SizedBox(height: 4),
-          Text(
-            formatMessageTime(widget.message.timestamp),
-            style: TextStyle(
-              fontSize: 12,
-              color: widget.isMe
-                  ? Colors.white.withOpacity(0.7)
-                  : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                formatMessageTime(widget.message.timestamp),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: widget.isMe
+                      ? Colors.white.withOpacity(0.7)
+                      : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+              if (widget.isMe) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  widget.message.readBy.isNotEmpty ? Icons.done_all : Icons.check,
+                  size: 16,
+                  color: widget.message.readBy.isNotEmpty
+                      ? Colors.blue.shade100 // 在深色背景上蓝色可能看不清，调整一下
+                      : Colors.white.withOpacity(0.7),
+                ),
+              ],
+            ],
           ),
         ],
       ),

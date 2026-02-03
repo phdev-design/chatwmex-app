@@ -82,3 +82,24 @@ func (s *ChatService) IsUserInRoom(ctx context.Context, roomID primitive.ObjectI
 	}
 	return false, err
 }
+
+// MarkMessagesAsRead 标记房间内的消息为已读
+func (s *ChatService) MarkMessagesAsRead(ctx context.Context, roomID primitive.ObjectID, userID string) error {
+	collection := s.store.Collection("messages")
+
+	// 更新该房间内所有非自己发送且未读的消息
+	filter := bson.M{
+		"room":      roomID.Hex(),
+		"sender_id": bson.M{"$ne": userID},
+		"read_by":   bson.M{"$ne": userID},
+	}
+
+	update := bson.M{
+		"$addToSet": bson.M{
+			"read_by": userID,
+		},
+	}
+
+	_, err := collection.UpdateMany(ctx, filter, update)
+	return err
+}

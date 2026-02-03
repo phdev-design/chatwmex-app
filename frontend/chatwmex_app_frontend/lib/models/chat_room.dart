@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ChatRoom {
   final String id;
   final String name;
@@ -18,6 +20,32 @@ class ChatRoom {
     this.isGroup = false,
     this.participants = const [],
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'last_message': lastMessage,
+      'last_message_time': lastMessageTime.toIso8601String(),
+      'unread_count': unreadCount,
+      'avatar_url': avatarUrl,
+      'is_group': isGroup ? 1 : 0, // SQLite doesn't have boolean
+      'participants': jsonEncode(participants),
+    };
+  }
+
+  factory ChatRoom.fromMap(Map<String, dynamic> map) {
+    return ChatRoom(
+      id: map['id'],
+      name: map['name'],
+      lastMessage: map['last_message'],
+      lastMessageTime: DateTime.parse(map['last_message_time']),
+      unreadCount: map['unread_count'],
+      avatarUrl: map['avatar_url'],
+      isGroup: map['is_group'] == 1,
+      participants: List<String>.from(jsonDecode(map['participants'])),
+    );
+  }
 
   factory ChatRoom.fromJson(Map<String, dynamic> json) {
     return ChatRoom(

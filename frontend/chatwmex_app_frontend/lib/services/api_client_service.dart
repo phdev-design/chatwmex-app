@@ -69,6 +69,29 @@ class ApiClientService {
     }
   }
 
+  // 🔥 新增：上傳视频
+  Future<String?> uploadVideo(File video) async {
+    try {
+      String fileName = video.path.split('/').last;
+      FormData formData = FormData.fromMap({
+        "video": await MultipartFile.fromFile(video.path, filename: fileName),
+      });
+
+      Response response = await dio.post(
+        '/api/v1/rooms/upload/video',
+        data: formData,
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return response.data['url'];
+      }
+      return null;
+    } catch (e) {
+      print("Error uploading video: $e");
+      return null;
+    }
+  }
+
   // ==================== Initialization ====================
   static Future<void> initialize() async {
     try {

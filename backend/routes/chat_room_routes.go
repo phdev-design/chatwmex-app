@@ -30,4 +30,7 @@ func SetupChatRoomRoutes(router *mux.Router) {
 
 	// 图片消息路由
 	roomRouter.HandleFunc("/upload/image", controllers.UploadImage).Methods("POST") // 上传图片
+
+	// 视频消息路由
+	roomRouter.HandleFunc("/upload/video", controllers.UploadVideo).Methods("POST") // 上传视频
 }

@@ -99,6 +99,126 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		server.BroadcastToRoom("/", room, "image_message", imageMessageData)
 	})
 
+	// 🔥 新增：支持视频消息广播
+	server.OnEvent("/", "video_message", func(s socketio.Conn, payload map[string]interface{}) {
+		user, ok := s.Context().(*AuthenticatedUser)
+		if !ok || user == nil {
+			log.Printf("Error: Could not get user from context for socket %s", s.ID())
+			return
+		}
+
+		room, ok := payload["room"].(string)
+		if !ok {
+			log.Printf("Invalid room in video message from %s", user.Username)
+			return
+		}
+
+		// 广播视频消息给房间内所有用户
+		videoMessageData := map[string]interface{}{
+			"id":          payload["id"],
+			"sender_id":   user.ID,
+			"sender_name": user.Username,
+			"room":        room,
+			"file_url":    payload["file_url"],
+			"timestamp":   payload["timestamp"],
+			"type":        "video",
+		}
+
+		log.Printf("Broadcasting video message from %s in room %s", user.Username, room)
+		server.BroadcastToRoom("/", room, "video_message", videoMessageData)
+	})
+
+	// 🔥 新增：处理 "mark_read" 事件
+	server.OnEvent("/", "mark_read", func(s socketio.Conn, payload map[string]interface{}) {
+		user, ok := s.Context().(*AuthenticatedUser)
+		if !ok || user == nil {
+			log.Printf("Error: Could not get user from context for socket %s", s.ID())
+			return
+		}
+
+		room, ok := payload["room"].(string)
+		if !ok {
+			log.Printf("Invalid room in mark_read from %s", user.Username)
+			return
+		}
+
+		// 更新数据库中的消息状态
+		// 注意：这里需要访问数据库，我们假设 chatService 有相应的方法，或者直接在這裡操作
+		// 为了简单起见，我们直接在这里调用 chatService 的方法 (需要新增)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		roomObjectID, err := primitive.ObjectIDFromHex(room)
+		if err != nil {
+			log.Printf("Invalid room ID: %s", room)
+			return
+		}
+
+		if err := chatService.MarkMessagesAsRead(ctx, roomObjectID, user.ID); err != nil {
+			log.Printf("Failed to mark messages as read: %v", err)
+			return
+		}
+
+		// 广播 "message_read" 事件给房间内所有用户
+		readData := map[string]interface{}{
+			"room":      room,
+			"user_id":   user.ID,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+
+		log.Printf("User %s marked messages as read in room %s", user.Username, room)
+		server.BroadcastToRoom("/", room, "message_read", readData)
+	})
+
+	// 🔥 新增：处理 "typing_start" 事件
+	server.OnEvent("/", "typing_start", func(s socketio.Conn, payload map[string]interface{}) {
+		user, ok := s.Context().(*AuthenticatedUser)
+		if !ok || user == nil {
+			return
+		}
+
+		room, ok := payload["room"].(string)
+		if !ok {
+			return
+		}
+
+		typingData := map[string]interface{}{
+			"room":        room,
+			"sender_id":   user.ID,
+			"sender_name": user.Username,
+			"is_typing":   true,
+		}
+
+		// 广播给房间内的其他人（除了自己）
+		// socket.io-go 的 BroadcastToRoom 默认会发给所有人包括自己吗？通常是的。
+		// 但在这里我们希望接收端过滤掉自己。或者我们可以尝试用 s.BroadcastTo 排除自己。
+		// server.BroadcastToRoom 确实是广播给房间里的所有 socket。
+		// 客户端需要自己过滤 sender_id == current_user_id。
+		server.BroadcastToRoom("/", room, "typing_start", typingData)
+	})
+
+	// 🔥 新增：处理 "typing_end" 事件
+	server.OnEvent("/", "typing_end", func(s socketio.Conn, payload map[string]interface{}) {
+		user, ok := s.Context().(*AuthenticatedUser)
+		if !ok || user == nil {
+			return
+		}
+
+		room, ok := payload["room"].(string)
+		if !ok {
+			return
+		}
+
+		typingData := map[string]interface{}{
+			"room":        room,
+			"sender_id":   user.ID,
+			"sender_name": user.Username,
+			"is_typing":   false,
+		}
+
+		server.BroadcastToRoom("/", room, "typing_end", typingData)
+	})
+
 	// 当有新的客户端连线时触发 - 进行 Token 验证
 	server.OnConnect("/", func(s socketio.Conn) error {
 		queryValues, err := url.ParseQuery(s.URL().RawQuery)
@@ -243,6 +363,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			"content":     payload.Content, // 廣播原始内容
 			"timestamp":   messageToSave.Timestamp.Format(time.RFC3339),
 			"type":        messageType,
+			"read_by":     []string{}, // 🔥 新增：初始已读列表
 		}
 
 		// 4. [關鍵修正] 廣播給房間內所有用戶，包括發送者自己

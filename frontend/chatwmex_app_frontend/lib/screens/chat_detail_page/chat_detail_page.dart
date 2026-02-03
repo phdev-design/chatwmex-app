@@ -59,6 +59,9 @@ class _ChatDetailPageState extends State<ChatDetailPage>
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
 
+  // 🔥 Typing 狀態
+  final Set<String> _typingUsers = {};
+
   bool _isLoading = true;
   bool _isTyping = false;
   bool _isRecordingVoice = false;
@@ -160,6 +163,11 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     disposeLifecycleHandler();
     cleanupMessageState();
 
+    chatService.unregisterMessageReadListener('chat_detail_page');
+    chatService.unregisterMessageListener('chat_detail_page');
+    chatService.unregisterConnectionListener('chat_detail_page');
+    chatService.unregisterTypingListener(widget.chatRoom.id); // 🔥 新增：取消註冊
+
     super.dispose();
   }
 
@@ -181,33 +189,57 @@ class _ChatDetailPageState extends State<ChatDetailPage>
 
   Future<void> _initializeChat() async {
     try {
-      final userInfo = await TokenStorage.getUser();
-      if (mounted) {
-        setState(() {
-          _currentUserId = userInfo?['id']?.toString();
-          _currentUserName = userInfo?['username']?.toString() ?? '我';
-        });
+      if (mounted) setState(() => _isLoading = true);
+
+      // 1. 获取当前用户ID (如果还没获取)
+      if (_currentUserId == null) {
+        final userId = await TokenStorage.getUserId();
+        final userName = await TokenStorage.getUsername();
+        if (mounted) {
+          setState(() {
+            _currentUserId = userId;
+            _currentUserName = userName;
+          });
+        }
       }
 
+      // 2. 初始化Socket服务
+      await chatService.initialize();
+
+      // 3. 注册消息监听
       chatService.registerMessageListener(
-          'chat_detail_page', _onMessageReceived);
+          widget.chatRoom.id, _onMessageReceived);
+
+      // 注册连接状态监听
       chatService.registerConnectionListener(
           'chat_detail_page', _onConnectionChanged);
 
-      if (!chatService.isConnected) {
-        await chatService.initialize();
-      } else {
-        _onConnectionChanged(true);
-      }
+      // 註冊 Reaction 更新監聽
+      chatService.registerReactionUpdateListener(
+          widget.chatRoom.id, _onReactionUpdate);
 
+      // 註冊已讀監聽
+      chatService.registerMessageReadListener(
+          widget.chatRoom.id, _onMessageRead);
+
+      // 🔥 新增：註冊 Typing 監聽
+      chatService.registerTypingListener(
+          widget.chatRoom.id, _onTypingStatusChanged);
+
+      // 4. 加入房间
       chatService.joinRoom(widget.chatRoom.id);
-      await loadChatHistoryWithFallback();
+
+      // 5. 初始加载消息
+      await forceReloadMessages();
+
+      // 6. 發送已讀標記
       api_service.ChatApiService.markAsRead(widget.chatRoom.id);
+      chatService.markAsRead(widget.chatRoom.id);
     } catch (e) {
-      debugPrint('初始化聊天時出錯: $e');
+      debugPrint('Chat initialization error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('聊天初始化失敗: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('聊天初始化失敗: $e')),
         );
       }
     } finally {
@@ -224,6 +256,52 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     }
   }
 
+  void _onMessageRead(String roomId, String userId) {
+    if (!mounted || roomId != widget.chatRoom.id) return;
+
+    // Update local messages state
+    final currentMessages =
+        List<chat_msg.Message>.from(_messagesNotifier.value);
+    bool changed = false;
+
+    for (int i = 0; i < currentMessages.length; i++) {
+      final msg = currentMessages[i];
+      if (msg.senderId == _currentUserId) {
+        // My message, check if I need to add userId to readBy
+        if (!msg.readBy.contains(userId)) {
+          final updatedReadBy = List<String>.from(msg.readBy)..add(userId);
+          currentMessages[i] = msg.copyWith(readBy: updatedReadBy);
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      _messagesNotifier.value = currentMessages;
+    }
+  }
+
+  // 🔥 新增：Reaction 更新回調 (空實現，避免報錯)
+  void _onReactionUpdate(
+      String messageId, Map<String, List<String>> reactions) {
+    // TODO: 實現 Reaction 更新邏輯
+  }
+
+  // 🔥 新增：Typing 狀態更新回調
+  void _onTypingStatusChanged(String roomId, String username, bool isTyping) {
+    if (!mounted || roomId != widget.chatRoom.id) return;
+    // 不顯示自己的輸入狀態
+    if (username == _currentUserName) return;
+
+    setState(() {
+      if (isTyping) {
+        _typingUsers.add(username);
+      } else {
+        _typingUsers.remove(username);
+      }
+    });
+  }
+
   void _onConnectionChanged(bool conn) {
     if (mounted) setState(() => _isConnected = conn);
   }
@@ -236,6 +314,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     debugPrint("App Resumed");
     if (!_isConnected) chatService.initialize();
     api_service.ChatApiService.markAsRead(widget.chatRoom.id);
+    chatService.markAsRead(widget.chatRoom.id);
   }
 
   void _handleAppPause() {
@@ -357,32 +436,42 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     );
   }
 
-  // 🔥 新增：处理图片选择和发送
-  Future<void> _handleImageSelected(File image) async {
+  // 🔥 新增：处理媒体选择和发送 (图片/视频)
+  Future<void> _handleMediaSelected(File file, String type) async {
     if (!_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('网络未连接，无法发送图片')),
+        const SnackBar(content: Text('網絡未連接，無法發送媒體文件')),
       );
       return;
     }
 
     try {
-      // 1. 上传图片
-      final imageUrl = await ApiClientService().uploadImage(image);
-      if (imageUrl == null) {
-        throw Exception('图片上传失败');
+      String? mediaUrl;
+      if (type == 'image') {
+        mediaUrl = await api_service.ChatApiService.uploadImage(file);
+      } else if (type == 'video') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('正在上傳視頻...')),
+        );
+        mediaUrl = await api_service.ChatApiService.uploadVideo(file);
       }
 
-      // 2. 发送图片消息
-      chatService.sendImageMessage(currentRoomId, imageUrl);
+      if (mediaUrl == null) {
+        throw Exception('文件上傳失敗');
+      }
 
-      // 3. 乐观更新 UI (可选，这里我们等待服务器回传或 Socket 广播)
-      // 如果需要立即显示，可以在这里手动添加到 _messagesNotifier
+      if (type == 'image') {
+        chatService.sendImageMessage(currentRoomId, mediaUrl);
+      } else if (type == 'video') {
+        chatService.sendVideoMessage(currentRoomId, mediaUrl);
+      }
     } catch (e) {
-      debugPrint('发送图片失败: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('发送图片失败: $e')),
-      );
+      debugPrint('發送媒體失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('發送失敗: $e')),
+        );
+      }
     }
   }
 
@@ -402,6 +491,9 @@ class _ChatDetailPageState extends State<ChatDetailPage>
               isConnected: _isConnected,
               chatRoom: widget.chatRoom,
               currentUserId: _currentUserId,
+              typingStatus: _typingUsers.isNotEmpty
+                  ? '${_typingUsers.join(", ")} 正在輸入...'
+                  : null,
               onShowDebugInfo: () => showDebugInfoDialog(
                 context: context,
                 isConnected: _isConnected,
@@ -479,7 +571,10 @@ class _ChatDetailPageState extends State<ChatDetailPage>
               onVoiceRecordingStateChanged: (isRecording) {
                 if (mounted) setState(() => _isRecordingVoice = isRecording);
               },
-              onImageSelected: _handleImageSelected, // 🔥 连接回调
+              onMediaSelected: _handleMediaSelected, // 🔥 连接回调
+              onTypingStart: () =>
+                  chatService.sendTypingStart(widget.chatRoom.id),
+              onTypingEnd: () => chatService.sendTypingEnd(widget.chatRoom.id),
             ),
         ],
       ),

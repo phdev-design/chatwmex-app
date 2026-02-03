@@ -63,6 +63,10 @@ dependencies:
   background_fetch: ^1.5.0
   flutter_secure_storage: ^10.0.0
   flutter_dotenv: ^6.0.0
+  video_player: ^2.10.1
+  chewie: ^1.13.0
+  sqflite: ^2.4.2
+  uuid: ^4.3.3
 
 dev_dependencies:
   flutter_test:
