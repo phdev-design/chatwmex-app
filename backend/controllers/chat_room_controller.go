@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 
@@ -36,8 +34,12 @@ func GetChatRooms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	roomCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -108,8 +110,12 @@ func CreateChatRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	roomCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -188,8 +194,12 @@ func GetRoomDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	roomCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -256,8 +266,12 @@ func InviteToRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	roomCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -313,8 +327,12 @@ func LeaveRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	roomCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -363,8 +381,12 @@ func MarkAsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	roomCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

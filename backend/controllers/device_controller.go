@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 
@@ -29,8 +27,12 @@ func GetUserDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	deviceCollection := database.GetCollection("device_info", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	deviceCollection := store.Collection("device_info")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -82,8 +84,12 @@ func GetUserSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	sessionCollection := database.GetCollection("login_sessions", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	sessionCollection := store.Collection("login_sessions")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -142,8 +148,12 @@ func TerminateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	sessionCollection := database.GetCollection("login_sessions", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	sessionCollection := store.Collection("login_sessions")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -215,8 +225,12 @@ func GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 	// 提取 token
 	tokenString := authHeader[7:] // 跳過 "Bearer "
 
-	cfg := config.LoadConfig()
-	sessionCollection := database.GetCollection("login_sessions", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	sessionCollection := store.Collection("login_sessions")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

@@ -3,50 +3,56 @@ package database
 import (
 	"context"
 	"log"
-	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// MongoClient 是 MongoDB 的客戶端實例
-var MongoClient *mongo.Client
+type Store interface {
+	Collection(collectionName string) *mongo.Collection
+	Disconnect(ctx context.Context) error
+}
 
-// ConnectDB 連線到 MongoDB
-func ConnectDB(uri string) error {
-	var err error
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+type contextKey string
 
+const storeContextKey contextKey = "store"
+
+type MongoStore struct {
+	client *mongo.Client
+	dbName string
+}
+
+func NewMongoStore(ctx context.Context, uri string, dbName string) (*MongoStore, error) {
 	clientOptions := options.Client().ApplyURI(uri)
-	MongoClient, err = mongo.Connect(ctx, clientOptions)
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// 檢查連線
-	err = MongoClient.Ping(ctx, nil)
-	if err != nil {
-		return err
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, err
 	}
 
 	log.Println("Successfully connected to MongoDB!")
-	return nil
+	return &MongoStore{
+		client: client,
+		dbName: dbName,
+	}, nil
 }
 
-// GetCollection 返回一個集合的實例
-func GetCollection(collectionName string, dbName string) *mongo.Collection {
-	return MongoClient.Database(dbName).Collection(collectionName)
+func (s *MongoStore) Collection(collectionName string) *mongo.Collection {
+	return s.client.Database(s.dbName).Collection(collectionName)
 }
 
-// DisconnectDB 斷開與 MongoDB 的連線
-func DisconnectDB() {
-	if MongoClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := MongoClient.Disconnect(ctx); err != nil {
-			log.Fatalf("Error disconnecting from MongoDB: %v", err)
-		}
-		log.Println("Disconnected from MongoDB.")
-	}
+func (s *MongoStore) Disconnect(ctx context.Context) error {
+	return s.client.Disconnect(ctx)
+}
+
+func ContextWithStore(ctx context.Context, store Store) context.Context {
+	return context.WithValue(ctx, storeContextKey, store)
+}
+
+func StoreFromContext(ctx context.Context) (Store, bool) {
+	store, ok := ctx.Value(storeContextKey).(Store)
+	return store, ok
 }

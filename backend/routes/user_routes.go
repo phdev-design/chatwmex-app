@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
 	"chatwme/backend/controllers"
 	"chatwme/backend/database"
 	"chatwme/backend/middleware"
@@ -22,8 +21,12 @@ func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// 載入設定以取得資料庫名稱
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := database.StoreFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

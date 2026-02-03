@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 	"chatwme/backend/services"
@@ -49,6 +48,12 @@ func UploadVoiceMessage(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok {
 		http.Error(w, `{"error": "無法獲取用戶 ID"}`, http.StatusUnauthorized)
+		return
+	}
+
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -97,7 +102,7 @@ func UploadVoiceMessage(w http.ResponseWriter, r *http.Request) {
 	cfg := config.LoadConfig()
 
 	// 驗證用戶是否有權限訪問此聊天室
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	roomCollection := store.Collection("chat_rooms")
 	roomObjectID, err := primitive.ObjectIDFromHex(roomID)
 	if err != nil {
 		http.Error(w, `{"error": "無效的房間 ID"}`, http.StatusBadRequest)
@@ -147,7 +152,7 @@ func UploadVoiceMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 獲取用戶信息
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	userCollection := store.Collection("users")
 	userObjectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		http.Error(w, `{"error": "無效的用戶 ID"}`, http.StatusBadRequest)
@@ -198,7 +203,7 @@ func UploadVoiceMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 🔥 關鍵修正：保存到 messages 集合而不是獨立的 voice_messages 集合
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	messageCollection := store.Collection("messages")
 	result, err := messageCollection.InsertOne(ctx, voiceMessage)
 	if err != nil {
 		log.Printf("Failed to save voice message: %v", err)
@@ -276,7 +281,12 @@ func GetVoiceMessageURL(w http.ResponseWriter, r *http.Request) {
 
 	cfg := config.LoadConfig()
 	// 🔥 關鍵修正：從 messages 集合查找語音消息
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	messageCollection := store.Collection("messages")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -295,7 +305,7 @@ func GetVoiceMessageURL(w http.ResponseWriter, r *http.Request) {
 	log.Printf("✅ Found voice message: ID=%s, Room=%s, Type=%s", messageID, message.Room, message.Type)
 
 	// 驗證用戶是否有權限訪問此消息（通過聊天室權限）
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	roomCollection := store.Collection("chat_rooms")
 	roomObjectID, err := primitive.ObjectIDFromHex(message.Room)
 	if err != nil {
 		log.Printf("❌ Invalid room ID: %s, Error: %v", message.Room, err)
@@ -372,7 +382,12 @@ func DebugVoiceMessage(w http.ResponseWriter, r *http.Request) {
 	messageID := params["messageId"]
 
 	cfg := config.LoadConfig()
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	messageCollection := store.Collection("messages")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

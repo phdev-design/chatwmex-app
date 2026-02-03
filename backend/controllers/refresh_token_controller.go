@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/models"
 	"chatwme/backend/utils"
 
@@ -74,8 +72,12 @@ func RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -192,8 +194,12 @@ func ValidateRefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 檢查用戶狀態
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -221,9 +227,9 @@ func ValidateRefreshToken(w http.ResponseWriter, r *http.Request) {
 	// Token 有效
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"valid":    true,
-		"user_id":  claims.UserID,
-		"username": claims.Username,
+		"valid":      true,
+		"user_id":    claims.UserID,
+		"username":   claims.Username,
 		"expires_at": claims.ExpiresAt.Time.Format(time.RFC3339),
 	})
 }

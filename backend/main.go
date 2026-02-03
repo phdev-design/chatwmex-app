@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"chatwme/backend/routes"
 	"chatwme/backend/services"
 	"chatwme/backend/websockets"
+
+	socketio "github.com/googollee/go-socket.io"
 )
 
 func main() {
@@ -58,20 +61,36 @@ func main() {
 	log.Printf("================================")
 
 	// 2. 連線到資料庫
-	if err := database.ConnectDB(cfg.MongoURI); err != nil {
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer dbCancel()
+	store, err := database.NewMongoStore(dbCtx, cfg.MongoURI, cfg.MongoDbName)
+	if err != nil {
 		log.Fatalf("Could not connect to MongoDB: %v", err)
 	}
-	log.Println("✓ MongoDB connected successfully")
 
 	// 應用程式結束時斷開資料庫連線
-	defer database.DisconnectDB()
+	defer func() {
+		disconnectCtx, disconnectCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer disconnectCancel()
+		if err := store.Disconnect(disconnectCtx); err != nil {
+			log.Fatalf("Error disconnecting from MongoDB: %v", err)
+		}
+		log.Println("Disconnected from MongoDB.")
+	}()
 
 	// 3. 初始化 Socket.IO 伺服器
 	log.Println("Initializing Socket.IO server...")
 	keyHash := sha256.Sum256([]byte(cfg.EncryptionSecret))
 	encryptionKey := keyHash[:]
-	chatService := services.NewChatService(cfg, encryptionKey)
-	socketServer := websockets.NewSocketIOServer(chatService)
+	chatService := services.NewChatService(store, encryptionKey)
+	redisAddr := strings.TrimSpace(os.Getenv("REDIS_ADDR"))
+	var redisOptions *socketio.RedisAdapterOptions
+	if redisAddr != "" {
+		redisOptions = &socketio.RedisAdapterOptions{
+			Addr: redisAddr,
+		}
+	}
+	socketServer := websockets.NewSocketIOServer(chatService, redisOptions)
 
 	// 啟動 Socket.IO 伺服器
 	go func() {
@@ -85,7 +104,7 @@ func main() {
 
 	// 4. 初始化 HTTP API 路由
 	log.Println("Setting up HTTP routes...")
-	apiHandler := routes.SetupRoutes()
+	apiHandler := routes.SetupRoutes(store)
 	log.Println("✓ HTTP routes configured")
 
 	// 5. 設定 HTTP 伺服器

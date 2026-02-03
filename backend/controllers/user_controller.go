@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"chatwme/backend/config"
 	"chatwme/backend/database"
 	"chatwme/backend/middleware" // 如果還沒有的話
 	"chatwme/backend/models"
@@ -55,6 +54,10 @@ type UpdateProfileRequest struct {
 	NewPassword     *string `json:"new_password,omitempty"`
 }
 
+func getStore(r *http.Request) (database.Store, bool) {
+	return database.StoreFromContext(r.Context())
+}
+
 // GetProfile 獲取當前用戶的個人資料
 func GetProfile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -66,8 +69,12 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -129,8 +136,12 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到個人資料更新請求 - UserID: %s", userID)
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -328,8 +339,12 @@ func VerifyPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -368,8 +383,12 @@ func SearchUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -433,8 +452,12 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到登入請求 - Email: %s", creds.Email)
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -484,7 +507,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	loginSession := utils.CreateLoginSession(user.ID, deviceInfo, accessToken)
 
 	// 保存設備信息到數據庫
-	deviceCollection := database.GetCollection("device_info", cfg.MongoDbName)
+	deviceCollection := store.Collection("device_info")
 	_, err = deviceCollection.InsertOne(ctx, deviceInfoModel)
 	if err != nil {
 		log.Printf("保存設備信息失敗: %v", err)
@@ -492,7 +515,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 保存登入會話到數據庫
-	sessionCollection := database.GetCollection("login_sessions", cfg.MongoDbName)
+	sessionCollection := store.Collection("login_sessions")
 	_, err = sessionCollection.InsertOne(ctx, loginSession)
 	if err != nil {
 		log.Printf("保存登入會話失敗: %v", err)
@@ -576,8 +599,12 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

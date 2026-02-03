@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 	"chatwme/backend/services"
@@ -93,8 +91,12 @@ func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		userID, header.Filename, header.Size)
 
 	// 獲取數據庫連接
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -201,8 +203,12 @@ func DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 	log.Printf("收到刪除頭像請求 - UserID: %s", userID)
 
 	// 獲取數據庫連接
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

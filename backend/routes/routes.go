@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"chatwme/backend/config"
+	"chatwme/backend/database"
+	"chatwme/backend/middleware"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -23,8 +25,9 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetupRoutes 設定並返回一個新的 mux.Router
-func SetupRoutes() http.Handler {
+func SetupRoutes(store database.Store) http.Handler {
 	r := mux.NewRouter()
+	r.Use(middleware.WithStore(store))
 
 	// 為所有 API 加上 /api/v1 前綴
 	api := r.PathPrefix("/api/v1").Subrouter()

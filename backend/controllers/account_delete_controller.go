@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
 	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
@@ -69,8 +68,12 @@ func DeleteAccount(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到帳號刪除請求 - UserID: %s", userID)
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -137,14 +140,14 @@ func DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. 處理相關數據
-	err = handleRelatedDataDeletion(ctx, cfg, objectID, userID)
+	err = handleRelatedDataDeletion(ctx, store, objectID, userID)
 	if err != nil {
 		log.Printf("處理相關數據失敗: %v", err)
 		// 不返回錯誤，繼續刪除流程
 	}
 
 	// 3. 終止所有登入會話
-	err = terminateAllUserSessions(ctx, cfg, objectID)
+	err = terminateAllUserSessions(ctx, store, objectID)
 	if err != nil {
 		log.Printf("終止用戶會話失敗: %v", err)
 		// 不返回錯誤，繼續刪除流程
@@ -163,9 +166,9 @@ func DeleteAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRelatedDataDeletion 處理相關數據的刪除或匿名化
-func handleRelatedDataDeletion(ctx context.Context, cfg config.AppConfig, userObjectID primitive.ObjectID, userID string) error {
+func handleRelatedDataDeletion(ctx context.Context, store database.Store, userObjectID primitive.ObjectID, userID string) error {
 	// 1. 匿名化消息
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	messageCollection := store.Collection("messages")
 	_, err := messageCollection.UpdateMany(
 		ctx,
 		bson.M{"sender_id": userID},
@@ -183,21 +186,21 @@ func handleRelatedDataDeletion(ctx context.Context, cfg config.AppConfig, userOb
 	}
 
 	// 2. 刪除設備信息
-	deviceCollection := database.GetCollection("device_info", cfg.MongoDbName)
+	deviceCollection := store.Collection("device_info")
 	_, err = deviceCollection.DeleteMany(ctx, bson.M{"user_id": userObjectID})
 	if err != nil {
 		log.Printf("刪除設備信息失敗: %v", err)
 	}
 
 	// 3. 刪除登入會話
-	sessionCollection := database.GetCollection("login_sessions", cfg.MongoDbName)
+	sessionCollection := store.Collection("login_sessions")
 	_, err = sessionCollection.DeleteMany(ctx, bson.M{"user_id": userObjectID})
 	if err != nil {
 		log.Printf("刪除登入會話失敗: %v", err)
 	}
 
 	// 4. 處理聊天室相關數據
-	chatRoomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	chatRoomCollection := store.Collection("chat_rooms")
 
 	// 將用戶從所有聊天室中移除
 	_, err = chatRoomCollection.UpdateMany(
@@ -221,8 +224,8 @@ func handleRelatedDataDeletion(ctx context.Context, cfg config.AppConfig, userOb
 }
 
 // terminateAllUserSessions 終止用戶的所有登入會話
-func terminateAllUserSessions(ctx context.Context, cfg config.AppConfig, userObjectID primitive.ObjectID) error {
-	sessionCollection := database.GetCollection("login_sessions", cfg.MongoDbName)
+func terminateAllUserSessions(ctx context.Context, store database.Store, userObjectID primitive.ObjectID) error {
+	sessionCollection := store.Collection("login_sessions")
 
 	_, err := sessionCollection.UpdateMany(
 		ctx,
@@ -255,8 +258,12 @@ func GetAccountDeletionInfo(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到獲取帳號刪除信息請求 - UserID: %s", userID)
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -287,13 +294,13 @@ func GetAccountDeletionInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 統計相關數據
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	messageCollection := store.Collection("messages")
 	messageCount, _ := messageCollection.CountDocuments(ctx, bson.M{"sender_id": userID})
 
-	deviceCollection := database.GetCollection("device_info", cfg.MongoDbName)
+	deviceCollection := store.Collection("device_info")
 	deviceCount, _ := deviceCollection.CountDocuments(ctx, bson.M{"user_id": objectID})
 
-	sessionCollection := database.GetCollection("login_sessions", cfg.MongoDbName)
+	sessionCollection := store.Collection("login_sessions")
 	sessionCount, _ := sessionCollection.CountDocuments(ctx, bson.M{"user_id": objectID})
 
 	// 返回帳號信息
@@ -329,8 +336,12 @@ func CancelAccountDeletion(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到取消帳號刪除請求 - UserID: %s", userID)
 
-	cfg := config.LoadConfig()
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

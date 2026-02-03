@@ -25,6 +25,14 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
   set knownMessageIds(Set<String> value);
   set pendingTempMessages(Set<String> value);
 
+  List<chat_msg.Message> _copyMessages() {
+    return List<chat_msg.Message>.from(messages);
+  }
+
+  void _setMessages(List<chat_msg.Message> value) {
+    messages = value;
+  }
+
   /// 處理新消息接收
   void handleNewMessageReceived(chat_msg.Message message) {
     if (message.roomId != currentRoomId || !mounted) return;
@@ -38,24 +46,26 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     }
 
     // 檢查是否為臨時消息的真實版本
-    final tempMessageIndex = messages.indexWhere((m) =>
+    final updatedMessages = _copyMessages();
+    final tempMessageIndex = updatedMessages.indexWhere((m) =>
         m.id.startsWith('temp_') &&
         m.content == message.content &&
         m.senderId == message.senderId &&
         m.timestamp.difference(message.timestamp).abs().inSeconds < 5);
 
     if (tempMessageIndex != -1) {
-      final tempMessage = messages[tempMessageIndex];
+      final tempMessage = updatedMessages[tempMessageIndex];
       print('替換臨時消息 ${tempMessage.id} 為真實消息 ${message.id}');
 
-      messages[tempMessageIndex] = message;
+      updatedMessages[tempMessageIndex] = message;
+      _setMessages(updatedMessages);
       pendingTempMessages.remove(tempMessage.id);
       knownMessageIds.add(message.id);
       return;
     }
 
     // 檢查內容重複
-    final duplicateIndex = messages.indexWhere((m) =>
+    final duplicateIndex = updatedMessages.indexWhere((m) =>
         m.content == message.content &&
         m.senderId == message.senderId &&
         m.timestamp.difference(message.timestamp).abs().inSeconds < 3 &&
@@ -67,9 +77,10 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     }
 
     // 添加新消息
-    messages.insert(0, message);
+    updatedMessages.insert(0, message);
     knownMessageIds.add(message.id);
-    messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    updatedMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    _setMessages(updatedMessages);
 
     // 標記為已讀
     if (!isMyMessage(message)) {
@@ -95,7 +106,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     );
 
     if (isConnected) {
-      messages.insert(0, tempMessage);
+      final updatedMessages = _copyMessages()..insert(0, tempMessage);
+      _setMessages(updatedMessages);
       pendingTempMessages.add(tempId);
       knownMessageIds.add(tempId);
 
@@ -104,7 +116,9 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       // 設置臨時消息過期清理
       Future.delayed(const Duration(seconds: 10), () {
         if (pendingTempMessages.contains(tempId)) {
-          messages.removeWhere((m) => m.id == tempId);
+          final updatedMessages =
+              _copyMessages()..removeWhere((m) => m.id == tempId);
+          _setMessages(updatedMessages);
           pendingTempMessages.remove(tempId);
           knownMessageIds.remove(tempId);
         }
@@ -114,9 +128,10 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       api_service.ChatApiService.sendMessage(currentRoomId, content)
           .then((sentMessage) {
         if (mounted && !knownMessageIds.contains(sentMessage.id)) {
-          messages.insert(0, sentMessage);
+          final updatedMessages = _copyMessages()..insert(0, sentMessage);
           knownMessageIds.add(sentMessage.id);
-          messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          updatedMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          _setMessages(updatedMessages);
         }
       }).catchError((error) {
         if (mounted) {
@@ -131,7 +146,9 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
 
   /// 刪除消息
   void deleteMessage(chat_msg.Message message) {
-    messages.removeWhere((m) => m.id == message.id);
+    final updatedMessages =
+        _copyMessages()..removeWhere((m) => m.id == message.id);
+    _setMessages(updatedMessages);
     knownMessageIds.remove(message.id);
     // TODO: 調用後端 API 刪除消息
   }
@@ -152,7 +169,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
   void toggleReaction(chat_msg.Message message, String emoji) {
     if (!mounted) return;
 
-    final messageIndex = messages.indexWhere((m) => m.id == message.id);
+    final updatedMessages = _copyMessages();
+    final messageIndex = updatedMessages.indexWhere((m) => m.id == message.id);
     if (messageIndex == -1) return;
 
     final currentReactions = Map<String, List<String>>.from(message.reactions);
@@ -175,7 +193,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
 
       // 更新消息
       final updatedMessage = message.copyWith(reactions: currentReactions);
-      messages[messageIndex] = updatedMessage;
+      updatedMessages[messageIndex] = updatedMessage;
+      _setMessages(updatedMessages);
 
       // 發送到後端
       _sendReactionToServer(message.id, emoji);
@@ -208,7 +227,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     }
 
     // 2. 在消息列表中尋找目標消息
-    final messageIndex = messages.indexWhere((m) => m.id == messageId);
+    final updatedMessages = _copyMessages();
+    final messageIndex = updatedMessages.indexWhere((m) => m.id == messageId);
 
     // 3. 如果找不到消息，則記錄日誌並提前返回
     if (messageIndex == -1) {
@@ -221,14 +241,15 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     // 4. 創建一個更新後的消息對象
     // 我們使用 .copyWith() 來創建一個新的 Message 實例，
     // 這樣可以避免直接修改原始對象，符合不可變數據的實踐。
-    final originalMessage = messages[messageIndex];
+    final originalMessage = updatedMessages[messageIndex];
     final updatedMessage = originalMessage.copyWith(reactions: newReactions);
 
     // 5. 更新消息列表中的對象
     // 注意：這裡直接替換列表中的元素。UI 的刷新將由使用此 Mixin 的
     // State Widget 在適當的時機（例如，通過調用 setState）來觸發。
     // 這是此文件中保持一致的模式。
-    messages[messageIndex] = updatedMessage;
+    updatedMessages[messageIndex] = updatedMessage;
+    _setMessages(updatedMessages);
 
     debugPrint(
         '[ChatMessageHandler] handleReactionUpdate: Successfully updated reactions for message $messageId. New reactions: $newReactions');
@@ -259,7 +280,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       );
 
       // 添加到消息列表
-      messages.insert(0, tempMessage);
+      final updatedMessages = _copyMessages()..insert(0, tempMessage);
+      _setMessages(updatedMessages);
       pendingTempMessages.add(tempId);
       knownMessageIds.add(tempId);
 
@@ -291,9 +313,11 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       );
 
       if (mounted) {
-        final idx = messages.indexWhere((m) => m.id == tempId);
+        final updatedMessages = _copyMessages();
+        final idx = updatedMessages.indexWhere((m) => m.id == tempId);
         if (idx != -1) {
-          messages[idx] = uploadedMsg;
+          updatedMessages[idx] = uploadedMsg;
+          _setMessages(updatedMessages);
           pendingTempMessages.remove(tempId);
           knownMessageIds.remove(tempId);
           knownMessageIds.add(uploadedMsg.id);
@@ -322,7 +346,9 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
 
       // 移除臨時消息
       if (mounted) {
-        messages.removeWhere((m) => m.id.startsWith('temp_voice_'));
+        final updatedMessages = _copyMessages()
+          ..removeWhere((m) => m.id.startsWith('temp_voice_'));
+        _setMessages(updatedMessages);
       }
 
       // 顯示錯誤提示

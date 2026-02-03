@@ -48,7 +48,8 @@ class _ChatDetailPageState extends State<ChatDetailPage>
   final ChatService chatService = ChatService();
 
   // === 私有狀態變數 ===
-  final List<chat_msg.Message> _messages = [];
+  final ValueNotifier<List<chat_msg.Message>> _messagesNotifier =
+      ValueNotifier<List<chat_msg.Message>>([]);
   final Set<String> _knownMessageIds = {};
   final Set<String> _pendingTempMessages = {};
   
@@ -76,7 +77,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
 
   // === Mixin Getters ===
   @override
-  List<chat_msg.Message> get messages => _messages;
+  List<chat_msg.Message> get messages => _messagesNotifier.value;
   @override
   Set<String> get knownMessageIds => _knownMessageIds;
   @override
@@ -111,12 +112,8 @@ class _ChatDetailPageState extends State<ChatDetailPage>
   // === Mixin Setters ===
   @override
   set messages(List<chat_msg.Message> value) {
-    if (mounted) {
-      setState(() {
-        _messages.clear();
-        _messages.addAll(value);
-      });
-    }
+    if (!mounted) return;
+    _messagesNotifier.value = List<chat_msg.Message>.from(value);
   }
 
   @override
@@ -155,6 +152,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     _messageFocusNode.removeListener(_onFocusChanged);
     _messageFocusNode.dispose();
     _animationController.dispose();
+    _messagesNotifier.dispose();
 
     disposeAudioHandler();
     disposeLifecycleHandler();
@@ -217,11 +215,10 @@ class _ChatDetailPageState extends State<ChatDetailPage>
 
   void _onMessageReceived(chat_msg.Message message) {
     if (!mounted) return;
-    setState(() {
-      handleNewMessageReceived(message);
-    });
-    if (_messages.isNotEmpty) {
-      playNotificationSound(_messages.first);
+    handleNewMessageReceived(message);
+    final currentMessages = _messagesNotifier.value;
+    if (currentMessages.isNotEmpty) {
+      playNotificationSound(currentMessages.first);
     }
   }
 
@@ -247,9 +244,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
 
-    setState(() {
-      sendTextMessage(content);
-    });
+    sendTextMessage(content);
     _messageController.clear();
     _messageFocusNode.requestFocus();
   }
@@ -269,9 +264,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
       return;
     }
 
-    setState(() {
-      sendVoiceMessage(filePath, durationSeconds);
-    });
+    sendVoiceMessage(filePath, durationSeconds);
   }
 
   // 🔥 新增：進入/退出多選模式
@@ -303,7 +296,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
   void _selectAll() {
     setState(() {
       _selectedMessageIds.clear();
-      _selectedMessageIds.addAll(_messages.map((m) => m.id));
+      _selectedMessageIds.addAll(_messagesNotifier.value.map((m) => m.id));
     });
   }
 
@@ -322,7 +315,11 @@ class _ChatDetailPageState extends State<ChatDetailPage>
           TextButton(
             onPressed: () {
               setState(() {
-                _messages.removeWhere((m) => _selectedMessageIds.contains(m.id));
+                final updatedMessages =
+                    List<chat_msg.Message>.from(_messagesNotifier.value)
+                      ..removeWhere(
+                          (m) => _selectedMessageIds.contains(m.id));
+                _messagesNotifier.value = updatedMessages;
                 _selectedMessageIds.clear();
                 _isSelectionMode = false;
               });
@@ -378,7 +375,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
               onShowDebugInfo: () => showDebugInfoDialog(
                 context: context,
                 isConnected: _isConnected,
-                messageCount: _messages.length,
+                messageCount: _messagesNotifier.value.length,
                 currentUserId: _currentUserId,
                 currentRoomId: currentRoomId,
                 knownMessageIdsCount: _knownMessageIds.length,
@@ -390,42 +387,42 @@ class _ChatDetailPageState extends State<ChatDetailPage>
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : ChatMessageList(
-                    messages: _messages,
-                    currentUserId: _currentUserId ?? '',
-                    isGroup: widget.chatRoom.isGroup,
-                    currentUserName: _currentUserName,
-                    fadeAnimation: _fadeAnimation,
-                    onLoadMore: () {
-                      if (mounted) loadMoreMessages();
+                : ValueListenableBuilder<List<chat_msg.Message>>(
+                    valueListenable: _messagesNotifier,
+                    builder: (context, messageList, _) {
+                      return ChatMessageList(
+                        messages: messageList,
+                        currentUserId: _currentUserId ?? '',
+                        isGroup: widget.chatRoom.isGroup,
+                        currentUserName: _currentUserName,
+                        fadeAnimation: _fadeAnimation,
+                        onLoadMore: () {
+                          if (mounted) loadMoreMessages();
+                        },
+                        isLoadingMore: _isLoadingMoreMessages,
+                        hasMoreMessages: _hasMoreMessages,
+                        hasLoadingError: _hasLoadingError,
+                        onRetryLoad: () async {
+                          if (mounted) setState(() => _isLoading = true);
+                          await forceReloadMessages();
+                          if (mounted) setState(() => _isLoading = false);
+                        },
+                        onDeleteMessage: (message) {
+                          deleteMessage(message);
+                        },
+                        onReactionAdded: (message, emoji) {
+                          toggleReaction(message, emoji);
+                        },
+                        isSelectionMode: _isSelectionMode,
+                        selectedMessageIds: _selectedMessageIds,
+                        onMessageTap: (message) {
+                          if (_isSelectionMode) {
+                            _toggleMessageSelection(message.id);
+                          }
+                        },
+                        onEnterSelectionMode: _toggleSelectionMode,
+                      );
                     },
-                    isLoadingMore: _isLoadingMoreMessages,
-                    hasMoreMessages: _hasMoreMessages,
-                    hasLoadingError: _hasLoadingError,
-                    onRetryLoad: () async {
-                      if (mounted) setState(() => _isLoading = true);
-                      await forceReloadMessages();
-                      if (mounted) setState(() => _isLoading = false);
-                    },
-                    onDeleteMessage: (message) {
-                      setState(() {
-                        deleteMessage(message);
-                      });
-                    },
-                    onReactionAdded: (message, emoji) {
-                      setState(() {
-                        toggleReaction(message, emoji);
-                      });
-                    },
-                    // 🔥 新增：多選模式相關參數
-                    isSelectionMode: _isSelectionMode,
-                    selectedMessageIds: _selectedMessageIds,
-                    onMessageTap: (message) {
-                      if (_isSelectionMode) {
-                        _toggleMessageSelection(message.id);
-                      }
-                    },
-                    onEnterSelectionMode: _toggleSelectionMode,
                   ),
           ),
           // 🔥 多選模式時顯示底部操作欄，否則顯示輸入框

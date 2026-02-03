@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"chatwme/backend/config"
 	"chatwme/backend/database"
 	"chatwme/backend/models"
 	"chatwme/backend/utils"
@@ -15,13 +14,13 @@ import (
 )
 
 type ChatService struct {
-	mongoDbName   string
+	store         database.Store
 	encryptionKey []byte
 }
 
-func NewChatService(cfg config.AppConfig, encryptionKey []byte) *ChatService {
+func NewChatService(store database.Store, encryptionKey []byte) *ChatService {
 	return &ChatService{
-		mongoDbName:   cfg.MongoDbName,
+		store:         store,
 		encryptionKey: encryptionKey,
 	}
 }
@@ -42,7 +41,7 @@ func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roo
 		Type:       messageType,
 	}
 
-	collection := database.GetCollection("messages", s.mongoDbName)
+	collection := s.store.Collection("messages")
 	if _, err := collection.InsertOne(ctx, message); err != nil {
 		return models.Message{}, err
 	}
@@ -51,7 +50,7 @@ func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roo
 }
 
 func (s *ChatService) UpdateRoomLastMessage(ctx context.Context, roomID primitive.ObjectID, lastMessage string, lastMessageTime time.Time) error {
-	collection := database.GetCollection("chat_rooms", s.mongoDbName)
+	collection := s.store.Collection("chat_rooms")
 	update := bson.M{
 		"$set": bson.M{
 			"last_message":      lastMessage,
@@ -65,7 +64,7 @@ func (s *ChatService) UpdateRoomLastMessage(ctx context.Context, roomID primitiv
 }
 
 func (s *ChatService) IsUserInRoom(ctx context.Context, roomID primitive.ObjectID, userID string) (bool, error) {
-	collection := database.GetCollection("chat_rooms", s.mongoDbName)
+	collection := s.store.Collection("chat_rooms")
 	filter := bson.M{
 		"_id": roomID,
 		"$or": []bson.M{

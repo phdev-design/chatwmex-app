@@ -1,11 +1,6 @@
 package controllers
 
 import (
-	"chatwme/backend/config"
-	"chatwme/backend/database"
-	"chatwme/backend/middleware"
-	"chatwme/backend/models"
-	"chatwme/backend/utils"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +9,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"chatwme/backend/config"
+	"chatwme/backend/middleware"
+	"chatwme/backend/models"
+	"chatwme/backend/utils"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
@@ -71,9 +71,14 @@ func GetMessagesByRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := config.LoadConfig()
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
 
 	// 验证用户权限
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	roomCollection := store.Collection("chat_rooms")
 	roomObjectID, err := primitive.ObjectIDFromHex(roomID)
 	if err != nil {
 		http.Error(w, `{"error": "无效的房间 ID"}`, http.StatusBadRequest)
@@ -99,7 +104,7 @@ func GetMessagesByRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 获取消息
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	messageCollection := store.Collection("messages")
 	skip := (page - 1) * limit
 
 	filter := bson.M{
@@ -131,7 +136,7 @@ func GetMessagesByRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encryptionKey := []byte(cfg.EncryptionSecret)
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	userCollection := store.Collection("users")
 
 	// 🔥 关键修正：处理所有消息类型并正确解密
 	decryptedMessages := make([]map[string]interface{}, 0, len(messages))
@@ -268,9 +273,14 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := config.LoadConfig()
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
 
 	// 驗證用戶是否有權限訪問此聊天室
-	roomCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	roomCollection := store.Collection("chat_rooms")
 	roomObjectID, err := primitive.ObjectIDFromHex(roomID)
 	if err != nil {
 		http.Error(w, `{"error": "無效的房間 ID"}`, http.StatusBadRequest)
@@ -331,7 +341,7 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 獲取用戶信息以填充發送者名稱
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	userCollection := store.Collection("users")
 	userObjectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		http.Error(w, `{"error": "無效的用戶 ID"}`, http.StatusBadRequest)
@@ -357,7 +367,7 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 保存消息到資料庫
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	messageCollection := store.Collection("messages")
 	result, err := messageCollection.InsertOne(ctx, newMessage)
 	if err != nil {
 		log.Printf("Failed to save message: %v", err)

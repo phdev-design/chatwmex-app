@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 
@@ -43,10 +41,14 @@ func InviteToGroup(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到邀請請求 - UserID: %s, GroupID: %s, InviteeEmail: %s", userID, req.GroupID, req.InviteeEmail)
 
-	cfg := config.LoadConfig()
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
-	invitationCollection := database.GetCollection("group_invitations", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	groupCollection := store.Collection("chat_rooms")
+	userCollection := store.Collection("users")
+	invitationCollection := store.Collection("group_invitations")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -168,10 +170,14 @@ func GetGroupInvitations(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到獲取群組邀請請求 - UserID: %s", userID)
 
-	cfg := config.LoadConfig()
-	invitationCollection := database.GetCollection("group_invitations", cfg.MongoDbName)
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	invitationCollection := store.Collection("group_invitations")
+	groupCollection := store.Collection("chat_rooms")
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -279,9 +285,13 @@ func RespondToInvitation(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到響應邀請請求 - UserID: %s, InvitationID: %s, Response: %s", userID, req.InvitationID, req.Response)
 
-	cfg := config.LoadConfig()
-	invitationCollection := database.GetCollection("group_invitations", cfg.MongoDbName)
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	invitationCollection := store.Collection("group_invitations")
+	groupCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

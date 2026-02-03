@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 
@@ -93,9 +91,13 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到創建群組請求 - UserID: %s, GroupName: %s", userID, req.Name)
 
-	cfg := config.LoadConfig()
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	groupCollection := store.Collection("chat_rooms")
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -175,8 +177,12 @@ func GetUserGroups(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到獲取用戶群組請求 - UserID: %s", userID)
 
-	cfg := config.LoadConfig()
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	groupCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -260,8 +266,12 @@ func JoinGroup(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到加入群組請求 - UserID: %s, GroupID: %s", userID, req.GroupID)
 
-	cfg := config.LoadConfig()
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	groupCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -360,8 +370,12 @@ func LeaveGroup(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到離開群組請求 - UserID: %s, GroupID: %s", userID, req.GroupID)
 
-	cfg := config.LoadConfig()
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	groupCollection := store.Collection("chat_rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -451,9 +465,13 @@ func GetGroupMembers(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到獲取群組成員請求 - UserID: %s, GroupID: %s", userID, groupID)
 
-	cfg := config.LoadConfig()
-	groupCollection := database.GetCollection("chat_rooms", cfg.MongoDbName)
-	userCollection := database.GetCollection("users", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	groupCollection := store.Collection("chat_rooms")
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

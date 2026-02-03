@@ -11,27 +11,437 @@ import 'notification_service.dart';
 import 'network_monitor_service.dart';
 import 'ios_network_monitor_service.dart';
 import 'message_cache_service.dart';
+import 'api_client_service.dart';
 import '../models/voice_message.dart' as voice_msg;
+
+enum _SocketConnectionState {
+  disconnected,
+  connecting,
+  connected,
+  reconnecting,
+}
+
+class ConnectionManager {
+  final NetworkMonitorService _networkMonitor = NetworkMonitorService();
+  final IOSNetworkMonitorService _iosNetworkMonitor =
+      IOSNetworkMonitorService();
+  Function(bool)? _statusListener;
+
+  Future<void> initialize({
+    required Function(bool) onStatusChanged,
+    required Function() onForceReconnect,
+  }) async {
+    if (_statusListener != null) {
+      _removeListener(_statusListener!);
+    }
+    _statusListener = onStatusChanged;
+
+    await _networkMonitor.initialize();
+
+    if (Platform.isIOS) {
+      await _iosNetworkMonitor.initialize();
+      _iosNetworkMonitor.addConnectionListener(onStatusChanged);
+      _iosNetworkMonitor.startAutoReconnect(onForceReconnect);
+    } else {
+      _networkMonitor.addConnectionListener(onStatusChanged);
+    }
+  }
+
+  bool get isOnline {
+    return Platform.isIOS
+        ? _iosNetworkMonitor.isOnline
+        : _networkMonitor.isOnline;
+  }
+
+  Future<bool> checkConnection() async {
+    try {
+      if (Platform.isIOS) {
+        return await _iosNetworkMonitor.checkConnection();
+      } else {
+        return await _networkMonitor.checkConnection();
+      }
+    } catch (e) {
+      return false;
+    }
+  }
+
+  void dispose() {
+    if (_statusListener != null) {
+      _removeListener(_statusListener!);
+    }
+    if (Platform.isIOS) {
+      _iosNetworkMonitor.stopAutoReconnect();
+    }
+    _statusListener = null;
+  }
+
+  void _removeListener(Function(bool) listener) {
+    if (Platform.isIOS) {
+      _iosNetworkMonitor.removeConnectionListener(listener);
+    } else {
+      _networkMonitor.removeConnectionListener(listener);
+    }
+  }
+}
+
+class SocketClient {
+  SocketClient({
+    required ConnectionManager connectionManager,
+    required void Function(bool) onConnectionChanged,
+    required void Function(dynamic) onAuthError,
+  })  : _connectionManager = connectionManager,
+        _onConnectionChanged = onConnectionChanged,
+        _onAuthError = onAuthError;
+
+  static const int maxReconnectAttempts = 10;
+
+  final ConnectionManager _connectionManager;
+  final void Function(bool) _onConnectionChanged;
+  final void Function(dynamic) _onAuthError;
+
+  IO.Socket? _socket;
+  _SocketConnectionState _state = _SocketConnectionState.disconnected;
+  Timer? _heartbeatTimer;
+  Timer? _reconnectTimer;
+  Timer? _connectTimeoutTimer;
+  int _reconnectAttempts = 0;
+  bool _allowReconnect = true;
+  String? _token;
+  void Function(IO.Socket)? _registerHandlers;
+
+  bool get isConnected => _state == _SocketConnectionState.connected;
+  bool get isConnecting =>
+      _state == _SocketConnectionState.connecting ||
+      _state == _SocketConnectionState.reconnecting;
+  int get reconnectAttempts => _reconnectAttempts;
+  bool get hasHeartbeat => _heartbeatTimer != null;
+  bool get allowReconnect => _allowReconnect;
+
+  Future<void> connect({
+    required String token,
+    required void Function(IO.Socket) registerHandlers,
+  }) async {
+    if (isConnecting || isConnected) return;
+    await _connectInternal(
+      token: token,
+      registerHandlers: registerHandlers,
+      isReconnect: false,
+    );
+  }
+
+  Future<void> _connectInternal({
+    required String token,
+    required void Function(IO.Socket) registerHandlers,
+    required bool isReconnect,
+  }) async {
+    if (!_allowReconnect) {
+      print('SocketClient: initialize() skipped because reconnect is disabled');
+      return;
+    }
+
+    try {
+      _setState(isReconnect
+          ? _SocketConnectionState.reconnecting
+          : _SocketConnectionState.connecting);
+      _token = token;
+      _registerHandlers = registerHandlers;
+
+      if (_socket != null) {
+        _socket!.disconnect();
+        _socket = null;
+      }
+
+      print('Initializing socket connection to: ${ApiConfig.baseUrl}');
+
+      _socket = IO.io(
+        ApiConfig.baseUrl,
+        IO.OptionBuilder()
+            .setTransports(['websocket', 'polling'])
+            .setQuery({'token': token})
+            .setExtraHeaders({'authorization': 'Bearer $token'})
+            .setTimeout(15000)
+            .setReconnectionDelay(1000)
+            .setReconnectionDelayMax(5000)
+            .setReconnectionAttempts(maxReconnectAttempts)
+            .enableReconnection()
+            .enableAutoConnect()
+            .enableForceNew()
+            .build(),
+      );
+
+      _setupLifecycleListeners();
+      registerHandlers(_socket!);
+
+      _startConnectTimeout();
+
+      _socket!.connect();
+    } catch (e) {
+      print('Socket initialization error: $e');
+      _setState(_SocketConnectionState.disconnected);
+      _onAuthError(e);
+
+      if (_allowReconnect &&
+          !e.toString().contains('expired') &&
+          !e.toString().contains('invalid')) {
+        _scheduleReconnect();
+      }
+      rethrow;
+    }
+  }
+
+  bool emit(String event, dynamic data) {
+    if (_socket == null || !isConnected) {
+      return false;
+    }
+    _socket!.emit(event, data);
+    return true;
+  }
+
+  void disconnect() {
+    _allowReconnect = false;
+    _stopHeartbeat();
+    _cancelReconnectTimer();
+    _cancelConnectTimeout();
+    _disposeSocket();
+    _setState(_SocketConnectionState.disconnected);
+    _reconnectAttempts = 0;
+    _onConnectionChanged(false);
+  }
+
+  void disableReconnect() {
+    _allowReconnect = false;
+    _cancelReconnectTimer();
+  }
+
+  void enableReconnect() {
+    _allowReconnect = true;
+  }
+
+  void resetReconnectAttempts() {
+    _reconnectAttempts = 0;
+  }
+
+  void scheduleReconnect() {
+    _scheduleReconnect();
+  }
+
+  void handleNetworkStatusChanged(bool isOnline) {
+    if (isOnline) {
+      if (!isConnected && !isConnecting && _allowReconnect) {
+        _scheduleReconnect();
+      }
+    } else {
+      _cancelReconnectTimer();
+      _cancelConnectTimeout();
+      _stopHeartbeat();
+      _setState(_SocketConnectionState.disconnected);
+      _onConnectionChanged(false);
+    }
+  }
+
+  void forceReconnectFromNetwork() {
+    if (!_allowReconnect) return;
+    if (isConnected || isConnecting) return;
+    _retryConnection();
+  }
+
+  void _setupLifecycleListeners() {
+    if (_socket == null) return;
+
+    _socket!.onConnect((_) {
+      print('Socket connected successfully');
+      _cancelReconnectTimer();
+      _cancelConnectTimeout();
+      _setState(_SocketConnectionState.connected);
+      _reconnectAttempts = 0;
+      _startHeartbeat();
+      _onConnectionChanged(true);
+    });
+
+    _socket!.onDisconnect((reason) {
+      print('Socket disconnected: $reason');
+      _cancelConnectTimeout();
+      _setState(_SocketConnectionState.disconnected);
+      _stopHeartbeat();
+      _onConnectionChanged(false);
+
+      if (_allowReconnect && reason != 'client namespace disconnect') {
+        _scheduleReconnect();
+      }
+    });
+
+    _socket!.onConnectError((error) {
+      print('Socket connection error: $error');
+      _cancelConnectTimeout();
+      _setState(_SocketConnectionState.disconnected);
+      _onConnectionChanged(false);
+      _onAuthError(error);
+
+      if (_allowReconnect && !error.toString().contains('authentication')) {
+        _scheduleReconnect();
+      }
+    });
+
+    _socket!.on('auth_error', (data) {
+      print('Socket auth error: $data');
+      _onAuthError(data);
+    });
+
+    _socket!.onReconnectAttempt((attemptCount) {
+      print('Attempting to reconnect... Attempt: $attemptCount');
+      _setState(_SocketConnectionState.reconnecting);
+      _onConnectionChanged(false);
+    });
+
+    _socket!.onReconnect((attemptCount) {
+      print('Reconnected successfully after $attemptCount attempts');
+      _cancelReconnectTimer();
+      _cancelConnectTimeout();
+      _setState(_SocketConnectionState.connected);
+      _reconnectAttempts = 0;
+      _startHeartbeat();
+      _onConnectionChanged(true);
+    });
+
+    _socket!.onReconnectError((error) {
+      print('Reconnection error: $error');
+      _cancelConnectTimeout();
+      _setState(_SocketConnectionState.disconnected);
+      _onConnectionChanged(false);
+      _onAuthError(error);
+
+      if (_allowReconnect && !error.toString().contains('authentication')) {
+        _scheduleReconnect();
+      }
+    });
+
+    _socket!.onReconnectFailed((_) {
+      print('All reconnection attempts failed');
+      _cancelConnectTimeout();
+      _setState(_SocketConnectionState.disconnected);
+      _onConnectionChanged(false);
+      _scheduleReconnect();
+    });
+
+    _socket!.on('pong', (_) {
+      print('Received pong from server');
+    });
+
+    _socket!.on('error', (error) {
+      print('Socket error: $error');
+    });
+
+    _socket!.on('connect_error', (error) {
+      print('Connection error: $error');
+      _cancelConnectTimeout();
+      _setState(_SocketConnectionState.disconnected);
+      _onConnectionChanged(false);
+      _scheduleReconnect();
+    });
+  }
+
+  void _startHeartbeat() {
+    _stopHeartbeat();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (_socket != null && isConnected) {
+        _socket!.emit('ping');
+      }
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  void _scheduleReconnect() {
+    if (!_allowReconnect) return;
+    if (_reconnectAttempts >= maxReconnectAttempts) return;
+    if (!_connectionManager.isOnline) return;
+    if (isConnected || isConnecting) return;
+
+    _setState(_SocketConnectionState.reconnecting);
+    _cancelReconnectTimer();
+    final delay = Duration(seconds: (2 << _reconnectAttempts).clamp(1, 30));
+
+    _reconnectTimer = Timer(delay, () {
+      if (!_allowReconnect) return;
+      if (_connectionManager.isOnline) {
+        _retryConnection();
+      }
+    });
+  }
+
+  void _retryConnection() {
+    if (!_allowReconnect) return;
+    if (isConnected || isConnecting) return;
+    if (!_connectionManager.isOnline) return;
+    if (_token == null || _registerHandlers == null) return;
+
+    _reconnectAttempts++;
+    _disposeSocket();
+    _cancelConnectTimeout();
+    _setState(_SocketConnectionState.reconnecting);
+    _onConnectionChanged(false);
+
+    _connectInternal(
+      token: _token!,
+      registerHandlers: _registerHandlers!,
+      isReconnect: true,
+    ).catchError((error) {
+      _setState(_SocketConnectionState.disconnected);
+      _scheduleReconnect();
+    });
+  }
+
+  void _disposeSocket() {
+    if (_socket != null) {
+      _socket!.disconnect();
+      _socket!.dispose();
+      _socket = null;
+    }
+  }
+
+  void _setState(_SocketConnectionState state) {
+    _state = state;
+  }
+
+  void _startConnectTimeout() {
+    _cancelConnectTimeout();
+    _connectTimeoutTimer = Timer(const Duration(seconds: 10), () {
+      if (!_allowReconnect) return;
+      if (isConnecting && !isConnected) {
+        _setState(_SocketConnectionState.disconnected);
+        _onConnectionChanged(false);
+        _scheduleReconnect();
+      }
+    });
+  }
+
+  void _cancelConnectTimeout() {
+    _connectTimeoutTimer?.cancel();
+    _connectTimeoutTimer = null;
+  }
+
+  void _cancelReconnectTimer() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+  }
+}
 
 class ChatService {
   static final ChatService _instance = ChatService._internal();
   factory ChatService() => _instance;
   ChatService._internal();
 
-  IO.Socket? _socket;
-  bool _isConnected = false;
-  bool _isConnecting = false;
-  Timer? _heartbeatTimer;
-  Timer? _reconnectTimer;
-  int _reconnectAttempts = 0;
-  static const int _maxReconnectAttempts = 10;
-  bool _allowReconnect = true;
-
   final NotificationService _notificationService = NotificationService();
-  final NetworkMonitorService _networkMonitor = NetworkMonitorService();
-  final IOSNetworkMonitorService _iosNetworkMonitor =
-      IOSNetworkMonitorService();
   final MessageCacheService _messageCache = MessageCacheService();
+  final ConnectionManager _connectionManager = ConnectionManager();
+  late final SocketClient _socketClient = SocketClient(
+    connectionManager: _connectionManager,
+    onConnectionChanged: _notifyConnectionChanged,
+    onAuthError: _handleAuthenticationError,
+  );
 
   // 使用 Map 來管理多個監聽器
   final Map<String, Function(chat_msg.Message)> _messageReceivedCallbacks = {};
@@ -111,32 +521,24 @@ class ChatService {
   // === 初始化方法 ===
 
   Future<void> initialize() async {
-    if (_isConnecting || _isConnected) return;
-    if (!_allowReconnect) {
+    if (_socketClient.isConnecting || _socketClient.isConnected) return;
+    if (!_socketClient.allowReconnect) {
       print('ChatService: initialize() skipped because reconnect is disabled');
       return;
     }
 
     try {
-      _isConnecting = true;
-
       await _notificationService.initialize();
-      await _networkMonitor.initialize();
-
-      if (Platform.isIOS) {
-        await _iosNetworkMonitor.initialize();
-        _iosNetworkMonitor.addConnectionListener(_onNetworkStatusChanged);
-        _iosNetworkMonitor.startAutoReconnect(_forceReconnect);
-      } else {
-        _networkMonitor.addConnectionListener(_onNetworkStatusChanged);
-      }
+      await _connectionManager.initialize(
+        onStatusChanged: _socketClient.handleNetworkStatusChanged,
+        onForceReconnect: _socketClient.forceReconnectFromNetwork,
+      );
 
       await _messageCache.initialize();
 
       final isValidToken = await TokenStorage.isTokenValid();
       if (!isValidToken) {
         print('ChatService: Token 無效或過期，停止初始化');
-        _isConnecting = false;
         throw Exception('Token expired or invalid');
       }
 
@@ -145,135 +547,21 @@ class ChatService {
         throw Exception('No authentication token found');
       }
 
-      if (_socket != null) {
-        _socket!.disconnect();
-        _socket = null;
-      }
-
-      print('Initializing socket connection to: ${ApiConfig.baseUrl}');
-
-      _socket = IO.io(
-        ApiConfig.baseUrl,
-        IO.OptionBuilder()
-            .setTransports(['websocket', 'polling'])
-            .setQuery({'token': token})
-            .setExtraHeaders({'authorization': 'Bearer $token'})
-            .setTimeout(15000)
-            .setReconnectionDelay(1000)
-            .setReconnectionDelayMax(5000)
-            .setReconnectionAttempts(_maxReconnectAttempts)
-            .enableReconnection()
-            .enableAutoConnect()
-            .enableForceNew()
-            .build(),
+      await _socketClient.connect(
+        token: token,
+        registerHandlers: _setupMessageEventListeners,
       );
-
-      _setupEventListeners();
-
-      Timer(const Duration(seconds: 10), () {
-        if (!_allowReconnect) return;
-        if (_isConnecting && !_isConnected) {
-          print('Connection timeout, retrying...');
-          _retryConnection();
-        }
-      });
-
-      _socket!.connect();
     } catch (e) {
       print('Socket initialization error: $e');
-      _isConnecting = false;
       _handleAuthenticationError(e);
-
-      if (_allowReconnect &&
-          !e.toString().contains('expired') &&
-          !e.toString().contains('invalid')) {
-        _retryConnection();
-      }
       throw e;
     }
   }
 
   // === 🔥 修正：合併後的事件監聽器設置 ===
 
-  void _setupEventListeners() {
-    if (_socket == null) return;
-
-    // 連接相關事件
-    _socket!.onConnect((_) {
-      print('Socket connected successfully');
-      _isConnected = true;
-      _isConnecting = false;
-      _reconnectAttempts = 0;
-      _startHeartbeat();
-      _notifyConnectionChanged(true);
-    });
-
-    _socket!.onDisconnect((reason) {
-      print('Socket disconnected: $reason');
-      _isConnected = false;
-      _isConnecting = false;
-      _stopHeartbeat();
-      _notifyConnectionChanged(false);
-
-      if (_allowReconnect && reason != 'client namespace disconnect') {
-        _scheduleReconnect();
-      }
-    });
-
-    _socket!.onConnectError((error) {
-      print('Socket connection error: $error');
-      _isConnected = false;
-      _isConnecting = false;
-      _notifyConnectionChanged(false);
-      _handleAuthenticationError(error);
-
-      if (_allowReconnect && !error.toString().contains('authentication')) {
-        _scheduleReconnect();
-      }
-    });
-
-    _socket!.on('auth_error', (data) {
-      print('Socket auth error: $data');
-      _handleAuthenticationError(data);
-    });
-
-    _socket!.onReconnectAttempt((attemptCount) {
-      print('Attempting to reconnect... Attempt: $attemptCount');
-      _isConnecting = true;
-      _notifyConnectionChanged(false);
-    });
-
-    _socket!.onReconnect((attemptCount) {
-      print('Reconnected successfully after $attemptCount attempts');
-      _isConnected = true;
-      _isConnecting = false;
-      _reconnectAttempts = 0;
-      _startHeartbeat();
-      _notifyConnectionChanged(true);
-    });
-
-    _socket!.onReconnectError((error) {
-      print('Reconnection error: $error');
-      _isConnecting = false;
-      _notifyConnectionChanged(false);
-      _handleAuthenticationError(error);
-
-      if (_allowReconnect && !error.toString().contains('authentication')) {
-        _scheduleReconnect();
-      }
-    });
-
-    _socket!.onReconnectFailed((_) {
-      print('All reconnection attempts failed');
-      _isConnecting = false;
-      _notifyConnectionChanged(false);
-      _scheduleReconnect();
-    });
-
-    // 🔥 消息相關事件
-
-    // 語音消息
-    _socket!.on('voice_message', (data) {
+  void _setupMessageEventListeners(IO.Socket socket) {
+    socket.on('voice_message', (data) {
       try {
         print('Received voice message data: $data');
 
@@ -304,8 +592,7 @@ class ChatService {
       }
     });
 
-    // 普通文本消息
-    _socket!.on('chat_message', (data) {
+    socket.on('chat_message', (data) {
       try {
         print('Received message data: $data');
 
@@ -323,8 +610,7 @@ class ChatService {
       }
     });
 
-    // 🔥 Reaction 更新事件
-    _socket!.on('reaction_update', (data) {
+    socket.on('reaction_update', (data) {
       print('ChatService: 收到 reaction 更新: $data');
       try {
         Map<String, dynamic> reactionData;
@@ -355,8 +641,7 @@ class ChatService {
       }
     });
 
-    // 聊天室更新
-    _socket!.on('room_updated', (data) {
+    socket.on('room_updated', (data) {
       try {
         Map<String, dynamic> roomData;
         if (data is String) {
@@ -372,8 +657,7 @@ class ChatService {
       }
     });
 
-    // 用戶狀態變更
-    _socket!.on('user_status', (data) {
+    socket.on('user_status', (data) {
       try {
         Map<String, dynamic> statusData;
         if (data is String) {
@@ -388,23 +672,6 @@ class ChatService {
       } catch (e) {
         print('Error parsing user status: $e');
       }
-    });
-
-    // 其他事件
-    _socket!.on('pong', (_) {
-      print('Received pong from server');
-    });
-
-    _socket!.on('error', (error) {
-      print('Socket error: $error');
-    });
-
-    _socket!.on('connect_error', (error) {
-      print('Connection error: $error');
-      _isConnected = false;
-      _isConnecting = false;
-      _notifyConnectionChanged(false);
-      _scheduleReconnect();
     });
   }
 
@@ -493,156 +760,83 @@ class ChatService {
     });
   }
 
-  // === 心跳和重連相關 ===
-
-  void _startHeartbeat() {
-    _stopHeartbeat();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (_socket != null && _isConnected) {
-        _socket!.emit('ping');
-      }
-    });
-  }
-
-  void _stopHeartbeat() {
-    _heartbeatTimer?.cancel();
-    _heartbeatTimer = null;
-  }
-
-  void _scheduleReconnect() {
-    if (!_allowReconnect) return;
-    if (_reconnectAttempts >= _maxReconnectAttempts) return;
-
-    bool isOnline =
-        Platform.isIOS ? _iosNetworkMonitor.isOnline : _networkMonitor.isOnline;
-
-    if (!isOnline) return;
-
-    _reconnectTimer?.cancel();
-    final delay = Duration(seconds: (2 << _reconnectAttempts).clamp(1, 30));
-
-    _reconnectTimer = Timer(delay, () {
-      bool isOnline = Platform.isIOS
-          ? _iosNetworkMonitor.isOnline
-          : _networkMonitor.isOnline;
-
-      if (isOnline) {
-        _retryConnection();
-      }
-    });
-  }
-
-  void _retryConnection() {
-    if (!_allowReconnect) return;
-    if (_isConnected || _isConnecting) return;
-
-    bool isOnline =
-        Platform.isIOS ? _iosNetworkMonitor.isOnline : _networkMonitor.isOnline;
-
-    if (!isOnline) return;
-
-    _reconnectAttempts++;
-    disconnect();
-    initialize().catchError((error) {
-      _scheduleReconnect();
-    });
-  }
-
   void _handleAuthenticationError(dynamic error) {
-    if (error.toString().contains('token is expired')) {
-      // 🔥 不要直接清除，讓下次 API 請求時自動刷新
-      print('ChatService: 檢測到 token 過期，等待自動刷新');
-      // 只在確定無法刷新時才斷開連接
-    }
-  }
+    final errorText = error.toString().toLowerCase();
+    final isTokenExpired = errorText.contains('token is expired') ||
+        errorText.contains('token expired') ||
+        errorText.contains('expired token') ||
+        errorText.contains('jwt expired') ||
+        errorText.contains('authentication') ||
+        errorText.contains('invalid token');
 
-  void _onNetworkStatusChanged(bool isOnline) {
-    if (isOnline) {
-      if (!_isConnected && !_isConnecting && _allowReconnect) {
-        _retryConnection();
-      }
-    } else {
-      _reconnectTimer?.cancel();
-      _isConnecting = false;
-      _notifyConnectionChanged(false);
+    if (isTokenExpired) {
+      _socketClient.disableReconnect();
+      _socketClient.disconnect();
+      ApiClientService().clearTokensAndLogout();
+      return;
     }
-  }
-
-  void _forceReconnect() {
-    if (!_allowReconnect) return;
-    if (_isConnected || _isConnecting) return;
-    _retryConnection();
   }
 
   // === 公開方法 ===
 
   void joinRoom(String roomId) {
-    if (_socket != null && _isConnected) {
-      _socket!.emit('join_room', roomId);
+    if (_socketClient.emit('join_room', roomId)) {
       print('ChatService: 加入房間成功: $roomId');
     }
   }
 
   void leaveRoom(String roomId) {
-    if (_socket != null && _isConnected) {
-      _socket!.emit('leave_room', roomId);
-    }
+    _socketClient.emit('leave_room', roomId);
   }
 
   void sendMessage(String roomId, String content,
       {chat_msg.MessageType type = chat_msg.MessageType.text}) {
-    if (_socket != null && _isConnected) {
-      final messageData = {
-        'room': roomId,
-        'content': content,
-        'type': type.toString().split('.').last,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
+    final messageData = {
+      'room': roomId,
+      'content': content,
+      'type': type.toString().split('.').last,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
 
-      _socket!.emit('chat_message', messageData);
-    } else {
+    if (!_socketClient.emit('chat_message', messageData)) {
       throw Exception('Socket not connected');
     }
   }
 
   void sendTypingStatus(String roomId, bool isTyping) {
-    if (_socket != null && _isConnected) {
-      _socket!.emit('typing', {
-        'room': roomId,
-        'is_typing': isTyping,
-      });
-    }
+    _socketClient.emit('typing', {
+      'room': roomId,
+      'is_typing': isTyping,
+    });
   }
 
   void sendVoiceMessage(String roomId, voice_msg.VoiceMessage voiceMessage) {
-    if (_socket != null && _isConnected) {
-      final messageData = {
-        'id': voiceMessage.id,
-        'sender_id': voiceMessage.senderId,
-        'sender_name': voiceMessage.senderName,
-        'room': roomId,
-        'file_url': voiceMessage.fileUrl,
-        'duration': voiceMessage.duration,
-        'file_size': voiceMessage.fileSize,
-        'timestamp': voiceMessage.timestamp.toIso8601String(),
-        'type': 'voice',
-      };
+    final messageData = {
+      'id': voiceMessage.id,
+      'sender_id': voiceMessage.senderId,
+      'sender_name': voiceMessage.senderName,
+      'room': roomId,
+      'file_url': voiceMessage.fileUrl,
+      'duration': voiceMessage.duration,
+      'file_size': voiceMessage.fileSize,
+      'timestamp': voiceMessage.timestamp.toIso8601String(),
+      'type': 'voice',
+    };
 
-      _socket!.emit('voice_message', messageData);
-    } else {
+    if (!_socketClient.emit('voice_message', messageData)) {
       throw Exception('Socket not connected');
     }
   }
 
   // 🔥 發送 Reaction
   void sendReaction(String messageId, String emoji) {
-    if (_socket == null || !_socket!.connected) {
+    if (!_socketClient.isConnected) {
       print('ChatService: Socket 未連接，無法發送 reaction');
       return;
     }
 
     try {
-      _socket!.emit('message_reaction', {
+      _socketClient.emit('message_reaction', {
         'message_id': messageId, // 使用 message_id
         'emoji': emoji,
         'timestamp': DateTime.now().toIso8601String(),
@@ -654,53 +848,25 @@ class ChatService {
   }
 
   Future<bool> checkNetworkConnection() async {
-    try {
-      if (Platform.isIOS) {
-        return await _iosNetworkMonitor.checkConnection();
-      } else {
-        return await _networkMonitor.checkConnection();
-      }
-    } catch (e) {
-      return false;
-    }
+    return await _connectionManager.checkConnection();
   }
 
-  bool get isConnected => _isConnected && !_isConnecting;
-  bool get isConnecting => _isConnecting;
+  bool get isConnected => _socketClient.isConnected;
+  bool get isConnecting => _socketClient.isConnecting;
 
   void disconnect() {
-    _allowReconnect = false;
-    _stopHeartbeat();
-    _reconnectTimer?.cancel();
     _notificationService.clearAllNotifications();
-
-    if (Platform.isIOS) {
-      _iosNetworkMonitor.removeConnectionListener(_onNetworkStatusChanged);
-      _iosNetworkMonitor.stopAutoReconnect();
-    } else {
-      _networkMonitor.removeConnectionListener(_onNetworkStatusChanged);
-    }
-
-    if (_socket != null) {
-      _socket!.disconnect();
-      _socket!.dispose();
-      _socket = null;
-    }
-
-    _isConnected = false;
-    _isConnecting = false;
-    _reconnectAttempts = 0;
-    _notifyConnectionChanged(false);
+    _connectionManager.dispose();
+    _socketClient.disconnect();
   }
 
   void disableReconnect() {
-    _allowReconnect = false;
-    _reconnectTimer?.cancel();
+    _socketClient.disableReconnect();
   }
 
   Future<void> reconnect() async {
     disconnect();
-    _allowReconnect = true;
+    _socketClient.enableReconnect();
     await Future.delayed(const Duration(seconds: 1));
 
     final hasNetwork = await checkNetworkConnection();
@@ -711,13 +877,13 @@ class ChatService {
     try {
       await initialize();
     } catch (e) {
-      _scheduleReconnect();
+      _socketClient.scheduleReconnect();
       rethrow;
     }
   }
 
   Future<void> forceReconnect() async {
-    _reconnectAttempts = 0;
+    _socketClient.resetReconnectAttempts();
     await reconnect();
   }
 
@@ -730,11 +896,11 @@ class ChatService {
 
   Map<String, dynamic> getConnectionStats() {
     return {
-      'isConnected': _isConnected,
-      'isConnecting': _isConnecting,
-      'reconnectAttempts': _reconnectAttempts,
-      'maxReconnectAttempts': _maxReconnectAttempts,
-      'hasHeartbeat': _heartbeatTimer != null,
+      'isConnected': _socketClient.isConnected,
+      'isConnecting': _socketClient.isConnecting,
+      'reconnectAttempts': _socketClient.reconnectAttempts,
+      'maxReconnectAttempts': SocketClient.maxReconnectAttempts,
+      'hasHeartbeat': _socketClient.hasHeartbeat,
       'messageListeners': _messageReceivedCallbacks.length,
       'connectionListeners': _connectionChangedCallbacks.length,
       'roomUpdateListeners': _roomUpdatedCallbacks.length,
@@ -763,7 +929,7 @@ class ChatService {
     print('消息監聽器數量: ${_messageReceivedCallbacks.length}');
     print('Reaction 監聽器數量: ${_reactionUpdateCallbacks.length}');
     print('聊天室名稱映射: $_chatRoomNames');
-    print('Socket 連接狀態: $_isConnected');
+    print('Socket 連接狀態: ${_socketClient.isConnected}');
     print('================================');
   }
 }

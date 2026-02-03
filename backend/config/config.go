@@ -72,7 +72,7 @@ func LoadConfig() AppConfig {
 
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
-		log.Fatal("MONGO_URI environment variable not set")
+		mongoURI = "mongodb://cph0325:pp325325@192.168.100.150:27017"
 	}
 
 	mongoDbName := os.Getenv("MONGO_DB_NAME")

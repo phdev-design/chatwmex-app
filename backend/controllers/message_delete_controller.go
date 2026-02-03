@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 
@@ -60,8 +58,12 @@ func DeleteMessage(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到刪除消息請求 - UserID: %s, MessageID: %s", userID, req.MessageID)
 
-	cfg := config.LoadConfig()
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	messageCollection := store.Collection("messages")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -165,8 +167,12 @@ func RestoreMessage(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到恢復消息請求 - UserID: %s, MessageID: %s", userID, req.MessageID)
 
-	cfg := config.LoadConfig()
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	messageCollection := store.Collection("messages")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -250,8 +256,12 @@ func GetDeletedMessages(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("收到獲取已刪除消息請求 - UserID: %s", userID)
 
-	cfg := config.LoadConfig()
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	messageCollection := store.Collection("messages")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

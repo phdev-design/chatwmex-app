@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"chatwme/backend/database"
 	"chatwme/backend/utils"
 )
 
@@ -43,4 +44,13 @@ func JwtAuthentication(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func WithStore(store database.Store) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := database.ContextWithStore(r.Context(), store)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

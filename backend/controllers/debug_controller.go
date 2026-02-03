@@ -11,7 +11,6 @@ import (
 	// "log"
 
 	"chatwme/backend/config"
-	"chatwme/backend/database"
 	"chatwme/backend/models"
 	"chatwme/backend/utils"
 
@@ -90,7 +89,12 @@ func DebugVoiceMessageDetailed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := config.LoadConfig()
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	messageCollection := store.Collection("messages")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -192,7 +196,12 @@ func DebugListVoiceMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	cfg := config.LoadConfig()
-	messageCollection := database.GetCollection("messages", cfg.MongoDbName)
+	store, ok := getStore(r)
+	if !ok {
+		http.Error(w, `{"error": "資料庫尚未初始化"}`, http.StatusInternalServerError)
+		return
+	}
+	messageCollection := store.Collection("messages")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

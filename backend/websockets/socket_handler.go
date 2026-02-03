@@ -24,14 +24,20 @@ type AuthenticatedUser struct {
 
 // ChatMessagePayload 定义了从客户端接收到的聊天讯息结构
 type ChatMessagePayload struct {
-	Room    string `json:"room"`
-	Content string `json:"content"`
-	Type    string `json:"type"`
+	Room      string `json:"room"`
+	Content   string `json:"content"`
+	Type      string `json:"type"`
+	Timestamp string `json:"timestamp"`
 }
 
 // NewSocketIOServer 建立并配置一个新的 Socket.IO 伺服器
-func NewSocketIOServer(chatService *services.ChatService) *socketio.Server {
+func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio.RedisAdapterOptions) *socketio.Server {
 	server := socketio.NewServer(nil)
+	if redisOptions != nil {
+		if _, err := server.Adapter(redisOptions); err != nil {
+			log.Fatalf("Failed to set Redis adapter: %v", err)
+		}
+	}
 
 	// 在現有的事件處理中添加語音消息支持
 	server.OnEvent("/", "voice_message", func(s socketio.Conn, payload map[string]interface{}) {
@@ -130,10 +136,29 @@ func NewSocketIOServer(chatService *services.ChatService) *socketio.Server {
 	})
 
 	// 处理自定义的 "chat_message" 事件
-	server.OnEvent("/", "chat_message", func(s socketio.Conn, payload ChatMessagePayload) {
+	server.OnEvent("/", "chat_message", func(s socketio.Conn, payload ChatMessagePayload, ack func(map[string]interface{})) {
+		respondError := func(message string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":    false,
+					"error": message,
+				})
+			}
+		}
+		respondSuccess := func(messageID string, timestamp string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":         true,
+					"message_id": messageID,
+					"timestamp":  timestamp,
+				})
+			}
+		}
+
 		user, ok := s.Context().(*AuthenticatedUser)
 		if !ok || user == nil {
 			log.Printf("Error: Could not get user from context for socket %s", s.ID())
+			respondError("unauthorized")
 			return
 		}
 
@@ -142,6 +167,7 @@ func NewSocketIOServer(chatService *services.ChatService) *socketio.Server {
 		roomObjectID, err := primitive.ObjectIDFromHex(payload.Room)
 		if err != nil {
 			log.Printf("Invalid Room ObjectID for message: %s, Error: %v", payload.Room, err)
+			respondError("invalid_room")
 			return
 		}
 
@@ -151,10 +177,12 @@ func NewSocketIOServer(chatService *services.ChatService) *socketio.Server {
 		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
 		if err != nil {
 			log.Printf("Failed to validate room access for UserID %s in room %s: %v", user.ID, payload.Room, err)
+			respondError("room_access_check_failed")
 			return
 		}
 		if !isMember {
 			log.Printf("Unauthorized message attempt by UserID %s in room %s", user.ID, payload.Room)
+			respondError("not_in_room")
 			return
 		}
 
@@ -170,10 +198,12 @@ func NewSocketIOServer(chatService *services.ChatService) *socketio.Server {
 		messageToSave, err := chatService.SaveMessage(messageCtx, user.ID, user.Username, payload.Room, payload.Content, messageType)
 		if err != nil {
 			log.Printf("Failed to save message to database: %v", err)
+			respondError("message_save_failed")
 			return
 		}
 
 		log.Printf("Message saved to database with ID: %s", messageToSave.ID.Hex())
+		respondSuccess(messageToSave.ID.Hex(), messageToSave.Timestamp.Format(time.RFC3339))
 
 		// 3. [關鍵修正] 建立要廣播給客戶端的訊息物件，確保格式與前端模型一致
 		messageToBroadcast := map[string]interface{}{
