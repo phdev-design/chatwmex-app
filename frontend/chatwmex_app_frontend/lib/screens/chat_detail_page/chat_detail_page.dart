@@ -25,6 +25,7 @@ import 'widgets/chat_selection_bottom_bar.dart';
 // Dialogs
 import 'dialogs/debug_info_dialog.dart';
 import 'dialogs/group_info_dialog.dart';
+import 'dialogs/user_info_dialog.dart';
 
 class ChatDetailPage extends StatefulWidget {
   final ChatRoom chatRoom;
@@ -544,16 +545,29 @@ class _ChatDetailPageState extends State<ChatDetailPage>
               typingStatus: _typingUsers.isNotEmpty
                   ? '${_typingUsers.join(", ")} 正在輸入...'
                   : null,
+              isBlocked: _isBlocked,
+              onToggleBlock: widget.chatRoom.isGroup ? null : _toggleBlockUser,
               onShowDebugInfo: () => showDebugInfoDialog(
                 context: context,
                 isConnected: _isConnected,
                 messageCount: _messagesNotifier.value.length,
                 currentUserId: _currentUserId,
-                currentRoomId: currentRoomId,
+                currentRoomId: widget.chatRoom.id,
                 knownMessageIdsCount: _knownMessageIds.length,
               ),
-              onShowGroupInfo: () =>
-                  showGroupInfoDialog(context, widget.chatRoom),
+              onShowGroupInfo: () {
+                if (widget.chatRoom.isGroup) {
+                  showGroupInfoDialog(context, widget.chatRoom);
+                } else {
+                  showUserInfoDialog(
+                    context: context,
+                    chatRoom: widget.chatRoom,
+                    currentUserId: _currentUserId,
+                    isBlocked: _isBlocked,
+                    onToggleBlock: _toggleBlockUser,
+                  );
+                }
+              },
             ),
       body: Column(
         children: [
@@ -598,13 +612,27 @@ class _ChatDetailPageState extends State<ChatDetailPage>
                     },
                   ),
           ),
-          // 🔥 多選模式時顯示底部操作欄，否則顯示輸入框
+          // 🔥 多選模式時顯示底部操作欄，否則顯示輸入框或封鎖提示
           if (_isSelectionMode)
             ChatSelectionBottomBar(
               selectedCount: _selectedMessageIds.length,
               onDelete: _deleteSelectedMessages,
               onShare: _shareSelectedMessages,
               onForward: _forwardSelectedMessages,
+            )
+          else if (_isBlocked)
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Theme.of(context).colorScheme.surface,
+              child: Center(
+                child: Text(
+                  '您已封鎖此用戶',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             )
           else
             ChatInputArea(

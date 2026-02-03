@@ -67,35 +67,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
           onPressed: onShowDebugInfo,
           tooltip: '調試信息',
         ),
-        if (!chatRoom.isGroup && onToggleBlock != null)
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'toggle_block') {
-                onToggleBlock!();
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'toggle_block',
-                child: ListTile(
-                  leading: Icon(
-                    isBlocked ? Icons.lock_open : Icons.block,
-                    color:
-                        isBlocked ? null : Theme.of(context).colorScheme.error,
-                  ),
-                  title: Text(
-                    isBlocked ? '解除封鎖' : '封鎖用戶',
-                    style: TextStyle(
-                      color: isBlocked
-                          ? null
-                          : Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
-          ),
+          // 🔥 移除：單獨的封鎖菜單，移至用戶資訊頁面統一管理
         if (chatRoom.isGroup)
           PopupMenuButton<String>(
             onSelected: (value) {

@@ -492,7 +492,7 @@ class ChatApiService {
     try {
       final response = await apiClient.dio.get('/api/v1/users/blocked');
       if (response.statusCode == 200) {
-        final List<dynamic> usersJson = response.data ?? [];
+        final List<dynamic> usersJson = response.data['users'] ?? [];
         return usersJson.map((json) => User.fromJson(json)).toList();
       } else {
         throw Exception('Failed to get blocked users: ${response.statusCode}');

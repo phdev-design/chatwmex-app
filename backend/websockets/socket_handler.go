@@ -337,6 +337,30 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
+		// 🔥 檢查用戶是否被聊天室中的其他參與者封鎖
+		participants, err := chatService.GetRoomParticipants(authCtx, roomObjectID)
+		if err != nil {
+			log.Printf("Failed to get room participants for block check: %v", err)
+			respondError("internal_error")
+			return
+		}
+
+		for _, participantID := range participants {
+			if participantID == user.ID {
+				continue
+			}
+			isBlocked, err := chatService.IsUserBlocked(authCtx, participantID, user.ID)
+			if err != nil {
+				log.Printf("Error checking block status: %v", err)
+				continue
+			}
+			if isBlocked {
+				log.Printf("Message rejected: User %s is blocked by %s", user.ID, participantID)
+				respondError("blocked")
+				return
+			}
+		}
+
 		// 設置消息類型預設值
 		messageType := payload.Type
 		if messageType == "" {

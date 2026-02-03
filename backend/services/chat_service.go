@@ -103,3 +103,24 @@ func (s *ChatService) MarkMessagesAsRead(ctx context.Context, roomID primitive.O
 	_, err := collection.UpdateMany(ctx, filter, update)
 	return err
 }
+
+// IsUserBlocked 檢查 blockedID 是否被 blockerID 封鎖
+func (s *ChatService) IsUserBlocked(ctx context.Context, blockerID, blockedID string) (bool, error) {
+	collection := s.store.Collection("blocked_users")
+	count, err := collection.CountDocuments(ctx, bson.M{
+		"blocker_id": blockerID,
+		"blocked_id": blockedID,
+	})
+	return count > 0, err
+}
+
+// GetRoomParticipants 獲取聊天室的所有參與者 ID
+func (s *ChatService) GetRoomParticipants(ctx context.Context, roomID primitive.ObjectID) ([]string, error) {
+	collection := s.store.Collection("chat_rooms")
+	var room models.ChatRoom
+	err := collection.FindOne(ctx, bson.M{"_id": roomID}).Decode(&room)
+	if err != nil {
+		return nil, err
+	}
+	return room.Participants, nil
+}

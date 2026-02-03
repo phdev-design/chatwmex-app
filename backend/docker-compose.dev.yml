@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb-dev
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data_dev:/data/db
+    networks:
+      - chatwmex-network
+
   chatwmex-backend:
     # 使用本地構建的映像
     build: .
@@ -14,10 +28,11 @@ services:
       - CONTAINER=true
       
       # 数据库配置
-      - MONGO_URI=mongodb://cph0325:pp325325@143.198.17.2:27017
-      - MONGO_DB_NAME=chat2mex_db_test
-      - JWT_SECRET=a_very_secret_key_that_should_be_changed
-      - ENCRYPTION_SECRET=this-is-a-32-byte-secret-key-!!!
+      # 在 Docker 內部強制使用 mongodb 服務名稱，忽略 .env 中的 localhost 配置
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017
+      - MONGO_DB_NAME=${MONGO_DB_NAME:-chat2mex_db_test}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_SECRET=${ENCRYPTION_SECRET}
       
       # 開發環境配置
       - USE_CLOUDFLARE=false
@@ -36,8 +51,13 @@ services:
       - ./uploads/audio:/root/uploads/audio  # 確保語音文件目錄存在
       - ./uploads/avatars:/root/uploads/avatars  # 確保頭像目錄存在
     restart: unless-stopped
+    depends_on:
+      - mongodb
     networks:
       - chatwmex-network
+
+volumes:
+  mongodb_data_dev:
 
 networks:
   chatwmex-network:

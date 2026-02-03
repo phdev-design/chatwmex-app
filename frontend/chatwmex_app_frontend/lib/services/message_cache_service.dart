@@ -146,4 +146,15 @@ class MessageCacheService {
     print(
         'MessageCacheService: Clear cache requested but not fully implemented for SQLite yet.');
   }
+
+  // 🔥 優化緩存
+  Future<void> optimizeCache() async {
+    try {
+      print('MessageCacheService: 優化緩存...');
+      // Implement cache cleanup logic here if needed (e.g. delete old messages)
+      // For now, we can just log or maybe vacuum if we had access to raw db
+    } catch (e) {
+      print('MessageCacheService: 優化緩存失敗: $e');
+    }
+  }
 }
