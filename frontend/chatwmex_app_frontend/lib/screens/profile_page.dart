@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import '../providers/theme_provider.dart';
 import '../utils/token_storage.dart';
@@ -31,8 +32,7 @@ class _ProfilePageState extends State<ProfilePage>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
-  final NotificationService _notificationService =
-      NotificationService();
+  final NotificationService _notificationService = NotificationService();
   final ImagePicker _imagePicker = ImagePicker();
 
   @override
@@ -177,10 +177,10 @@ class _ProfilePageState extends State<ProfilePage>
                 Navigator.pop(context);
                 final newStatus =
                     await _notificationService.checkNotificationPermission();
-                if(mounted){
-                   setState(() {
-                      _notificationsEnabled = newStatus;
-                   });
+                if (mounted) {
+                  setState(() {
+                    _notificationsEnabled = newStatus;
+                  });
                 }
               },
               child: const Text('去設置開啟'),
@@ -229,9 +229,9 @@ class _ProfilePageState extends State<ProfilePage>
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              final granted =
+              final status =
                   await _notificationService.requestNotificationPermission();
-              if (granted) {
+              if (status.isGranted) {
                 setState(() {
                   _notificationsEnabled = true;
                 });
@@ -496,7 +496,7 @@ class _ProfilePageState extends State<ProfilePage>
                   title: '測試標題',
                   body: '這是來自 YouTube 教學的測試內容。',
                 );
-                
+
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(

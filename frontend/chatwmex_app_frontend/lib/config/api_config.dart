@@ -1,36 +1,33 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiConfig {
   // 🔥 生產環境配置
-  static const String _productionUrl = 'https://api-chatwmex.phdev.uk';
+  static const String _productionUrl =
+      'https://api.myapp.com'; // TODO: Replace with your actual production domain
 
-  // 開發環境 URL
-  static const String _baseUrlAndroid = 'http://192.168.100.114:8080';
-  static const String _baseUrlIOS = 'http://192.168.100.114:8080';
-  static const String _baseUrlDefault = 'http://192.168.100.114:8080';
+  // 開發環境 URL (Fallback if .env is missing)
+  static const String _baseUrlLocalhost = 'http://localhost:8080';
 
   // 🔥 關鍵修正：動態獲取當前平台的正確 URL
   static String get currentUrl {
-    // 🔥 生產環境：使用 HTTPS 生產 URL
+    // 🔥 生產環境：使用 HTTPS 生產 URL，忽略 .env 中的開發設定
     if (kReleaseMode) {
       return _productionUrl;
     }
 
-    // 🔥 開發環境：根據平台選擇本地 URL
-    try {
-      if (Platform.isAndroid) {
-        return _baseUrlAndroid;
-      } else if (Platform.isIOS) {
-        // 對於 iOS 模擬器和實體設備，127.0.0.1 通常都能正常工作
-        return _baseUrlIOS;
-      }
-    } catch (e) {
-      // 如果不是在移動平台（例如：桌面、Web），則使用 localhost
-      return _baseUrlDefault;
+    // 🔥 開發環境：優先使用 .env 中的配置
+    final envUrl = dotenv.env['API_BASE_URL'];
+    if (envUrl != null && envUrl.isNotEmpty) {
+      return envUrl;
     }
-    // 預設回退
-    return _baseUrlDefault;
+
+    // 如果 .env 未配置，回退到 localhost (這在模擬器上可能會失敗，但在桌面端可行)
+    // 建議開發者務必配置 .env
+    print(
+        '⚠️ Warning: API_BASE_URL not found in .env, falling back to localhost');
+    return _baseUrlLocalhost;
   }
 
   // 為了向後相容，保留 baseUrl getter

@@ -8,6 +8,8 @@
     <!-- 新增：音频播放权限 -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 這是在手機主畫面上顯示的應用程式名稱 -->
     <application
         android:label="Chat2MeX"

@@ -60,6 +60,9 @@ dependencies:
   
   # 圖片選擇器
   image_picker: ^1.0.7
+  background_fetch: ^1.5.0
+  flutter_secure_storage: ^10.0.0
+  flutter_dotenv: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -73,3 +76,4 @@ flutter:
   assets:
     - assets/audio/
     - assets/audio/mixkit-long-pop-2358.wav
+    - .env

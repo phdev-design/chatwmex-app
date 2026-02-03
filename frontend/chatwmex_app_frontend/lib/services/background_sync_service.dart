@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:workmanager/workmanager.dart';
+import 'package:workmanager/workmanager.dart' as wm;
+import 'package:background_fetch/background_fetch.dart';
 import '../utils/token_storage.dart';
 import 'chat_api_service.dart' as api_service;
 import 'message_cache_service.dart';
@@ -24,32 +26,82 @@ class BackgroundSyncService {
     if (_isInitialized) return;
 
     try {
-      // 初始化 WorkManager
-      await Workmanager().initialize(
-        callbackDispatcher,
-        isInDebugMode: kDebugMode,
-      );
+      if (Platform.isAndroid) {
+        // Android: 初始化 WorkManager
+        await wm.Workmanager().initialize(
+          callbackDispatcher,
+          isInDebugMode: kDebugMode,
+        );
 
-      // 註冊背景任務
-      await _registerBackgroundTask();
+        // 註冊背景任務
+        await _registerBackgroundTask();
+      } else if (Platform.isIOS) {
+        // iOS: 初始化 BackgroundFetch
+        // iOS 背景同步依賴 Background Fetch 或 APNs。跳過週期性任務註冊。
+        print(
+            'BackgroundSyncService: iOS background sync relies on Background Fetch or APNs. Periodic task registration skipped.');
+
+        // 確保 WorkManager 初始化，以便處理系統觸發的 iOS 背景任務
+        await wm.Workmanager().initialize(
+          callbackDispatcher,
+          isInDebugMode: kDebugMode,
+        );
+
+        await _initBackgroundFetch();
+      }
 
       _isInitialized = true;
       print('BackgroundSyncService: 背景同步服務初始化完成');
     } catch (e) {
-      print('BackgroundSyncService: 背景同步服務初始化失敗: $e');
+      print(
+          'BackgroundSyncService: BackgroundSyncService failed to initialize: $e');
     }
   }
 
-  /// 註冊背景任務
+  /// iOS: 初始化 BackgroundFetch
+  Future<void> _initBackgroundFetch() async {
+    try {
+      final int status = await BackgroundFetch.configure(
+        BackgroundFetchConfig(
+          minimumFetchInterval: 15,
+          stopOnTerminate: false,
+          enableHeadless: true,
+          requiresBatteryNotLow: false,
+          requiresCharging: false,
+          requiresStorageNotLow: false,
+          requiresDeviceIdle: false,
+          requiredNetworkType: NetworkType.ANY,
+        ),
+        (String taskId) async {
+          // Event handler
+          print("[BackgroundFetch] Event received $taskId");
+          await _performSync();
+          BackgroundFetch.finish(taskId);
+        },
+        (String taskId) async {
+          // Timeout handler
+          print("[BackgroundFetch] TASK TIMEOUT taskId: $taskId");
+          BackgroundFetch.finish(taskId);
+        },
+      );
+      print('[BackgroundFetch] configure success: $status');
+    } catch (e) {
+      print('[BackgroundFetch] configure failed: $e');
+    }
+  }
+
+  /// 註冊背景任務 (Android Only)
   Future<void> _registerBackgroundTask() async {
+    if (!Platform.isAndroid) return;
+
     try {
       // 註冊定期同步任務
-      await Workmanager().registerPeriodicTask(
+      await wm.Workmanager().registerPeriodicTask(
         _taskId,
         _taskName,
         frequency: const Duration(minutes: 15), // 每15分鐘同步一次
-        constraints: Constraints(
-          networkType: NetworkType.connected,
+        constraints: wm.Constraints(
+          networkType: wm.NetworkType.connected,
           requiresBatteryNotLow: false,
           requiresCharging: false,
           requiresDeviceIdle: false,
@@ -224,7 +276,7 @@ class BackgroundSyncService {
 /// 背景任務回調函數
 @pragma('vm:entry-point')
 void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
+  wm.Workmanager().executeTask((task, inputData) async {
     try {
       print('BackgroundSyncService: 執行背景任務: $task');
 

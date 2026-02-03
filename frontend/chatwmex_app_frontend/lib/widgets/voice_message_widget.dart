@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:dio/dio.dart'; // 🔥 新增：用於網路請求
 
 import '../services/voice_player_service_v2.dart'; // 🔥 更新：使用新的 just_audio 服務
@@ -103,16 +104,22 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
       print('VoiceMessageWidget (${widget.voiceMessage.id}): 準備音訊 URL');
       print('VoiceMessageWidget: 原始 fileUrl - ${widget.voiceMessage.fileUrl}');
 
-      // 如果 fileUrl 是本地檔路徑（例如以 /data/ 開頭），直接使用本地播放
+      // 檢查是否為本地檔案路徑且檔案存在
+      // 注意：伺服器相對路徑也可能以 / 開頭，所以必須檢查 File().exists()
       if (widget.voiceMessage.fileUrl.startsWith('/')) {
-        _localFilePath = widget.voiceMessage.fileUrl;
-        _playableAudioUrl = null; // 本地播放不需 URL
-        if (!_isDisposed && mounted) {
-          setState(() {
-            _isLoadingUrl = false;
-          });
+        final file = File(widget.voiceMessage.fileUrl);
+        if (await file.exists()) {
+          _localFilePath = widget.voiceMessage.fileUrl;
+          _playableAudioUrl = null; // 本地播放不需 URL
+          if (!_isDisposed && mounted) {
+            setState(() {
+              _isLoadingUrl = false;
+            });
+          }
+          return;
         }
-        return;
+        print(
+            'VoiceMessageWidget: 本地檔案不存在，嘗試解析為伺服器路徑: ${widget.voiceMessage.fileUrl}');
       }
 
       // 🔥 关键修正：使用 ApiConfig 来构造正确的 URL

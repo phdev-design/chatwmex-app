@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:chat2mex_app_frontend/screens/login_page.dart';
 import 'package:chat2mex_app_frontend/screens/chat_rooms_page.dart';
@@ -21,6 +22,14 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   // 確保 Flutter 引擎已初始化
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔥 加載環境變量
+  try {
+    await dotenv.load(fileName: ".env");
+    print('✅ .env loaded successfully');
+  } catch (e) {
+    print('❌ Failed to load .env: $e');
+  }
 
   // 初始化應用
   final appInitialized = await _initializeApp();

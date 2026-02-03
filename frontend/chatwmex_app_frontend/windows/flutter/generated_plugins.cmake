@@ -7,6 +7,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   emoji_picker_flutter
   file_selector_windows
+  flutter_secure_storage_windows
   flutter_sound
   permission_handler_windows
 )

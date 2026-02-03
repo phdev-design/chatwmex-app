@@ -751,7 +751,7 @@ class ChatService {
         chatRoomName = '聊天室';
       }
 
-      await _notificationService.showChatNotificationSimple(
+      await _notificationService.showChatNotification(
         message: message,
         chatRoomName: chatRoomName,
       );

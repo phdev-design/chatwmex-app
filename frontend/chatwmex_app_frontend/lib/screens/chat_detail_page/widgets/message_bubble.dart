@@ -145,7 +145,69 @@ class _MessageBubbleState extends State<MessageBubble> {
   Widget _buildMessageContent(BuildContext context) {
     // 1. 获取消息内容组件 (图片或文本)
     Widget contentWidget;
-    if (widget.message.type == chat_msg.MessageType.image &&
+
+    if (widget.message.isDecryptionError) {
+      contentWidget = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.lock_person,
+                size: 16,
+                color: Colors.red[900],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Unable to decrypt message',
+                style: TextStyle(
+                  color: Colors.red[900],
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () {
+              print('Retry decryption');
+              _showDecryptionOptions(context);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.red.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.refresh,
+                    size: 14,
+                    color: Colors.red[900],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Retry',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red[900],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (widget.message.type == chat_msg.MessageType.image &&
         widget.message.fileUrl != null) {
       final imageUrl = ApiConfig.getAudioFileUrl(widget.message.fileUrl!);
 
@@ -214,9 +276,11 @@ class _MessageBubbleState extends State<MessageBubble> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: widget.isMe
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.surface,
+        color: widget.message.isDecryptionError
+            ? Colors.red.shade50
+            : (widget.isMe
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.surface),
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(20),
           topRight: const Radius.circular(20),
@@ -348,5 +412,54 @@ class _MessageBubbleState extends State<MessageBubble> {
     );
 
     overlay.insert(overlayEntry);
+  }
+
+  void _showDecryptionOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                '解密選項',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('重試解密'),
+              subtitle: const Text('嘗試重新解密此訊息'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('正在重試解密...')),
+                );
+                // TODO: 觸發解密邏輯
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.vpn_key),
+              title: const Text('恢復金鑰'),
+              subtitle: const Text('檢查金鑰狀態並嘗試修復'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('正在檢查金鑰狀態...')),
+                );
+                // TODO: 觸發金鑰恢復邏輯
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
   }
 }

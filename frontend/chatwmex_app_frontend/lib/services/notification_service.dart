@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
+import 'package:chat2mex_app_frontend/main.dart';
 import '../models/message.dart' as app_models;
 import 'dart:io';
 
@@ -51,8 +54,7 @@ class NotificationService {
     }
   }
 
-  // 🔥 新增：模仿 YouTube 教學的簡易通知方法
-  // 這個方法可以讓你快速測試一個帶有標題和內容的通知
+  // 簡易通知方法，用於測試或簡單提示
   Future<void> showSimpleNotification({
     required String title,
     required String body,
@@ -65,9 +67,9 @@ class NotificationService {
     // 1. 設定 Android 通知的詳細資訊
     const AndroidNotificationDetails androidNotificationDetails =
         AndroidNotificationDetails(
-      'your_channel_id', // 頻道 ID，必須提供
-      'Your Channel Name', // 頻道名稱
-      channelDescription: 'Your channel description', // 頻道描述
+      'general_notifications', // 頻道 ID
+      'General Notifications', // 頻道名稱
+      channelDescription: 'General notifications for the app', // 頻道描述
       importance: Importance.max,
       priority: Priority.high,
       ticker: 'ticker',
@@ -89,11 +91,11 @@ class NotificationService {
 
     // 4. 顯示通知
     await _notificationsPlugin.show(
-      0, // 通知 ID，每個通知應該是唯一的
+      0, // 通知 ID
       title,
       body,
       notificationDetails,
-      payload: 'simple_notification_payload', // 點擊通知後可以收到的資料
+      payload: 'simple_notification_payload',
     );
     print('NotificationService: 已顯示簡易通知');
   }
@@ -102,6 +104,7 @@ class NotificationService {
     final String? payload = notificationResponse.payload;
     if (payload != null) {
       print('NotificationService: 通知被點擊，payload: $payload');
+      // TODO: 這裡可以添加導航邏輯，例如跳轉到特定聊天室
     }
   }
 
@@ -110,19 +113,28 @@ class NotificationService {
     print('NotificationService: 設置活躍聊天室: $roomId');
   }
 
-// 🔥 新增：添加 getter 方法，讓外部可以訪問當前活躍聊天室
+  // Getter 方法，讓外部可以訪問當前活躍聊天室
   String? get currentActiveChatRoom => _currentActiveChatRoom;
-  Future<bool> requestNotificationPermission() async {
+
+  Future<PermissionStatus> requestNotificationPermission() async {
     try {
       final status = await Permission.notification.request();
       _notificationsEnabled = status.isGranted;
       print('NotificationService: 權限請求結果: $status');
-      return _notificationsEnabled;
+
+      // 權限被永久拒絕時，由 UI 層處理引導邏輯
+      if (status.isPermanentlyDenied) {
+        print('NotificationService: 權限被永久拒絕');
+      }
+
+      return status;
     } catch (e) {
       print('NotificationService: 手動權限請求失敗: $e');
-      return false;
+      return PermissionStatus.denied;
     }
   }
+
+
 
   Future<bool> checkNotificationPermission() async {
     try {
@@ -139,14 +151,8 @@ class NotificationService {
     required app_models.Message message,
     required String chatRoomName,
   }) async {
-    print('=== NotificationService 調試 ===');
-    print('初始化狀態: $_isInitialized');
-    print('通知啟用狀態: $_notificationsEnabled');
-    print('當前活躍聊天室: $_currentActiveChatRoom');
-    print('消息房間ID: ${message.roomId}');
-    print('聊天室名稱: $chatRoomName');
-    print('消息內容: ${message.content}');
-    print('發送者: ${message.senderName}');
+    print('=== NotificationService: 準備顯示聊天通知 ===');
+    // print('消息房間ID: ${message.roomId}, 聊天室名稱: $chatRoomName');
 
     if (!_isInitialized || !_notificationsEnabled) {
       print('NotificationService: 通知未初始化或被禁用');
@@ -158,14 +164,16 @@ class NotificationService {
       return;
     }
 
-    print('NotificationService: 準備顯示通知...');
-
     try {
       if (kDebugMode && Platform.isIOS) {
         print('NotificationService: iOS 模擬器環境，通知可能受限');
       }
 
       final int notificationId = message.roomId.hashCode;
+
+      final notificationContent = message.isDecryptionError
+          ? 'Unable to decrypt message'
+          : message.content;
 
       final AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
@@ -179,7 +187,7 @@ class NotificationService {
         icon: '@mipmap/ic_launcher',
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         styleInformation: BigTextStyleInformation(
-          message.content,
+          notificationContent,
           contentTitle: '${message.senderName}',
           summaryText: chatRoomName,
         ),
@@ -200,13 +208,12 @@ class NotificationService {
       await _notificationsPlugin.show(
         notificationId,
         '${message.senderName}',
-        message.content,
+        notificationContent,
         notificationDetails,
         payload: message.roomId,
       );
 
-      print(
-          'NotificationService: 顯示通知 - ${message.senderName}: ${message.content}');
+      print('NotificationService: 通知已顯示 - ${message.senderName}: $notificationContent');
     } catch (e) {
       print('NotificationService: 顯示通知失敗: $e');
 
@@ -214,8 +221,6 @@ class NotificationService {
         print('NotificationService: iOS 模擬器通知測試受限，建議在真實設備上測試');
       }
     }
-    print('NotificationService: 通知顯示完成');
-    print('================================');
   }
 
   Future<void> clearChatNotifications(String roomId) async {
@@ -246,7 +251,7 @@ class NotificationService {
 
   Future<void> openAppSettings() async {
     try {
-      await openAppSettings();
+      await ph.openAppSettings();
 
       final status = await Permission.notification.status;
       _notificationsEnabled = status.isGranted;
@@ -306,35 +311,4 @@ class NotificationService {
       }
     }
   }
-
-  // 在 notification_service.dart 中添加一個臨時的聊天通知方法
-Future<void> showChatNotificationSimple({
-  required app_models.Message message,
-  required String chatRoomName,
-}) async {
-  print('=== 簡化聊天通知調試 ===');
-  
-  if (!_isInitialized) {
-    print('NotificationService: 服務未初始化');
-    return;
-  }
-
-  if (_currentActiveChatRoom == message.roomId) {
-    print('NotificationService: 用戶正在當前聊天室，不顯示通知');
-    return;
-  }
-
-  // 🔥 使用與測試通知完全相同的邏輯
-  try {
-    await showSimpleNotification(
-      title: '${message.senderName}',
-      body: message.content,
-    );
-    print('NotificationService: 簡化聊天通知發送成功');
-  } catch (e) {
-    print('NotificationService: 簡化聊天通知發送失敗: $e');
-  }
-  
-  print('=== 簡化聊天通知結束 ===');
-}
 }

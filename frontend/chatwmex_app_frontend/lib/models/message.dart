@@ -14,6 +14,8 @@ class Message {
   final String? fileUrl;
   final int? duration;
   final int? fileSize;
+  final bool
+      isDecryptionError; // ✅ Renamed from decryptionFailed per user request
 
   Message({
     required this.id,
@@ -26,15 +28,17 @@ class Message {
     this.fileUrl,
     this.duration,
     this.fileSize,
-    this.reactions = const {}, // ✅ 在建構子中初始化
+    this.reactions = const {},
+    this.isDecryptionError = false, // ✅ Initialize
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
     try {
-      print('Message.fromJson: 開始解析消息 - ID: ${json['id']}, Type: ${json['type']}');
-      
+      print(
+          'Message.fromJson: 開始解析消息 - ID: ${json['id']}, Type: ${json['type']}');
+
       final messageType = _parseMessageType(json['type']);
-      
+
       // 🔥 詳細記錄所有消息的解析過程
       print('Message.fromJson: 消息詳情:');
       print('  - ID: ${json['id']}');
@@ -43,7 +47,7 @@ class Message {
       print('  - Sender: ${json['sender_name']}');
       print('  - Timestamp: ${json['timestamp']}');
       print('  - Room: ${json['room']}');
-      
+
       // 🔥 語音消息特別處理
       if (messageType == MessageType.voice) {
         print('  - 語音消息額外字段:');
@@ -63,20 +67,35 @@ class Message {
         });
       }
 
+      final rawContent = json['content']?.toString() ??
+          (messageType == MessageType.voice ? '[語音消息]' : '');
+      // Check for both Traditional and Simplified Chinese error messages
+      final isDecryptionError =
+          rawContent.contains('[讯息無法解密]') || rawContent.contains('[讯息无法解密]');
+
       final message = Message(
-        id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        id: json['id']?.toString() ??
+            DateTime.now().millisecondsSinceEpoch.toString(),
         senderId: json['sender_id']?.toString() ?? '',
         senderName: json['sender_name']?.toString() ?? '未知用戶',
-        content: json['content']?.toString() ?? (messageType == MessageType.voice ? '[語音消息]' : ''),
+        content: rawContent,
         timestamp: json['timestamp'] != null
             ? DateTime.parse(json['timestamp'].toString())
             : DateTime.now(),
         roomId: json['room']?.toString() ?? '',
         type: messageType,
-        fileUrl: (messageType == MessageType.voice || messageType == MessageType.image) ? json['file_url']?.toString() : null,
-        duration: messageType == MessageType.voice ? _parseIntField(json['duration']) : null,
-        fileSize: messageType == MessageType.voice ? _parseIntField(json['file_size']) : null,
-        reactions: reactions, // ✅ 賦值 reactions
+        fileUrl: (messageType == MessageType.voice ||
+                messageType == MessageType.image)
+            ? json['file_url']?.toString()
+            : null,
+        duration: messageType == MessageType.voice
+            ? _parseIntField(json['duration'])
+            : null,
+        fileSize: messageType == MessageType.voice
+            ? _parseIntField(json['file_size'])
+            : null,
+        reactions: reactions,
+        isDecryptionError: isDecryptionError, // ✅ Set flag
       );
 
       // 🔥 嚴格驗證語音消息的完整性
@@ -95,7 +114,8 @@ class Message {
           );
         }
         if (message.duration == null || message.duration! <= 0) {
-          print('Message.fromJson: ⚠️ 語音消息時長無效，ID: ${message.id}, Duration: ${message.duration}');
+          print(
+              'Message.fromJson: ⚠️ 語音消息時長無效，ID: ${message.id}, Duration: ${message.duration}');
           return Message(
             id: message.id,
             senderId: message.senderId,
@@ -110,21 +130,25 @@ class Message {
             reactions: message.reactions,
           );
         }
-        print('Message.fromJson: ✅ 語音消息解析成功 - ID: ${message.id}, URL: ${message.fileUrl}');
+        print(
+            'Message.fromJson: ✅ 語音消息解析成功 - ID: ${message.id}, URL: ${message.fileUrl}');
       }
 
-      print('Message.fromJson: ✅ 消息解析完成 - ID: ${message.id}, Type: ${message.type}');
+      print(
+          'Message.fromJson: ✅ 消息解析完成 - ID: ${message.id}, Type: ${message.type}');
       return message;
     } catch (e) {
       print('Message.fromJson: ❌ 解析失敗 - Error: $e');
       print('Message.fromJson: 原始數據 - $json');
-      
+
       return Message(
-        id: json['id']?.toString() ?? 'error_${DateTime.now().millisecondsSinceEpoch}',
+        id: json['id']?.toString() ??
+            'error_${DateTime.now().millisecondsSinceEpoch}',
         senderId: json['sender_id']?.toString() ?? '',
         senderName: json['sender_name']?.toString() ?? '未知用戶',
         content: '[消息解析失敗: ${e.toString()}]',
-        timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
+        timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ??
+            DateTime.now(),
         roomId: json['room']?.toString() ?? '',
         type: MessageType.text,
       );
@@ -208,7 +232,8 @@ class Message {
       if (fileUrl != null) 'file_url': fileUrl,
       if (duration != null) 'duration': duration,
       if (fileSize != null) 'file_size': fileSize,
-      'reactions': reactions, // ✅ 添加 reactions 到 JSON
+      'reactions': reactions,
+      'is_decryption_error': isDecryptionError,
     };
   }
 
@@ -225,6 +250,7 @@ class Message {
     int? duration,
     int? fileSize,
     Map<String, List<String>>? reactions,
+    bool? isDecryptionError,
   }) {
     return Message(
       id: id ?? this.id,
@@ -238,12 +264,13 @@ class Message {
       duration: duration ?? this.duration,
       fileSize: fileSize ?? this.fileSize,
       reactions: reactions ?? this.reactions,
+      isDecryptionError: isDecryptionError ?? this.isDecryptionError,
     );
   }
 
   @override
   String toString() {
-    return 'Message(id: $id, senderId: $senderId, senderName: $senderName, content: $content, roomId: $roomId, type: $type, reactions: $reactions)';
+    return 'Message(id: $id, senderId: $senderId, senderName: $senderName, content: $content, roomId: $roomId, type: $type, reactions: $reactions, isDecryptionError: $isDecryptionError)';
   }
 }
 

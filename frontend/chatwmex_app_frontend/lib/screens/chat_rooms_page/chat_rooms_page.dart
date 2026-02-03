@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Local Imports
 import 'dialogs/app_options_dialog.dart';
@@ -31,7 +33,8 @@ class ChatRoomsPage extends StatefulWidget {
   State<ChatRoomsPage> createState() => _ChatRoomsPageState();
 }
 
-class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateMixin {
+class _ChatRoomsPageState extends State<ChatRoomsPage>
+    with TickerProviderStateMixin {
   // Controllers and Services
   final _searchController = TextEditingController();
   final _chatService = ChatService();
@@ -41,7 +44,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
   final List<ChatRoom> _chatRooms = [];
   final List<ChatRoom> _filteredChatRooms = [];
   final Set<String> _joinedRooms = <String>{};
-  
+
   bool _isLoading = true;
   bool _isConnected = false;
   String? _currentUserId;
@@ -79,7 +82,11 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
   Future<void> _initializeApp() async {
     try {
       await _notificationService.initialize();
-      await _notificationService.requestNotificationPermission();
+      final status = await _notificationService.requestNotificationPermission();
+
+      if (status.isPermanentlyDenied && mounted) {
+        await _checkAndShowPermissionDialog();
+      }
 
       final userInfo = await TokenStorage.getUser();
       if (mounted) {
@@ -116,17 +123,76 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
     }
   }
 
+  Future<void> _checkAndShowPermissionDialog() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastDeniedTime =
+          prefs.getInt('notification_permission_denied_time');
+      
+      // 如果用戶在過去 24 小時內點擊過"暫不開啟"，則不再顯示
+      if (lastDeniedTime != null) {
+        final lastDeniedDate = DateTime.fromMillisecondsSinceEpoch(lastDeniedTime);
+        final difference = DateTime.now().difference(lastDeniedDate);
+        if (difference.inHours < 24) {
+          return;
+        }
+      }
+
+      if (mounted) {
+        _showPermissionRecoveryDialog();
+      }
+    } catch (e) {
+      print('Error checking permission dialog prefs: $e');
+      // Fallback to showing dialog if prefs fail
+      if (mounted) _showPermissionRecoveryDialog();
+    }
+  }
+
+  void _showPermissionRecoveryDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('開啟通知'),
+        content: const Text('為了讓您即時收到好友訊息，請在設定中開啟通知權限。'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setInt('notification_permission_denied_time',
+                    DateTime.now().millisecondsSinceEpoch);
+              } catch (e) {
+                print('Error saving permission denied time: $e');
+              }
+            },
+            child: const Text('暫不開啟'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              openAppSettings();
+            },
+            child: const Text('前往設定'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _setupChatServiceCallbacks() {
     _chatService.unregisterConnectionListener('chat_rooms_page');
     _chatService.unregisterMessageListener('chat_rooms_page');
-    
-    _chatService.registerConnectionListener('chat_rooms_page', _onConnectionChanged);
-    _chatService.registerMessageListener('chat_rooms_page', _onNewMessageReceived);
+
+    _chatService.registerConnectionListener(
+        'chat_rooms_page', _onConnectionChanged);
+    _chatService.registerMessageListener(
+        'chat_rooms_page', _onNewMessageReceived);
   }
 
   Future<void> _loadChatRooms() async {
     if (_isDisposed || !mounted) return;
-    
+
     if (_chatRooms.isEmpty) {
       setState(() => _isLoading = true);
     }
@@ -134,7 +200,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
     try {
       final rooms = await api_service.ChatApiService.getChatRooms();
       if (_isDisposed || !mounted) return;
-      
+
       final processedRooms = await _processRoomNames(rooms);
       if (_isDisposed || !mounted) return;
 
@@ -152,9 +218,9 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
           _filterChatRooms(_searchController.text);
           _isLoading = false;
         });
-        
+
         _chatService.updateChatRoomNames(_chatRooms);
-        
+
         if (_chatService.isConnected) {
           Timer(const Duration(milliseconds: 500), () {
             if (mounted && _chatService.isConnected && !_isDisposed) {
@@ -171,33 +237,34 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('載入聊天室失敗: $e'),
-            backgroundColor: e.toString().contains('SocketException') || 
-                           e.toString().contains('NetworkException') || 
-                           e.toString().contains('timeout') 
-                ? Colors.orange 
+            backgroundColor: e.toString().contains('SocketException') ||
+                    e.toString().contains('NetworkException') ||
+                    e.toString().contains('timeout')
+                ? Colors.orange
                 : Colors.red,
           ),
         );
       }
     }
   }
-  
+
   Future<List<ChatRoom>> _fetchLastMessages(List<ChatRoom> rooms) async {
     List<ChatRoom> updatedRooms = [];
     for (final room in rooms) {
       if (_isDisposed || !mounted) return updatedRooms;
-      
+
       try {
-        final messages = await api_service.ChatApiService.getChatHistory(room.id, limit: 1);
+        final messages =
+            await api_service.ChatApiService.getChatHistory(room.id, limit: 1);
         if (_isDisposed || !mounted) return updatedRooms;
-        
+
         if (messages.isNotEmpty) {
           final lastMessage = messages.first;
-          String displayContent = lastMessage.type == 'voice' ? '[語音消息]' : lastMessage.content;
+          String displayContent =
+              lastMessage.type == 'voice' ? '[語音消息]' : lastMessage.content;
           updatedRooms.add(room.copyWith(
-            lastMessage: displayContent, 
-            lastMessageTime: lastMessage.timestamp
-          ));
+              lastMessage: displayContent,
+              lastMessageTime: lastMessage.timestamp));
         } else {
           updatedRooms.add(room);
         }
@@ -213,10 +280,10 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
     if (_currentUserId == null || _currentUsername == null) {
       return rooms;
     }
-    
+
     List<Future<ChatRoom>> correctionFutures = [];
     List<ChatRoom> correctRooms = [];
-    
+
     for (final room in rooms) {
       if (!room.isGroup &&
           room.name == _currentUsername &&
@@ -226,7 +293,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
         correctRooms.add(room);
       }
     }
-    
+
     if (correctionFutures.isNotEmpty) {
       final correctedRooms = await Future.wait(correctionFutures);
       return [...correctRooms, ...correctedRooms];
@@ -235,9 +302,11 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
     }
   }
 
-  Future<ChatRoom> _getCorrectedRoom(ChatRoom room, String currentUserId) async {
+  Future<ChatRoom> _getCorrectedRoom(
+      ChatRoom room, String currentUserId) async {
     try {
-      final messages = await api_service.ChatApiService.getChatHistory(room.id, limit: 5);
+      final messages =
+          await api_service.ChatApiService.getChatHistory(room.id, limit: 5);
       final otherUserMessage = messages.firstWhere(
         (msg) => msg.senderId != currentUserId,
         orElse: () => Message(
@@ -266,46 +335,50 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
       }
     }
   }
-  
+
   void _onNewMessageReceived(Message message) {
     if (_isDisposed || !mounted) return;
-    
+
     print('=== ChatRoomsPage 收到消息調試 ===');
     print('消息來源房間: ${message.roomId}, 發送者: ${message.senderName}');
     print('是否為自己的消息: ${_isMyMessage(message)}');
     print('================================');
-    
+
     if (message.id.isEmpty || message.content.isEmpty) {
       print('ChatRoomsPage: 收到無效訊息，跳過');
       return;
     }
 
     _chatService.updateChatRoomNames(_chatRooms);
-    
+
     _safeSetState(() {
-      final roomIndex = _chatRooms.indexWhere((room) => room.id == message.roomId);
+      final roomIndex =
+          _chatRooms.indexWhere((room) => room.id == message.roomId);
       if (roomIndex != -1) {
         final room = _chatRooms[roomIndex];
-        String displayContent = message.type == 'voice' ? '[語音消息]' : message.content;
-        
+        String displayContent =
+            message.type == 'voice' ? '[語音消息]' : message.content;
+
         // 檢查是否為重複消息
         if (room.lastMessage == displayContent &&
             room.lastMessageTime.isAtSameMomentAs(message.timestamp)) {
           print('ChatRoomsPage: 檢測到重複訊息，跳過');
           return;
         }
-        
+
         final updatedRoom = room.copyWith(
           lastMessage: displayContent,
           lastMessageTime: message.timestamp,
-          unreadCount: _isMyMessage(message) ? room.unreadCount : room.unreadCount + 1,
+          unreadCount:
+              _isMyMessage(message) ? room.unreadCount : room.unreadCount + 1,
         );
-        
+
         _chatRooms.removeAt(roomIndex);
         _chatRooms.insert(0, updatedRoom);
         _filterChatRooms(_searchController.text);
-        
-        print('ChatRoomsPage: 更新聊天室: ${updatedRoom.name}, 新消息: ${updatedRoom.lastMessage}, 未讀數: ${updatedRoom.unreadCount}');
+
+        print(
+            'ChatRoomsPage: 更新聊天室: ${updatedRoom.name}, 新消息: ${updatedRoom.lastMessage}, 未讀數: ${updatedRoom.unreadCount}');
       } else {
         print('ChatRoomsPage: 未找到對應聊天室 ${message.roomId}，重新載入列表');
         _loadChatRooms();
@@ -317,11 +390,12 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
     }
   }
 
-  bool _isMyMessage(Message message) => _currentUserId != null && message.senderId == _currentUserId;
+  bool _isMyMessage(Message message) =>
+      _currentUserId != null && message.senderId == _currentUserId;
 
   void _filterChatRooms(String query) {
     if (_isDisposed || !mounted) return;
-    
+
     setState(() {
       _filteredChatRooms.clear();
       if (query.isEmpty) {
@@ -331,7 +405,8 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
             room.name.toLowerCase().contains(query.toLowerCase()) ||
             room.lastMessage.toLowerCase().contains(query.toLowerCase())));
       }
-      _filteredChatRooms.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
+      _filteredChatRooms
+          .sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
     });
   }
 
@@ -366,7 +441,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
       }
     }
   }
-  
+
   void _handleMarkAsRead(String roomId) {
     if (!mounted || _isDisposed) return;
     setState(() {
@@ -399,7 +474,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
         duration: Duration(seconds: 3),
       ),
     );
-    
+
     try {
       await AppLifecycleService().manualRecover();
       await _loadChatRooms();
@@ -431,13 +506,13 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
       setState(fn);
     }
   }
-  
+
   void _joinAllChatRooms() {
     if (_isDisposed || !_chatService.isConnected) {
       print('ChatRoomsPage: 頁面已銷毀或服務未連接，跳過加入聊天室');
       return;
     }
-    
+
     if (_chatService.isConnected) {
       for (final room in _chatRooms) {
         if (!_joinedRooms.contains(room.id)) {
@@ -455,7 +530,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
       });
     }
   }
-  
+
   void _cleanupJoinedRooms() {
     print('ChatRoomsPage: 清理 ${_joinedRooms.length} 個已加入的聊天室');
     for (final roomId in _joinedRooms) {
@@ -467,18 +542,21 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
 
   void _showNewMessageNotification(Message message) async {
     try {
-      final roomIndex = _chatRooms.indexWhere((room) => room.id == message.roomId);
+      final roomIndex =
+          _chatRooms.indexWhere((room) => room.id == message.roomId);
       String chatRoomName = '聊天室';
 
       if (roomIndex != -1) {
         chatRoomName = _chatRooms[roomIndex].name;
       } else {
-        chatRoomName = message.senderName.isNotEmpty ? message.senderName : '未知聊天室';
+        chatRoomName =
+            message.senderName.isNotEmpty ? message.senderName : '未知聊天室';
       }
 
       print('ChatRoomsPage: 準備顯示通知 - 來自 ${message.senderName} 在 $chatRoomName');
-      print('ChatRoomsPage: 當前活躍聊天室: ${_notificationService.currentActiveChatRoom}');
-      
+      print(
+          'ChatRoomsPage: 當前活躍聊天室: ${_notificationService.currentActiveChatRoom}');
+
       await _notificationService.showChatNotification(
         message: message,
         chatRoomName: chatRoomName,
@@ -497,8 +575,10 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
       appBar: _buildAppBar(),
       body: Column(
         children: [
-          ConnectionStatusBar(isConnected: _isConnected, onReconnect: _handleReconnect),
-          SearchBarWidget(controller: _searchController, onChanged: _filterChatRooms),
+          ConnectionStatusBar(
+              isConnected: _isConnected, onReconnect: _handleReconnect),
+          SearchBarWidget(
+              controller: _searchController, onChanged: _filterChatRooms),
           Expanded(
             child: ChatRoomListView(
               isLoading: _isLoading,
@@ -518,7 +598,8 @@ class _ChatRoomsPageState extends State<ChatRoomsPage> with TickerProviderStateM
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => showCreateChatDialog(context, _currentUserId, (newRoom) {
+        onPressed: () =>
+            showCreateChatDialog(context, _currentUserId, (newRoom) {
           _loadChatRooms().then((_) => _openChatDetail(newRoom));
         }),
         child: const Icon(Icons.edit),
