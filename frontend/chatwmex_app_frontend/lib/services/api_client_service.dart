@@ -19,6 +19,7 @@ class ApiClientService {
   late Dio dio;
   SharedPreferences? _prefs;
   Timer? _tokenRefreshTimer; // 🔥 用於主動刷新 Token 的定時器
+  DateTime? _lastRefreshTime; // 🔥 上次刷新 Token 的時間
 
   bool _isRefreshing = false;
   bool _isLoggingOut = false;
@@ -275,7 +276,8 @@ class ApiClientService {
     if (refreshToken != null && refreshToken.isNotEmpty) {
       await _prefs!.setString(_refreshTokenKey, refreshToken);
     }
-    print("✅ [ApiClientService] Tokens saved.");
+    _lastRefreshTime = DateTime.now(); // 🔥 記錄刷新時間
+    print("✅ [ApiClientService] Tokens saved. Last refresh: $_lastRefreshTime");
     _authEventController.add(accessToken);
     _startTokenRefreshTimer(); // 🔥 儲存新 Token 後，重置並啟動定時器
   }
@@ -491,6 +493,8 @@ class _AuthInterceptor extends Interceptor {
     final accessToken = apiClient.getAccessToken();
     if (accessToken != null && accessToken.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $accessToken';
+      // 🔥 Debug Log: Verify Authorization header is set
+      // print("🔑 [Interceptor] Attaching Token to ${options.path}: ${accessToken.substring(0, 10)}...");
     }
     return handler.next(options);
   }
@@ -537,6 +541,21 @@ class _AuthInterceptor extends Interceptor {
 
       print("⚠️ [Interceptor] 401 detected, attempting token refresh...");
 
+      // 🔥 Check if token was just refreshed (within 10s) to prevent infinite loop
+      // If the token in the request matches the current token, and we refreshed recently,
+      // it means the new token is also invalid (e.g., user blocked).
+      final isTokenMatch = requestToken == currentToken;
+      if (apiClient._lastRefreshTime != null &&
+          DateTime.now().difference(apiClient._lastRefreshTime!).inSeconds <
+              10) {
+        if (isTokenMatch) {
+          print(
+              "❌ [Interceptor] Loop detected: Freshly refreshed token (${apiClient._lastRefreshTime}) still returns 401. Forcing logout.");
+          await apiClient.clearTokensAndLogout();
+          return handler.reject(err);
+        }
+      }
+
       if (!apiClient._isRefreshing) {
         apiClient._isRefreshing = true;
 
@@ -550,7 +569,16 @@ class _AuthInterceptor extends Interceptor {
             apiClient._processQueue(newAccessToken);
 
             final options = err.requestOptions;
+
+            // 🔥 Ensure Authorization header is updated with the NEW token
             options.headers['Authorization'] = 'Bearer $newAccessToken';
+
+            print("🔍 [Interceptor] Retry Header Check:");
+            print(
+                "   Old Auth Header: ${requestTokenHeader?.substring(0, 10)}...");
+            print("   New Access Token: ${newAccessToken.substring(0, 10)}...");
+            print(
+                "   Updated Header: ${options.headers['Authorization']?.substring(0, 10)}...");
 
             try {
               final response = await apiClient.dio.fetch(options);

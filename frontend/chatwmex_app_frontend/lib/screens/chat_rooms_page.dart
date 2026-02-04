@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import '../models/chat_room.dart';
 import '../models/user.dart';
@@ -40,11 +41,11 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
+
   // 資源追蹤
   final List<StreamSubscription> _subscriptions = [];
   bool _isDisposed = false;
-  
+
   // 🔥 修正：將 _joinedRooms 的定義移至 class 頂部，解決變數未定義的問題
   final Set<String> _joinedRooms = <String>{};
 
@@ -93,7 +94,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
     _cancelAllSubscriptions();
 
     // 7. 清理通知服務的聊天室引用
-_notificationService.clearAllNotifications();
+    _notificationService.clearAllNotifications();
 
     // 8. 停止背景同步（如果只有這個頁面在使用）
     _stopBackgroundSyncIfNeeded();
@@ -153,18 +154,62 @@ _notificationService.clearAllNotifications();
     // _subscriptions.add(networkSubscription);
   }
 
+  // 🔥 新增：顯示權限被永久拒絕的對話框
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // 用戶必須做出選擇
+      builder: (context) => AlertDialog(
+        title: const Text('需要通知權限'),
+        content: const Text('為了讓您及時收到新消息通知，請在設置中開啟通知權限。'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              print('ChatRoomsPage: 用戶選擇暫不開啟權限');
+            },
+            child: const Text('暫不開啟', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _notificationService.openAppSettings();
+            },
+            child: const Text('前往設置'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _initializeApp() async {
     try {
-      // 初始化通知服務並請求權限
+      // 初始化通知服務
       await _notificationService.initialize();
       print('ChatRoomsPage: 通知服務初始化完成');
-      final hasPermission =
-          await _notificationService.checkNotificationPermission();
-      print('ChatRoomsPage: 通知權限狀態: $hasPermission');
-      if (!hasPermission) {
-        final granted =
-            await _notificationService.requestNotificationPermission();
-        print('ChatRoomsPage: 權限請求結果: $granted');
+
+      // 🔥 改進權限檢查邏輯
+      var status = await Permission.notification.status;
+      print('ChatRoomsPage: 初始通知權限狀態: $status');
+
+      if (status.isGranted) {
+        print('ChatRoomsPage: 通知權限已授予');
+      } else if (status.isPermanentlyDenied) {
+        print('ChatRoomsPage: 通知權限已被永久拒絕，顯示引導對話框');
+        if (mounted) {
+          _showPermissionDeniedDialog();
+        }
+      } else {
+        // 其他狀態（如 denied, restricted），嘗試請求權限
+        print('ChatRoomsPage: 嘗試請求通知權限...');
+        status = await _notificationService.requestNotificationPermission();
+        print('ChatRoomsPage: 權限請求結果: $status');
+
+        if (status.isPermanentlyDenied) {
+          if (mounted) {
+            _showPermissionDeniedDialog();
+          }
+        }
       }
 
       final userInfo = await TokenStorage.getUser();
@@ -287,8 +332,9 @@ _notificationService.clearAllNotifications();
     _chatRooms.removeAt(roomIndex);
     _chatRooms.insert(0, updatedRoom);
     _filterChatRooms(_searchController.text);
-    
-    print('ChatRoomsPage: 更新聊天室: ${updatedRoom.name}, 新消息: ${updatedRoom.lastMessage}, 未讀數: ${updatedRoom.unreadCount}');
+
+    print(
+        'ChatRoomsPage: 更新聊天室: ${updatedRoom.name}, 新消息: ${updatedRoom.lastMessage}, 未讀數: ${updatedRoom.unreadCount}');
   }
 
   // 🔥 修正：改進消息接收處理流程，移除重複的 setState 調用
@@ -302,7 +348,7 @@ _notificationService.clearAllNotifications();
     print('消息來源房間: ${message.roomId}, 發送者: ${message.senderName}');
     print('是否為自己的消息: ${_isMyMessage(message)}');
     print('================================');
-    
+
     if (message.id.isEmpty || message.content.isEmpty) {
       print('ChatRoomsPage: 收到無效訊息，跳過');
       return;
@@ -313,7 +359,8 @@ _notificationService.clearAllNotifications();
 
     // 使用安全的狀態更新，並將所有 UI 變更集中在此
     _safeSetState(() {
-      final roomIndex = _chatRooms.indexWhere((room) => room.id == message.roomId);
+      final roomIndex =
+          _chatRooms.indexWhere((room) => room.id == message.roomId);
       if (roomIndex != -1) {
         print('ChatRoomsPage: 找到對應聊天室，索引: $roomIndex');
         _updateRoomWithNewMessage(roomIndex, message);
@@ -349,8 +396,9 @@ _notificationService.clearAllNotifications();
       }
 
       print('ChatRoomsPage: 準備顯示通知 - 來自 ${message.senderName} 在 $chatRoomName');
-      print('ChatRoomsPage: 當前活躍聊天室: ${_notificationService.currentActiveChatRoom}');
-      
+      print(
+          'ChatRoomsPage: 當前活躍聊天室: ${_notificationService.currentActiveChatRoom}');
+
       await _notificationService.showChatNotification(
         message: message,
         chatRoomName: chatRoomName,
@@ -367,34 +415,34 @@ _notificationService.clearAllNotifications();
       print('ChatRoomsPage: 頁面已銷毀，取消載入聊天室');
       return;
     }
-    
+
     if (_chatRooms.isEmpty) {
       setState(() {
         _isLoading = true;
       });
     }
-    
+
     try {
       print('ChatRoomsPage: 開始載入聊天室...');
       final rooms = await api_service.ChatApiService.getChatRooms();
-      
+
       if (_isDisposed || !mounted) return;
-      
+
       final processedRooms = await _processRoomNames(rooms);
-      
+
       if (_isDisposed || !mounted) return;
-      
+
       final updatedRooms = <ChatRoom>[];
       for (final room in processedRooms) {
         if (_isDisposed || !mounted) return;
-        
+
         try {
           final messages = await api_service.ChatApiService.getChatHistory(
               room.id,
               limit: 1);
-              
+
           if (_isDisposed || !mounted) return;
-          
+
           if (messages.isNotEmpty) {
             final lastMessage = messages.first;
             String displayContent = lastMessage.content;
@@ -528,7 +576,7 @@ _notificationService.clearAllNotifications();
 
   void _filterChatRooms(String query) {
     if (_isDisposed || !mounted) return;
-    
+
     setState(() {
       if (query.isEmpty) {
         _filteredChatRooms.clear();
@@ -1319,18 +1367,22 @@ _notificationService.clearAllNotifications();
                       ),
                       onChanged: (query) {
                         if (_debounce?.isActive ?? false) _debounce!.cancel();
-                        _debounce = Timer(const Duration(milliseconds: 500), () async {
+                        _debounce =
+                            Timer(const Duration(milliseconds: 500), () async {
                           if (query.length >= 2) {
                             setBottomSheetState(() {
                               isSearching = true;
                             });
                             try {
-                              final users = await api_service.ChatApiService.searchUsers(query);
+                              final users =
+                                  await api_service.ChatApiService.searchUsers(
+                                      query);
                               setBottomSheetState(() {
                                 searchResults = users
                                     .where((user) =>
                                         user.id != _currentUserId &&
-                                        !selectedMembers.any((m) => m.id == user.id))
+                                        !selectedMembers
+                                            .any((m) => m.id == user.id))
                                     .toList();
                                 isSearching = false;
                               });
@@ -1366,7 +1418,9 @@ _notificationService.clearAllNotifications();
                             label: Text(member.username),
                             avatar: CircleAvatar(
                               backgroundColor: _getAvatarColor(member.username),
-                              child: Text(member.initials, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                              child: Text(member.initials,
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 12)),
                             ),
                             onDeleted: () {
                               setBottomSheetState(() {
@@ -1390,7 +1444,8 @@ _notificationService.clearAllNotifications();
                           return ListTile(
                             leading: CircleAvatar(
                               backgroundColor: _getAvatarColor(user.username),
-                              child: Text(user.initials, style: const TextStyle(color: Colors.white)),
+                              child: Text(user.initials,
+                                  style: const TextStyle(color: Colors.white)),
                             ),
                             title: Text(user.username),
                             subtitle: Text(user.email),
@@ -1433,7 +1488,6 @@ _notificationService.clearAllNotifications();
       ),
     );
   }
-
 
   Future<void> _createPrivateChat(User user) async {
     try {

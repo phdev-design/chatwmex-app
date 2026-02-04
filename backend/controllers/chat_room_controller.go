@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"chatwme/backend/middleware"
@@ -13,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -51,9 +53,30 @@ func GetChatRooms(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+	page := 1
+	limit := 50
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	skip := (page - 1) * limit
+
 	// 按最後消息時間降序排序
 	findOptions := options.Find()
 	findOptions.SetSort(bson.D{{Key: "last_message_time", Value: -1}})
+	findOptions.SetLimit(int64(limit))
+	findOptions.SetSkip(int64(skip))
 
 	cursor, err := roomCollection.Find(ctx, filter, findOptions)
 	if err != nil {
@@ -259,6 +282,12 @@ func InviteToRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userObjectID, err := primitive.ObjectIDFromHex(req.UserID)
+	if err != nil {
+		http.Error(w, `{"error": "無效的用戶 ID"}`, http.StatusBadRequest)
+		return
+	}
+
 	// 轉換為 ObjectID
 	objectID, err := primitive.ObjectIDFromHex(roomID)
 	if err != nil {
@@ -272,8 +301,19 @@ func InviteToRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roomCollection := store.Collection("chat_rooms")
+	userCollection := store.Collection("users")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	if err := userCollection.FindOne(ctx, bson.M{"_id": userObjectID}).Err(); err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.Error(w, `{"error": "用戶不存在"}`, http.StatusNotFound)
+			return
+		}
+		log.Printf("Error finding invited user %s: %v", req.UserID, err)
+		http.Error(w, `{"error": "查詢用戶時發生錯誤"}`, http.StatusInternalServerError)
+		return
+	}
 
 	// 添加用戶到參與者列表
 	filter := bson.M{

@@ -2,8 +2,7 @@ package websockets
 
 import (
 	"context"
-
-	// "encoding/json"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -31,6 +30,46 @@ type ChatMessagePayload struct {
 	Timestamp string `json:"timestamp"`
 }
 
+func toInt(value interface{}) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case float32:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i)
+		}
+	}
+	return 0
+}
+
+func toInt64(value interface{}) int64 {
+	switch v := value.(type) {
+	case int:
+		return int64(v)
+	case int32:
+		return int64(v)
+	case int64:
+		return v
+	case float32:
+		return int64(v)
+	case float64:
+		return int64(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i
+		}
+	}
+	return 0
+}
+
 // NewSocketIOServer 建立并配置一个新的 Socket.IO 伺服器
 func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio.RedisAdapterOptions) *socketio.Server {
 	server := socketio.NewServer(nil)
@@ -54,21 +93,94 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
+		messageID, _ := payload["id"].(string)
+		fileURL, ok := payload["file_url"].(string)
+		if !ok || fileURL == "" {
+			log.Printf("Invalid file_url in voice message from %s", user.Username)
+			return
+		}
+
+		roomObjectID, err := primitive.ObjectIDFromHex(room)
+		if err != nil {
+			log.Printf("Invalid room ID in voice message: %s", room)
+			return
+		}
+
+		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer authCancel()
+
+		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
+		if err != nil || !isMember {
+			log.Printf("Unauthorized voice message attempt by %s in room %s", user.ID, room)
+			return
+		}
+
+		duration := toInt(payload["duration"])
+		fileSize := toInt64(payload["file_size"])
+		voiceInfo := map[string]interface{}{
+			"file_url":  fileURL,
+			"duration":  duration,
+			"file_size": fileSize,
+			"type":      "voice",
+		}
+
+		voiceContentBytes, err := json.Marshal(voiceInfo)
+		if err != nil {
+			log.Printf("Failed to marshal voice message content: %v", err)
+			return
+		}
+
+		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer messageCancel()
+
+		savedMessage, inserted, err := chatService.SaveMessageWithID(
+			messageCtx,
+			messageID,
+			user.ID,
+			user.Username,
+			room,
+			string(voiceContentBytes),
+			"voice",
+			fileURL,
+			duration,
+			fileSize,
+		)
+		if err != nil {
+			log.Printf("Failed to save voice message: %v", err)
+			return
+		}
+
+		broadcastTimestamp, _ := payload["timestamp"].(string)
+		if inserted {
+			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
+		} else if broadcastTimestamp == "" {
+			broadcastTimestamp = time.Now().Format(time.RFC3339)
+		}
+
 		// 廣播語音消息給房間內所有用戶
 		voiceMessageData := map[string]interface{}{
-			"id":          payload["id"],
+			"id":          savedMessage.ID.Hex(),
 			"sender_id":   user.ID,
 			"sender_name": user.Username,
 			"room":        room,
-			"file_url":    payload["file_url"],
-			"duration":    payload["duration"],
-			"file_size":   payload["file_size"],
-			"timestamp":   payload["timestamp"],
+			"file_url":    fileURL,
+			"duration":    duration,
+			"file_size":   fileSize,
+			"timestamp":   broadcastTimestamp,
 			"type":        "voice",
 		}
 
 		log.Printf("Broadcasting voice message from %s in room %s", user.Username, room)
 		server.BroadcastToRoom("/", room, "voice_message", voiceMessageData)
+		if inserted {
+			go func(ts time.Time) {
+				updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer updateCancel()
+				if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[语音消息]", ts); err != nil {
+					log.Printf("Failed to update room last message: %v", err)
+				}
+			}(savedMessage.Timestamp)
+		}
 	})
 
 	// 🔥 新增：支持图片消息广播
@@ -85,19 +197,88 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
+		messageID, _ := payload["id"].(string)
+		fileURL, ok := payload["file_url"].(string)
+		if !ok || fileURL == "" {
+			log.Printf("Invalid file_url in image message from %s", user.Username)
+			return
+		}
+
+		roomObjectID, err := primitive.ObjectIDFromHex(room)
+		if err != nil {
+			log.Printf("Invalid room ID in image message: %s", room)
+			return
+		}
+
+		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer authCancel()
+
+		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
+		if err != nil || !isMember {
+			log.Printf("Unauthorized image message attempt by %s in room %s", user.ID, room)
+			return
+		}
+
+		imageInfo := map[string]interface{}{
+			"file_url": fileURL,
+			"type":     "image",
+		}
+
+		imageContentBytes, err := json.Marshal(imageInfo)
+		if err != nil {
+			log.Printf("Failed to marshal image message content: %v", err)
+			return
+		}
+
+		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer messageCancel()
+
+		savedMessage, inserted, err := chatService.SaveMessageWithID(
+			messageCtx,
+			messageID,
+			user.ID,
+			user.Username,
+			room,
+			string(imageContentBytes),
+			"image",
+			fileURL,
+			0,
+			0,
+		)
+		if err != nil {
+			log.Printf("Failed to save image message: %v", err)
+			return
+		}
+
+		broadcastTimestamp, _ := payload["timestamp"].(string)
+		if inserted {
+			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
+		} else if broadcastTimestamp == "" {
+			broadcastTimestamp = time.Now().Format(time.RFC3339)
+		}
+
 		// 广播图片消息给房间内所有用户
 		imageMessageData := map[string]interface{}{
-			"id":          payload["id"],
+			"id":          savedMessage.ID.Hex(),
 			"sender_id":   user.ID,
 			"sender_name": user.Username,
 			"room":        room,
-			"file_url":    payload["file_url"],
-			"timestamp":   payload["timestamp"],
+			"file_url":    fileURL,
+			"timestamp":   broadcastTimestamp,
 			"type":        "image",
 		}
 
 		log.Printf("Broadcasting image message from %s in room %s", user.Username, room)
 		server.BroadcastToRoom("/", room, "image_message", imageMessageData)
+		if inserted {
+			go func(ts time.Time) {
+				updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer updateCancel()
+				if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[图片]", ts); err != nil {
+					log.Printf("Failed to update room last message: %v", err)
+				}
+			}(savedMessage.Timestamp)
+		}
 	})
 
 	// 🔥 新增：支持视频消息广播
@@ -114,19 +295,92 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
+		messageID, _ := payload["id"].(string)
+		fileURL, ok := payload["file_url"].(string)
+		if !ok || fileURL == "" {
+			log.Printf("Invalid file_url in video message from %s", user.Username)
+			return
+		}
+
+		roomObjectID, err := primitive.ObjectIDFromHex(room)
+		if err != nil {
+			log.Printf("Invalid room ID in video message: %s", room)
+			return
+		}
+
+		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer authCancel()
+
+		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
+		if err != nil || !isMember {
+			log.Printf("Unauthorized video message attempt by %s in room %s", user.ID, room)
+			return
+		}
+
+		duration := toInt(payload["duration"])
+		fileSize := toInt64(payload["file_size"])
+		videoInfo := map[string]interface{}{
+			"file_url":  fileURL,
+			"duration":  duration,
+			"file_size": fileSize,
+			"type":      "video",
+		}
+
+		videoContentBytes, err := json.Marshal(videoInfo)
+		if err != nil {
+			log.Printf("Failed to marshal video message content: %v", err)
+			return
+		}
+
+		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer messageCancel()
+
+		savedMessage, inserted, err := chatService.SaveMessageWithID(
+			messageCtx,
+			messageID,
+			user.ID,
+			user.Username,
+			room,
+			string(videoContentBytes),
+			"video",
+			fileURL,
+			duration,
+			fileSize,
+		)
+		if err != nil {
+			log.Printf("Failed to save video message: %v", err)
+			return
+		}
+
+		broadcastTimestamp, _ := payload["timestamp"].(string)
+		if inserted {
+			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
+		} else if broadcastTimestamp == "" {
+			broadcastTimestamp = time.Now().Format(time.RFC3339)
+		}
+
 		// 广播视频消息给房间内所有用户
 		videoMessageData := map[string]interface{}{
-			"id":          payload["id"],
+			"id":          savedMessage.ID.Hex(),
 			"sender_id":   user.ID,
 			"sender_name": user.Username,
 			"room":        room,
-			"file_url":    payload["file_url"],
-			"timestamp":   payload["timestamp"],
+			"file_url":    fileURL,
+			"timestamp":   broadcastTimestamp,
 			"type":        "video",
 		}
 
 		log.Printf("Broadcasting video message from %s in room %s", user.Username, room)
 		server.BroadcastToRoom("/", room, "video_message", videoMessageData)
+		if inserted {
+			go func(ts time.Time) {
+				updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer updateCancel()
+				if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[视频]", ts); err != nil {
+					log.Printf("Failed to update room last message: %v", err)
+				}
+			}(savedMessage.Timestamp)
+		}
 	})
 
 	// 🔥 新增：处理 "mark_read" 事件
@@ -337,7 +591,6 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
-		// 🔥 檢查用戶是否被聊天室中的其他參與者封鎖
 		participants, err := chatService.GetRoomParticipants(authCtx, roomObjectID)
 		if err != nil {
 			log.Printf("Failed to get room participants for block check: %v", err)
@@ -345,17 +598,19 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
+		blockerIDs := make([]string, 0, len(participants))
 		for _, participantID := range participants {
-			if participantID == user.ID {
-				continue
+			if participantID != user.ID {
+				blockerIDs = append(blockerIDs, participantID)
 			}
-			isBlocked, err := chatService.IsUserBlocked(authCtx, participantID, user.ID)
+		}
+
+		if len(blockerIDs) > 0 {
+			isBlocked, err := chatService.IsUserBlockedByAny(authCtx, blockerIDs, user.ID)
 			if err != nil {
 				log.Printf("Error checking block status: %v", err)
-				continue
-			}
-			if isBlocked {
-				log.Printf("Message rejected: User %s is blocked by %s", user.ID, participantID)
+			} else if isBlocked {
+				log.Printf("Message rejected: User %s is blocked by a participant", user.ID)
 				respondError("blocked")
 				return
 			}
@@ -370,7 +625,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer messageCancel()
 
-		messageToSave, err := chatService.SaveMessage(messageCtx, user.ID, user.Username, payload.Room, payload.Content, messageType)
+		messageToSave, err := chatService.SaveMessage(messageCtx, user.ID, user.Username, payload.Room, payload.Content, messageType, "", 0, 0)
 		if err != nil {
 			log.Printf("Failed to save message to database: %v", err)
 			respondError("message_save_failed")

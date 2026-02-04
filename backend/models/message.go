@@ -13,6 +13,9 @@ type Message struct {
 	SenderName string             `bson:"sender_name" json:"sender_name"` // 新增：发送者用户名
 	Room       string             `bson:"room" json:"room"`
 	Content    string             `bson:"content" json:"content"`
+	FileURL    string             `bson:"file_url,omitempty" json:"file_url,omitempty"`
+	Duration   int                `bson:"duration,omitempty" json:"duration,omitempty"`
+	FileSize   int64              `bson:"file_size,omitempty" json:"file_size,omitempty"`
 	Timestamp  time.Time          `bson:"timestamp" json:"timestamp"`
 	Type       string             `bson:"type" json:"type"`                                 // 新增：消息类型
 	IsDeleted  bool               `bson:"is_deleted" json:"is_deleted"`                     // 新增：是否已刪除

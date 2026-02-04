@@ -25,7 +25,7 @@ func NewChatService(store database.Store, encryptionKey []byte) *ChatService {
 	}
 }
 
-func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roomID, content, messageType string) (models.Message, error) {
+func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roomID, content, messageType, fileURL string, duration int, fileSize int64) (models.Message, error) {
 	encryptedContent, err := utils.Encrypt(content, s.encryptionKey)
 	if err != nil {
 		return models.Message{}, err
@@ -37,6 +37,9 @@ func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roo
 		SenderName: senderName,
 		Room:       roomID,
 		Content:    encryptedContent,
+		FileURL:    fileURL,
+		Duration:   duration,
+		FileSize:   fileSize,
 		Timestamp:  time.Now(),
 		Type:       messageType,
 	}
@@ -47,6 +50,41 @@ func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roo
 	}
 
 	return message, nil
+}
+
+func (s *ChatService) SaveMessageWithID(ctx context.Context, messageIDHex, senderID, senderName, roomID, content, messageType, fileURL string, duration int, fileSize int64) (models.Message, bool, error) {
+	encryptedContent, err := utils.Encrypt(content, s.encryptionKey)
+	if err != nil {
+		return models.Message{}, false, err
+	}
+
+	messageID, err := primitive.ObjectIDFromHex(messageIDHex)
+	if err != nil {
+		messageID = primitive.NewObjectID()
+	}
+
+	message := models.Message{
+		ID:         messageID,
+		SenderID:   senderID,
+		SenderName: senderName,
+		Room:       roomID,
+		Content:    encryptedContent,
+		FileURL:    fileURL,
+		Duration:   duration,
+		FileSize:   fileSize,
+		Timestamp:  time.Now(),
+		Type:       messageType,
+	}
+
+	collection := s.store.Collection("messages")
+	if _, err := collection.InsertOne(ctx, message); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return message, false, nil
+		}
+		return models.Message{}, false, err
+	}
+
+	return message, true, nil
 }
 
 func (s *ChatService) UpdateRoomLastMessage(ctx context.Context, roomID primitive.ObjectID, lastMessage string, lastMessageTime time.Time) error {
@@ -109,6 +147,18 @@ func (s *ChatService) IsUserBlocked(ctx context.Context, blockerID, blockedID st
 	collection := s.store.Collection("blocked_users")
 	count, err := collection.CountDocuments(ctx, bson.M{
 		"blocker_id": blockerID,
+		"blocked_id": blockedID,
+	})
+	return count > 0, err
+}
+
+func (s *ChatService) IsUserBlockedByAny(ctx context.Context, blockerIDs []string, blockedID string) (bool, error) {
+	if len(blockerIDs) == 0 {
+		return false, nil
+	}
+	collection := s.store.Collection("blocked_users")
+	count, err := collection.CountDocuments(ctx, bson.M{
+		"blocker_id": bson.M{"$in": blockerIDs},
 		"blocked_id": blockedID,
 	})
 	return count > 0, err
