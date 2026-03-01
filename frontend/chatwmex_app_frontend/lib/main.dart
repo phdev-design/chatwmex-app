@@ -26,7 +26,7 @@ void main() async {
   // 🔥 加載環境變量
   try {
     await dotenv.load(fileName: ".env");
-    print('✅ .env loaded successfully');
+    // print('✅ .env loaded successfully');
   } catch (e) {
     print('❌ Failed to load .env: $e');
   }
@@ -40,7 +40,7 @@ void main() async {
 
 // 改進的初始化函數，包含更好的錯誤處理
 Future<bool> _initializeApp() async {
-  print('main.dart: 開始初始化應用...');
+  // print('main.dart: 開始初始化應用...');
 
   try {
     // 階段 1: 核心服務初始化
@@ -52,7 +52,7 @@ Future<bool> _initializeApp() async {
     // 階段 3: 用戶體驗服務初始化
     await _initializeUserExperienceServices();
 
-    print('✅ main.dart: 所有服務初始化完成');
+    // print('✅ main.dart: 所有服務初始化完成');
     return true;
   } catch (e) {
     print('❌ main.dart: 應用初始化失敗: $e');
@@ -62,33 +62,33 @@ Future<bool> _initializeApp() async {
 
 // 核心服務初始化
 Future<void> _initializeCoreServices() async {
-  print('main.dart: 初始化核心服務...');
+  // print('main.dart: 初始化核心服務...');
 
   // 最重要：先初始化 API 客戶端
   await ApiClientService.initialize();
-  print('✅ ApiClientService 初始化完成');
+  // print('✅ ApiClientService 初始化完成');
 
   // 應用生命週期服務
   await AppLifecycleService().initialize();
-  print('✅ AppLifecycleService 初始化完成');
+  // print('✅ AppLifecycleService 初始化完成');
 }
 
 // 網絡相關服務初始化
 Future<void> _initializeNetworkServices() async {
-  print('main.dart: 初始化網絡服務...');
+  // print('main.dart: 初始化網絡服務...');
 
   try {
     // 網絡監控
     await NetworkMonitorService().initialize();
-    print('✅ NetworkMonitorService 初始化完成');
+    // print('✅ NetworkMonitorService 初始化完成');
 
     // 消息緩存
     await MessageCacheService().initialize();
-    print('✅ MessageCacheService 初始化完成');
+    // print('✅ MessageCacheService 初始化完成');
 
     // 背景同步
     await BackgroundSyncService().initialize();
-    print('✅ BackgroundSyncService 初始化完成');
+    // print('✅ BackgroundSyncService 初始化完成');
   } catch (e) {
     print('⚠️ 網絡服務初始化失敗，將在離線模式下運行: $e');
     // 不拋出錯誤，允許應用在離線模式下運行
@@ -97,16 +97,16 @@ Future<void> _initializeNetworkServices() async {
 
 // 用戶體驗服務初始化
 Future<void> _initializeUserExperienceServices() async {
-  print('main.dart: 初始化用戶體驗服務...');
+  // print('main.dart: 初始化用戶體驗服務...');
 
   try {
     // 通知服務
     await NotificationService().initialize();
-    print('✅ NotificationService 初始化完成');
+    // print('✅ NotificationService 初始化完成');
 
     // 音頻會話
     await AudioSessionService().initialize();
-    print('✅ AudioSessionService 初始化完成');
+    // print('✅ AudioSessionService 初始化完成');
   } catch (e) {
     print('⚠️ 用戶體驗服務初始化失敗，功能可能受限: $e');
     // 不拋出錯誤，允許應用繼續運行
@@ -212,7 +212,7 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     try {
-      print('SplashScreen: 檢查登入狀態...');
+      // print('SplashScreen: 檢查登入狀態...');
 
       final apiClient = ApiClientService();
       final accessToken = apiClient.getAccessToken();
@@ -224,7 +224,7 @@ class _SplashScreenState extends State<SplashScreen>
         // 為了更穩健，我們先檢查有效性
         final isValid = await TokenStorage.isTokenValid();
         if (isValid) {
-          print('SplashScreen: Access Token 有效，進入主頁');
+          // print('SplashScreen: Access Token 有效，進入主頁');
           _navigateToChatRooms();
           return;
         }
@@ -232,20 +232,20 @@ class _SplashScreenState extends State<SplashScreen>
 
       // 2. 如果 Access Token 無效，嘗試使用 Refresh Token 進行靜默刷新
       if (refreshToken != null && refreshToken.isNotEmpty) {
-        print('SplashScreen: Access Token 無效或過期，嘗試靜默刷新...');
+        // print('SplashScreen: Access Token 無效或過期，嘗試靜默刷新...');
         final newAccessToken = await apiClient.attemptTokenRefresh();
 
         if (newAccessToken != null && newAccessToken.isNotEmpty) {
-          print('SplashScreen: 靜默刷新成功，進入主頁');
+          // print('SplashScreen: 靜默刷新成功，進入主頁');
           _navigateToChatRooms();
           return;
         } else {
-          print('SplashScreen: 靜默刷新失敗');
+          // print('SplashScreen: 靜默刷新失敗');
         }
       }
 
       // 3. 都無效，導航到登入頁
-      print('SplashScreen: 無有效憑證，導航到登入頁');
+      // print('SplashScreen: 無有效憑證，導航到登入頁');
       _navigateToLogin();
     } catch (e) {
       print('SplashScreen: 檢查登入狀態錯誤: $e');

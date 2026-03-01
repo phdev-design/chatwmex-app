@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 
@@ -9,41 +10,68 @@ import (
 	"chatwme/backend/utils"
 )
 
-// contextKey 是一個自訂類型，用於在 context 中安全地儲存鍵值，避免衝突
 type contextKey string
 
-// UserIDKey 是用於在請求 context 中儲存使用者 ID 的鍵
 const UserIDKey contextKey = "userID"
 
-// JwtAuthentication 是一個中介軟體，用於驗證 JWT
+// JwtAuthentication 是一個中介軟體，用於驗證 JWT token
 func JwtAuthentication(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 從請求標頭獲取 token
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, `{"error": "請求未包含 token"}`, http.StatusUnauthorized)
+		// 對於 OPTIONS 請求，直接放行（CORS preflight）
+		if r.Method == "OPTIONS" {
+			next.ServeHTTP(w, r)
 			return
 		}
 
-		// token 通常以 "Bearer <token>" 的形式出現，我們需要分離它
-		splitToken := strings.Split(authHeader, " ")
-		if len(splitToken) != 2 || strings.ToLower(splitToken[0]) != "bearer" {
-			http.Error(w, `{"error": "Token 格式不正確"}`, http.StatusUnauthorized)
+		// 獲取 Authorization header
+		tokenHeader := r.Header.Get("Authorization")
+		if tokenHeader == "" {
+			http.Error(w, `{"error": "未提供 token"}`, http.StatusUnauthorized)
 			return
 		}
-		tokenString := splitToken[1]
+
+		// token 格式通常是 "Bearer {token}"
+		splitted := strings.Split(tokenHeader, " ")
+		if len(splitted) != 2 {
+			http.Error(w, `{"error": "無效的 token 格式"}`, http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := splitted[1]
 
 		// 驗證 token
 		claims, err := utils.VerifyJWT(tokenString)
 		if err != nil {
+			if len(tokenString) > 10 {
+				log.Printf("❌ [JwtAuthentication] Invalid Token: %v | Token prefix: %s", err, tokenString[:10])
+			} else {
+				log.Printf("❌ [JwtAuthentication] Invalid Token: %v | Token too short", err)
+			}
 			http.Error(w, `{"error": "無效的 token"}`, http.StatusUnauthorized)
 			return
 		}
 
-		// Token 驗證成功，將使用者 ID 存入請求的 context 中，以便後續的處理函式使用
-		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		// Check if it's a refresh token (should not be used for access)
+		// Access tokens should have issuer "chatwme-backend"
+		if claims.Issuer == "chatwme-backend-refresh" {
+			log.Printf("❌ [JwtAuthentication] Invalid Token Type: Refresh Token used for Access | Issuer: %s", claims.Issuer)
+			http.Error(w, `{"error": "Invalid token type"}`, http.StatusUnauthorized)
+			return
+		}
+
+		// 將使用者資訊存入 context
+		ctx := context.WithValue(r.Context(), "user", claims)
+		ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
+		r = r.WithContext(ctx)
+
+		next.ServeHTTP(w, r)
 	})
+}
+
+// UserFromContext 從 context 中提取使用者資訊
+func UserFromContext(ctx context.Context) (*utils.Claims, bool) {
+	user, ok := ctx.Value("user").(*utils.Claims)
+	return user, ok
 }
 
 func WithStore(store database.Store) func(http.Handler) http.Handler {

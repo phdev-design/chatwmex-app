@@ -21,8 +21,8 @@ func GenerateJWT(userID, username string) (string, error) {
 	cfg := config.LoadConfig()
 	jwtSecret := []byte(cfg.JwtSecret)
 
-	// 設定 token 的過期時間 (例如：24 小時)
-	expirationTime := time.Now().Add(24 * time.Hour)
+	// 設定 token 的過期時間 (例如：7 天)
+	expirationTime := time.Now().Add(7 * 24 * time.Hour)
 
 	// 建立聲明
 	claims := &Claims{
@@ -63,11 +63,11 @@ func VerifyJWT(tokenString string) (*Claims, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing error: %v", err)
 	}
 
 	if !token.Valid {
-		return nil, fmt.Errorf("invalid token")
+		return nil, fmt.Errorf("token invalid")
 	}
 
 	return claims, nil
@@ -78,8 +78,8 @@ func GenerateRefreshToken(userID, username string) (string, error) {
 	cfg := config.LoadConfig()
 	jwtSecret := []byte(cfg.JwtSecret)
 
-	// Refresh Token 的過期時間更長 (7 天)
-	expirationTime := time.Now().Add(7 * 24 * time.Hour)
+	// Refresh Token 的過期時間更長 (30 天)
+	expirationTime := time.Now().Add(30 * 24 * time.Hour)
 
 	// 建立聲明
 	claims := &Claims{

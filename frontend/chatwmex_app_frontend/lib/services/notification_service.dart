@@ -48,7 +48,7 @@ class NotificationService {
       await requestNotificationPermission();
 
       _isInitialized = true;
-      print('NotificationService: 初始化完成');
+      // print('NotificationService: 初始化完成');
     } catch (e) {
       print('NotificationService: 初始化失敗: $e');
     }
@@ -97,20 +97,20 @@ class NotificationService {
       notificationDetails,
       payload: 'simple_notification_payload',
     );
-    print('NotificationService: 已顯示簡易通知');
+    // print('NotificationService: 已顯示簡易通知');
   }
 
   void _onNotificationTapped(NotificationResponse notificationResponse) {
     final String? payload = notificationResponse.payload;
     if (payload != null) {
-      print('NotificationService: 通知被點擊，payload: $payload');
+      // print('NotificationService: 通知被點擊，payload: $payload');
       // TODO: 這裡可以添加導航邏輯，例如跳轉到特定聊天室
     }
   }
 
   void setCurrentActiveChatRoom(String? roomId) {
     _currentActiveChatRoom = roomId;
-    print('NotificationService: 設置活躍聊天室: $roomId');
+    // print('NotificationService: 設置活躍聊天室: $roomId');
   }
 
   // Getter 方法，讓外部可以訪問當前活躍聊天室
@@ -120,11 +120,11 @@ class NotificationService {
     try {
       final status = await Permission.notification.request();
       _notificationsEnabled = status.isGranted;
-      print('NotificationService: 權限請求結果: $status');
+      // print('NotificationService: 權限請求結果: $status');
 
       // 權限被永久拒絕時，由 UI 層處理引導邏輯
       if (status.isPermanentlyDenied) {
-        print('NotificationService: 權限被永久拒絕');
+        // print('NotificationService: 權限被永久拒絕');
       }
 
       return status;
@@ -134,12 +134,10 @@ class NotificationService {
     }
   }
 
-
-
   Future<bool> checkNotificationPermission() async {
     try {
       final status = await Permission.notification.status;
-      print('NotificationService: 通知權限狀態: $status');
+      // print('NotificationService: 通知權限狀態: $status');
       return status.isGranted;
     } catch (e) {
       print('NotificationService: 檢查權限失敗: $e');
@@ -151,22 +149,22 @@ class NotificationService {
     required app_models.Message message,
     required String chatRoomName,
   }) async {
-    print('=== NotificationService: 準備顯示聊天通知 ===');
+    // print('=== NotificationService: 準備顯示聊天通知 ===');
     // print('消息房間ID: ${message.roomId}, 聊天室名稱: $chatRoomName');
 
     if (!_isInitialized || !_notificationsEnabled) {
-      print('NotificationService: 通知未初始化或被禁用');
+      // print('NotificationService: 通知未初始化或被禁用');
       return;
     }
 
     if (_currentActiveChatRoom == message.roomId) {
-      print('NotificationService: 用戶正在當前聊天室，不顯示通知');
+      // print('NotificationService: 用戶正在當前聊天室，不顯示通知');
       return;
     }
 
     try {
       if (kDebugMode && Platform.isIOS) {
-        print('NotificationService: iOS 模擬器環境，通知可能受限');
+        // print('NotificationService: iOS 模擬器環境，通知可能受限');
       }
 
       final int notificationId = message.roomId.hashCode;
@@ -213,12 +211,13 @@ class NotificationService {
         payload: message.roomId,
       );
 
-      print('NotificationService: 通知已顯示 - ${message.senderName}: $notificationContent');
+      // print(
+      //     'NotificationService: 通知已顯示 - ${message.senderName}: $notificationContent');
     } catch (e) {
       print('NotificationService: 顯示通知失敗: $e');
 
       if (kDebugMode && Platform.isIOS) {
-        print('NotificationService: iOS 模擬器通知測試受限，建議在真實設備上測試');
+        // print('NotificationService: iOS 模擬器通知測試受限，建議在真實設備上測試');
       }
     }
   }
@@ -227,7 +226,7 @@ class NotificationService {
     try {
       final int notificationId = roomId.hashCode;
       await _notificationsPlugin.cancel(notificationId);
-      print('NotificationService: 清除聊天室 $roomId 的通知');
+      // print('NotificationService: 清除聊天室 $roomId 的通知');
     } catch (e) {
       print('NotificationService: 清除通知失敗: $e');
     }
@@ -236,7 +235,7 @@ class NotificationService {
   Future<void> clearAllNotifications() async {
     try {
       await _notificationsPlugin.cancelAll();
-      print('NotificationService: 清除所有通知');
+      // print('NotificationService: 清除所有通知');
     } catch (e) {
       print('NotificationService: 清除所有通知失敗: $e');
     }
@@ -244,7 +243,7 @@ class NotificationService {
 
   void setNotificationsEnabled(bool enabled) {
     _notificationsEnabled = enabled;
-    print('NotificationService: 通知狀態設置為: $enabled');
+    // print('NotificationService: 通知狀態設置為: $enabled');
   }
 
   bool get isNotificationsEnabled => _notificationsEnabled;
@@ -255,7 +254,7 @@ class NotificationService {
 
       final status = await Permission.notification.status;
       _notificationsEnabled = status.isGranted;
-      print('NotificationService: 用戶從設置返回，權限狀態: $status');
+      // print('NotificationService: 用戶從設置返回，權限狀態: $status');
     } catch (e) {
       print('NotificationService: 開啟設置失敗: $e');
     }
@@ -263,13 +262,13 @@ class NotificationService {
 
   Future<void> showTestNotification() async {
     if (!_isInitialized || !_notificationsEnabled) {
-      print('NotificationService: 通知未初始化或被禁用，無法發送測試通知');
+      // print('NotificationService: 通知未初始化或被禁用，無法發送測試通知');
       return;
     }
 
     try {
       if (kDebugMode && Platform.isIOS) {
-        print('NotificationService: iOS 模擬器環境，測試通知可能受限');
+        // print('NotificationService: iOS 模擬器環境，測試通知可能受限');
       }
 
       const AndroidNotificationDetails androidDetails =
@@ -302,12 +301,12 @@ class NotificationService {
         payload: 'test',
       );
 
-      print('NotificationService: 測試通知已發送');
+      // print('NotificationService: 測試通知已發送');
     } catch (e) {
       print('NotificationService: 發送測試通知失敗: $e');
 
       if (kDebugMode && Platform.isIOS) {
-        print('NotificationService: iOS 模擬器通知測試受限，建議在真實設備上測試');
+        // print('NotificationService: iOS 模擬器通知測試受限，建議在真實設備上測試');
       }
     }
   }

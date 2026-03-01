@@ -49,6 +49,12 @@ class ChatApiService {
         return cachedRooms;
       }
 
+      // 🔥 如果是 401，返回空列表，避免崩潰
+      if (e.toString().contains('401') ||
+          e.toString().contains('Unauthorized')) {
+        return [];
+      }
+
       throw e;
     }
   }
@@ -149,8 +155,8 @@ class ChatApiService {
     bool forceRefresh = false,
   }) async {
     try {
-      print(
-          'ChatApiService: 獲取聊天歷史 - 房間: $roomId, 頁碼: $page, 強制刷新: $forceRefresh');
+      // print(
+      //    'ChatApiService: 獲取聊天歷史 - 房間: $roomId, 頁碼: $page, 強制刷新: $forceRefresh');
 
       if (forceRefresh) {
         // 強制刷新：清除緩存並從服務器獲取
@@ -174,6 +180,12 @@ class ChatApiService {
         }
       } catch (cacheError) {
         print('ChatApiService: 緩存讀取也失敗: $cacheError');
+      }
+
+      // 🔥 如果是 401，返回空列表
+      if (e.toString().contains('401') ||
+          e.toString().contains('Unauthorized')) {
+        return [];
       }
 
       throw e;
@@ -499,6 +511,10 @@ class ChatApiService {
       }
     } catch (e) {
       print('ChatApiService: 獲取封鎖用戶列表失敗: $e');
+      // 🔥 如果是 401 錯誤，返回空列表，避免 UI 異常
+      if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
+        return [];
+      }
       throw e;
     }
   }
@@ -544,7 +560,8 @@ class ChatApiService {
       }
     } catch (e) {
       print('ChatApiService: 標記已讀失敗: $e');
-      throw e;
+      // 🔥 不再重新拋出異常，避免因 401 或網絡問題導致 App 崩潰
+      // 401 錯誤已由攔截器處理
     }
   }
 

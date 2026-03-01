@@ -138,6 +138,11 @@ class _ChatDetailPageState extends State<ChatDetailPage>
         }
       }
     } catch (e) {
+      // 🔥 忽略 401 錯誤
+      if (e.toString().contains('401') ||
+          e.toString().contains('Unauthorized')) {
+        return;
+      }
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('更新封鎖狀態失敗: $e')));
     }
@@ -310,6 +315,12 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     } catch (e) {
       debugPrint('Chat initialization error: $e');
       if (mounted) {
+        // 🔥 忽略 401 錯誤
+        if (e.toString().contains('401') ||
+            e.toString().contains('Unauthorized')) {
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('聊天初始化失敗: $e')),
         );
@@ -519,6 +530,12 @@ class _ChatDetailPageState extends State<ChatDetailPage>
     } catch (e) {
       debugPrint('發送媒體失敗: $e');
       if (mounted) {
+        // 🔥 忽略 401 錯誤
+        if (e.toString().contains('401') ||
+            e.toString().contains('Unauthorized')) {
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('發送失敗: $e')),
         );

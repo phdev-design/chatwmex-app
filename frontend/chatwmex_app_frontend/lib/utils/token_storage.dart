@@ -22,7 +22,7 @@ class TokenStorage {
       }
 
       final payload = parts[1];
-      print('原始 payload: $payload');
+      // print('原始 payload: $payload');
 
       // 🔥 修正：更安全的 Base64 padding 處理
       String normalizedPayload = payload;
@@ -34,15 +34,15 @@ class TokenStorage {
       final paddingLength = (4 - (normalizedPayload.length % 4)) % 4;
       normalizedPayload += '=' * paddingLength;
 
-      print('標準化後的 payload: $normalizedPayload');
+      // print('標準化後的 payload: $normalizedPayload');
 
       try {
         final decodedBytes = base64Decode(normalizedPayload);
         final decodedString = utf8.decode(decodedBytes);
-        print('解碼後的字符串: $decodedString');
+        // print('解碼後的字符串: $decodedString');
 
         final decoded = json.decode(decodedString);
-        print('解析後的 JSON: $decoded');
+        // print('解析後的 JSON: $decoded');
 
         final exp = decoded['exp'];
         if (exp == null) {
@@ -53,10 +53,10 @@ class TokenStorage {
         final expirationTime = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
         final now = DateTime.now();
 
-        print('Token 過期時間: $expirationTime');
-        print('當前時間: $now');
+        // print('Token 過期時間: $expirationTime');
+        // print('當前時間: $now');
         final isValid = expirationTime.isAfter(now);
-        print('Token 是否有效: $isValid');
+        // print('Token 是否有效: $isValid');
 
         return isValid;
       } catch (decodeError) {
@@ -70,38 +70,37 @@ class TokenStorage {
   }
 
   // 🔥 修改：改進 isLoggedIn 方法，包含過期檢查
-static Future<bool> isLoggedIn() async {
-  try {
-    // 🔥 檢查是否有 refresh_token
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token');
-    
-    // 有 refresh_token 就視為已登入
-    if (refreshToken != null && refreshToken.isNotEmpty) {
-      print('有 refresh_token，視為已登入');
+  static Future<bool> isLoggedIn() async {
+    try {
+      // 🔥 檢查是否有 refresh_token
+      final prefs = await SharedPreferences.getInstance();
+      final refreshToken = prefs.getString('refresh_token');
+
+      // 有 refresh_token 就視為已登入
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        // print('有 refresh_token，視為已登入');
+        return true;
+      }
+
+      // 沒有 refresh_token，檢查 access_token
+      final hasValidToken = await isTokenValid();
+      if (!hasValidToken) {
+        await clearAll();
+        return false;
+      }
       return true;
-    }
-    
-    // 沒有 refresh_token，檢查 access_token
-    final hasValidToken = await isTokenValid();
-    if (!hasValidToken) {
-      await clearAll();
+    } catch (e) {
+      print('Error checking login status: $e');
       return false;
     }
-    return true;
-  } catch (e) {
-    print('Error checking login status: $e');
-    return false;
   }
-}
-
 
   // 🔥 新增：清除過期 Token 的方法
   static Future<void> clearExpiredToken() async {
     final isValid = await isTokenValid();
     if (!isValid) {
       await clearAll();
-      print('已清除過期的 Token');
+      // print('已清除過期的 Token');
     }
   }
 
@@ -160,7 +159,7 @@ static Future<bool> isLoggedIn() async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_tokenKey);
       await prefs.remove(_userKey);
-      print('已清除所有本地存儲數據');
+      // print('已清除所有本地存儲數據');
       return true;
     } catch (e) {
       print('Error clearing storage: $e');

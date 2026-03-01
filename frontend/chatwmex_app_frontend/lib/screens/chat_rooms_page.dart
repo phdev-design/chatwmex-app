@@ -494,6 +494,14 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
         setState(() {
           _isLoading = false;
         });
+
+        // 🔥 忽略 401 錯誤，因為 ApiClientService 會處理登出邏輯
+        if (e.toString().contains('401') ||
+            e.toString().contains('Unauthorized')) {
+          print('ChatRoomsPage: 檢測到 401 錯誤，忽略 UI 報錯，等待自動登出');
+          return;
+        }
+
         if (e.toString().contains('SocketException') ||
             e.toString().contains('NetworkException') ||
             e.toString().contains('timeout')) {

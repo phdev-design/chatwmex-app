@@ -40,8 +40,8 @@ class BackgroundSyncService {
       } else if (Platform.isIOS) {
         // iOS: 初始化 BackgroundFetch
         // iOS 背景同步依賴 Background Fetch 或 APNs。跳過週期性任務註冊。
-        print(
-            'BackgroundSyncService: iOS background sync relies on Background Fetch or APNs. Periodic task registration skipped.');
+        // print(
+        //     'BackgroundSyncService: iOS background sync relies on Background Fetch or APNs. Periodic task registration skipped.');
 
         // 確保 WorkManager 初始化，以便處理系統觸發的 iOS 背景任務
         await wm.Workmanager().initialize(
@@ -53,7 +53,7 @@ class BackgroundSyncService {
       }
 
       _isInitialized = true;
-      print('BackgroundSyncService: 背景同步服務初始化完成');
+      // print('BackgroundSyncService: 背景同步服務初始化完成');
     } catch (e) {
       print(
           'BackgroundSyncService: BackgroundSyncService failed to initialize: $e');
@@ -76,17 +76,17 @@ class BackgroundSyncService {
         ),
         (String taskId) async {
           // Event handler
-          print("[BackgroundFetch] Event received $taskId");
+          // print("[BackgroundFetch] Event received $taskId");
           await _performSync();
           BackgroundFetch.finish(taskId);
         },
         (String taskId) async {
           // Timeout handler
-          print("[BackgroundFetch] TASK TIMEOUT taskId: $taskId");
+          // print("[BackgroundFetch] TASK TIMEOUT taskId: $taskId");
           BackgroundFetch.finish(taskId);
         },
       );
-      print('[BackgroundFetch] configure success: $status');
+      // print('[BackgroundFetch] configure success: $status');
     } catch (e) {
       print('[BackgroundFetch] configure failed: $e');
     }
@@ -111,7 +111,7 @@ class BackgroundSyncService {
         ),
       );
 
-      print('BackgroundSyncService: 背景任務註冊成功');
+      // print('BackgroundSyncService: 背景任務註冊成功');
     } catch (e) {
       print('BackgroundSyncService: 背景任務註冊失敗: $e');
     }
@@ -120,7 +120,7 @@ class BackgroundSyncService {
   /// 啟動背景同步
   Future<void> startBackgroundSync() async {
     try {
-      print('BackgroundSyncService: 啟動背景同步');
+      // print('BackgroundSyncService: 啟動背景同步');
 
       // 立即執行一次同步
       await _performSync();
@@ -139,7 +139,7 @@ class BackgroundSyncService {
   /// 停止背景同步
   void stopBackgroundSync() {
     try {
-      print('BackgroundSyncService: 停止背景同步');
+      // print('BackgroundSyncService: 停止背景同步');
       _syncTimer?.cancel();
       _syncTimer = null;
     } catch (e) {
@@ -150,12 +150,12 @@ class BackgroundSyncService {
   /// 執行同步
   Future<void> _performSync() async {
     try {
-      print('BackgroundSyncService: 開始背景同步');
+      // print('BackgroundSyncService: 開始背景同步');
 
       // 檢查是否已登入
       final isLoggedIn = await TokenStorage.isLoggedIn();
       if (!isLoggedIn) {
-        print('BackgroundSyncService: 用戶未登入，跳過同步');
+        // print('BackgroundSyncService: 用戶未登入，跳過同步');
         return;
       }
 
@@ -165,7 +165,7 @@ class BackgroundSyncService {
       // 同步未讀消息
       await _syncUnreadMessages();
 
-      print('BackgroundSyncService: 背景同步完成');
+      // print('BackgroundSyncService: 背景同步完成');
     } catch (e) {
       print('BackgroundSyncService: 背景同步失敗: $e');
     }
@@ -174,12 +174,12 @@ class BackgroundSyncService {
   /// 同步聊天室列表
   Future<void> _syncChatRooms() async {
     try {
-      print('BackgroundSyncService: 同步聊天室列表');
+      // print('BackgroundSyncService: 同步聊天室列表');
 
       final chatRooms = await api_service.ChatApiService.getChatRooms();
       await MessageCacheService().cacheChatRooms(chatRooms);
 
-      print('BackgroundSyncService: 聊天室列表同步完成，${chatRooms.length} 個聊天室');
+      // print('BackgroundSyncService: 聊天室列表同步完成，${chatRooms.length} 個聊天室');
     } catch (e) {
       print('BackgroundSyncService: 聊天室列表同步失敗: $e');
     }
@@ -193,22 +193,22 @@ class BackgroundSyncService {
   /// 靜態方法：同步待發送消息 (可供背景任務調用)
   static Future<void> _syncPendingMessagesStatic() async {
     try {
-      print('BackgroundSyncService: 開始同步待發送消息...');
+      // print('BackgroundSyncService: 開始同步待發送消息...');
       final dbHelper = DatabaseHelper.instance;
       final pendingMessages = await dbHelper.getPendingMessages();
 
       if (pendingMessages.isEmpty) {
-        print('BackgroundSyncService: 無待發送消息');
+        // print('BackgroundSyncService: 無待發送消息');
         return;
       }
 
-      print('BackgroundSyncService: 發現 ${pendingMessages.length} 條待發送消息');
+      // print('BackgroundSyncService: 發現 ${pendingMessages.length} 條待發送消息');
 
       for (final msg in pendingMessages) {
         // 暫時只處理文本消息
         if (msg.type == chat_msg.MessageType.text) {
           try {
-            print('BackgroundSyncService: 正在發送消息 ${msg.id} (${msg.content})');
+            // print('BackgroundSyncService: 正在發送消息 ${msg.id} (${msg.content})');
 
             // 使用 HTTP API 發送
             final sentMessage = await api_service.ChatApiService.sendMessage(
@@ -221,8 +221,8 @@ class BackgroundSyncService {
             await dbHelper.deleteMessage(msg.id);
             await dbHelper.insertMessages([sentMessage]);
 
-            print(
-                'BackgroundSyncService: 待發送消息同步成功 (Temp: ${msg.id} -> Server: ${sentMessage.id})');
+            // print(
+            //     'BackgroundSyncService: 待發送消息同步成功 (Temp: ${msg.id} -> Server: ${sentMessage.id})');
           } catch (e) {
             print('BackgroundSyncService: 發送 pending 消息失敗: $e');
             // 失敗則保留在 DB 中，下次重試
@@ -237,7 +237,7 @@ class BackgroundSyncService {
   /// 同步未讀消息
   Future<void> _syncUnreadMessages() async {
     try {
-      print('BackgroundSyncService: 同步未讀消息');
+      // print('BackgroundSyncService: 同步未讀消息');
 
       final cacheService = MessageCacheService();
       final chatRooms = await cacheService.getCachedChatRooms();
@@ -263,7 +263,7 @@ class BackgroundSyncService {
         }
       }
 
-      print('BackgroundSyncService: 未讀消息同步完成');
+      // print('BackgroundSyncService: 未讀消息同步完成');
     } catch (e) {
       print('BackgroundSyncService: 未讀消息同步失敗: $e');
     }
@@ -309,7 +309,7 @@ class BackgroundSyncService {
   /// 手動觸發同步
   Future<void> triggerSync() async {
     try {
-      print('BackgroundSyncService: 手動觸發同步');
+      // print('BackgroundSyncService: 手動觸發同步');
       await _performSync();
     } catch (e) {
       print('BackgroundSyncService: 手動同步失敗: $e');
@@ -329,7 +329,7 @@ class BackgroundSyncService {
 void callbackDispatcher() {
   wm.Workmanager().executeTask((task, inputData) async {
     try {
-      print('BackgroundSyncService: 執行背景任務: $task');
+      // print('BackgroundSyncService: 執行背景任務: $task');
 
       switch (task) {
         case 'backgroundSync':
@@ -350,12 +350,12 @@ void callbackDispatcher() {
 /// 執行背景同步
 Future<void> _executeBackgroundSync() async {
   try {
-    print('BackgroundSyncService: 執行背景同步');
+    // print('BackgroundSyncService: 執行背景同步');
 
     // 檢查是否已登入
     final isLoggedIn = await TokenStorage.isLoggedIn();
     if (!isLoggedIn) {
-      print('BackgroundSyncService: 用戶未登入，跳過背景同步');
+      // print('BackgroundSyncService: 用戶未登入，跳過背景同步');
       return;
     }
 
@@ -380,7 +380,7 @@ Future<void> _executeBackgroundSync() async {
       }
     }
 
-    print('BackgroundSyncService: 背景同步完成');
+    // print('BackgroundSyncService: 背景同步完成');
   } catch (e) {
     print('BackgroundSyncService: 背景同步執行失敗: $e');
   }

@@ -337,7 +337,7 @@ class SocketClient {
     });
 
     _socket!.on('pong', (_) {
-      print('Received pong from server');
+      // print('Received pong from server');
     });
 
     _socket!.on('error', (error) {

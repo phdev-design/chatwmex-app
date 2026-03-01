@@ -109,7 +109,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       final deviceInfoService = DeviceInfoService();
       final deviceInfo = await deviceInfoService.getLoginDeviceInfo();
 
-      print('登入設備信息: $deviceInfo');
+      // print('登入設備信息: $deviceInfo');
 
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/v1/login'),
@@ -131,62 +131,64 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       });
 
 // 在 _login() 方法中，找到處理成功響應的部分：
-if (response.statusCode == 200) {
-  final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
 
-  // 🔥 關鍵修改：使用 ApiClientService 保存兩個 tokens
-  final accessToken = responseData['access_token'] ?? responseData['token'];
-  final refreshToken = responseData['refresh_token'];
-  
-  if (accessToken == null || accessToken.isEmpty) {
-    throw Exception('後端未返回 access_token');
-  }
+        // 🔥 關鍵修改：使用 ApiClientService 保存兩個 tokens
+        final accessToken =
+            responseData['access_token'] ?? responseData['token'];
+        final refreshToken = responseData['refresh_token'];
 
-  // 使用 ApiClientService 保存 tokens
-  final apiClient = ApiClientService();
-  await apiClient.saveTokens(
-    accessToken,
-    refreshToken: refreshToken, // 🔥 保存 refresh_token
-  );
-  
-  print('✅ Login: 已保存 access_token 和 refresh_token');
+        if (accessToken == null || accessToken.isEmpty) {
+          throw Exception('後端未返回 access_token');
+        }
 
-  // 保存用戶資料
-  final userData = responseData['user'] ?? {};
-  await apiClient.saveUser(userData);
-
-  // 顯示成功訊息
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Row(
-        children: [
-          Icon(Icons.check_circle, color: Colors.white),
-          SizedBox(width: 8),
-          Text('登入成功！'),
-        ],
-      ),
-      backgroundColor: Colors.green,
-      behavior: SnackBarBehavior.floating,
-    ),
-  );
-
-  // 導航到主頁
-  Navigator.pushReplacement(
-    context,
-    PageRouteBuilder(
-      pageBuilder: (context, animation, secondaryAnimation) =>
-          const ChatRoomsPage(),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
+        // 使用 ApiClientService 保存 tokens
+        final apiClient = ApiClientService();
+        await apiClient.saveTokens(
+          accessToken,
+          refreshToken: refreshToken, // 🔥 保存 refresh_token
         );
-      },
-    ),
-  );
+
+        // print('✅ Login: 已保存 access_token 和 refresh_token');
+
+        // 保存用戶資料
+        final userData = responseData['user'] ?? {};
+        await apiClient.saveUser(userData);
+
+        // 顯示成功訊息
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('登入成功！'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // 導航到主頁
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                const ChatRoomsPage(),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+              return SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(1.0, 0.0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              );
+            },
+          ),
+        );
       } else {
         String errorMessage = '登入失敗';
         try {
@@ -236,7 +238,7 @@ if (response.statusCode == 200) {
   @override
   Widget build(BuildContext context) {
     // 🔥 添加调试输出
-    print('LoginPage: _isLoading = $_isLoading');
+    // print('LoginPage: _isLoading = $_isLoading');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chat2MeX'),

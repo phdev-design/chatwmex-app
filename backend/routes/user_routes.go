@@ -66,11 +66,17 @@ func SetupUserRoutes(router *mux.Router) {
 	router.HandleFunc("/login", controllers.Login).Methods("POST")
 
 	// 需要認證的用戶路由
+	// 注意：我們在 block_routes.go 中也使用了 /users 前綴並附加了 JwtAuthentication
+	// mux router 會按照註冊順序匹配。
+	// 為了避免衝突，我們應該確保沒有重疊的路徑，或者將它們合併。
+	// 在這裡我們只註冊 /users (GET) 和 /users/search (GET)
 	userRouter := router.PathPrefix("/users").Subrouter()
 	userRouter.Use(middleware.JwtAuthentication)
 	
 	userRouter.HandleFunc("", getUsersHandler).Methods("GET")
 	userRouter.HandleFunc("/search", controllers.SearchUsers).Methods("GET")
+	userRouter.HandleFunc("", getUsersHandler).Methods("OPTIONS")
+	userRouter.HandleFunc("/search", controllers.SearchUsers).Methods("OPTIONS")
 
 	// === 新增：個人資料相關路由 ===
 	// 創建個人資料子路由器，需要認證

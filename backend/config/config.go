@@ -26,6 +26,9 @@ type AppConfig struct {
 	StorageBaseURL   string   // 存儲基礎 URL
 	UseCloudflare    bool     // 是否使用 Cloudflare
 	AllowedOrigins   []string // 允許的來源
+	RedisAddr        string   // Redis 地址
+	RedisPassword    string   // Redis 密碼
+	RabbitMQURL      string   // RabbitMQ URL
 }
 
 // LoadConfig 載入設定
@@ -134,6 +137,18 @@ func LoadConfig() AppConfig {
 		}
 	}
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "192.168.100.150:6379" // 預設值
+	}
+
+	redisPassword := os.Getenv("REDIS_PASSWORD")
+
+	rabbitMQURL := os.Getenv("RABBITMQ_URL")
+	if rabbitMQURL == "" {
+		rabbitMQURL = "amqp://guest:guest@192.168.100.150:5672/dev" // 預設值
+	}
+
 	return AppConfig{
 		AppVersion:       "1.0.30", // 設定應用程式版本
 		Environment:      environment,
@@ -145,5 +160,8 @@ func LoadConfig() AppConfig {
 		StorageBaseURL:   storageBaseURL,
 		UseCloudflare:    useCloudflare,
 		AllowedOrigins:   allowedOrigins,
+		RedisAddr:        redisAddr,
+		RedisPassword:    redisPassword,
+		RabbitMQURL:      rabbitMQURL,
 	}
 }

@@ -29,7 +29,7 @@ class NetworkMonitorService {
     if (_isInitialized) return;
 
     try {
-      print('NetworkMonitorService: 初始化網路監控服務');
+      // print('NetworkMonitorService: 初始化網路監控服務');
 
       // 檢查初始網路狀態
       await _checkInitialConnectivity();
@@ -38,8 +38,8 @@ class NetworkMonitorService {
       _startConnectivityMonitoring();
 
       _isInitialized = true;
-      print(
-          'NetworkMonitorService: 網路監控服務初始化完成，當前狀態: ${_isOnline ? "在線" : "離線"}');
+      // print(
+      //     'NetworkMonitorService: 網路監控服務初始化完成，當前狀態: ${_isOnline ? "在線" : "離線"}');
     } catch (e) {
       print('NetworkMonitorService: 初始化失敗: $e');
       _isOnline = false;
@@ -81,7 +81,7 @@ class NetworkMonitorService {
 
     // 如果狀態發生變化，通知監聽器
     if (wasOnline != _isOnline) {
-      print('NetworkMonitorService: 網路狀態變化: ${_isOnline ? "在線" : "離線"}');
+      // print('NetworkMonitorService: 網路狀態變化: ${_isOnline ? "在線" : "離線"}');
       _notifyConnectionListeners(_isOnline);
     }
   }
@@ -89,15 +89,15 @@ class NetworkMonitorService {
   /// 註冊連接狀態監聽器
   void addConnectionListener(Function(bool) listener) {
     _connectionListeners.add(listener);
-    print(
-        'NetworkMonitorService: 註冊連接監聽器，當前總數: ${_connectionListeners.length}');
+    // print(
+    //     'NetworkMonitorService: 註冊連接監聽器，當前總數: ${_connectionListeners.length}');
   }
 
   /// 移除連接狀態監聽器
   void removeConnectionListener(Function(bool) listener) {
     _connectionListeners.remove(listener);
-    print(
-        'NetworkMonitorService: 移除連接監聽器，當前總數: ${_connectionListeners.length}');
+    // print(
+    //     'NetworkMonitorService: 移除連接監聽器，當前總數: ${_connectionListeners.length}');
   }
 
   /// 通知所有監聽器

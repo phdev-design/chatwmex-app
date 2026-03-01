@@ -479,7 +479,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 生成 Access Token (24小時)
+	// 生成 Access Token (7天)
 	accessToken, err := utils.GenerateJWT(user.ID.Hex(), user.Username)
 	if err != nil {
 		log.Printf("無法生成 access token: %v", err)

@@ -44,7 +44,7 @@ class ApiClientService {
     );
     dio = Dio(options);
     dio.interceptors.add(_AuthInterceptor(this));
-    print("ℹ️ [ApiClientService] Dio instance created with interceptor.");
+    // print("ℹ️ [ApiClientService] Dio instance created with interceptor.");
   }
 
   // ... existing code ...
@@ -144,7 +144,7 @@ class ApiClientService {
         }
       }
 
-      print("✅ [ApiClientService] SharedPreferences initialized.");
+      // print("✅ [ApiClientService] SharedPreferences initialized.");
     } catch (e) {
       throw Exception("Failed to initialize SharedPreferences");
     }
@@ -174,8 +174,8 @@ class ApiClientService {
 
         // 🔥 修正邏輯：如果 isExpiringSoon 為 true，才執行刷新
         if (isExpiringSoon) {
-          print(
-              'ℹ️ [ApiClientService] Token is expiring soon, attempting proactive refresh...');
+          // print(
+          //     'ℹ️ [ApiClientService] Token is expiring soon, attempting proactive refresh...');
           // 只有在沒有其他刷新操作時才執行，避免衝突
           if (!_isRefreshing) {
             _isRefreshing = true; // 🔥 Set flag to true
@@ -185,12 +185,12 @@ class ApiClientService {
               _isRefreshing = false; // 🔥 Reset flag
             }
           } else {
-            print(
-                'ℹ️ [ApiClientService] Token refresh is already in progress, skipping proactive refresh.');
+            // print(
+            //     'ℹ️ [ApiClientService] Token refresh is already in progress, skipping proactive refresh.');
           }
         } else {
-          print(
-              'ℹ️ [ApiClientService] Token check: still valid, no proactive refresh needed.');
+          // print(
+          //     'ℹ️ [ApiClientService] Token check: still valid, no proactive refresh needed.');
         }
       },
     );
@@ -222,8 +222,8 @@ class ApiClientService {
       // 🔥 如果在 15 分鐘內過期，就返回 true
       final isExpiring = expirationTime.difference(now).inMinutes < 15;
       if (isExpiring) {
-        print(
-            "⚠️ [ApiClientService] Token will expire in less than 15 minutes.");
+        // print(
+        //     "⚠️ [ApiClientService] Token will expire in less than 15 minutes.");
       }
       return isExpiring;
     } catch (e) {
@@ -277,7 +277,7 @@ class ApiClientService {
       await _prefs!.setString(_refreshTokenKey, refreshToken);
     }
     _lastRefreshTime = DateTime.now(); // 🔥 記錄刷新時間
-    print("✅ [ApiClientService] Tokens saved. Last refresh: $_lastRefreshTime");
+    // print("✅ [ApiClientService] Tokens saved. Last refresh: $_lastRefreshTime");
     _authEventController.add(accessToken);
     _startTokenRefreshTimer(); // 🔥 儲存新 Token 後，重置並啟動定時器
   }
@@ -359,7 +359,7 @@ class ApiClientService {
   Future<void> saveUser(Map<String, dynamic> userData) async {
     if (!_checkPrefsInitialized()) return;
     await _prefs!.setString(_userKey, jsonEncode(userData));
-    print("✅ [ApiClientService] User data saved.");
+    // print("✅ [ApiClientService] User data saved.");
   }
 
   Future<Map<String, dynamic>?> getUser() async {
@@ -408,7 +408,12 @@ class ApiClientService {
             newAccessToken,
             refreshToken: newRefreshToken ?? refreshToken,
           );
-          print("✅ [ApiClientService] Token refreshed successfully.");
+          // print("✅ [ApiClientService] Token refreshed successfully.");
+          final tokenSignature = newAccessToken.length > 10
+              ? newAccessToken.substring(newAccessToken.length - 10)
+              : "short";
+          print(
+              "✅ [ApiClientService] Token refreshed. Signature: ...$tokenSignature");
           return newAccessToken;
         } else {
           print("❌ [ApiClientService] No access_token in refresh response.");
@@ -442,12 +447,12 @@ class ApiClientService {
   // ==================== Request Queue Processing ====================
   void _processQueue(String newAccessToken) {
     if (_requestQueue.isEmpty) {
-      print("ℹ️ [ApiClientService] Request queue is empty.");
+      // print("ℹ️ [ApiClientService] Request queue is empty.");
       return;
     }
 
-    print(
-        "🔄 [ApiClientService] Processing ${_requestQueue.length} queued requests.");
+    // print(
+    //     "🔄 [ApiClientService] Processing ${_requestQueue.length} queued requests.");
 
     Future.wait(_requestQueue.map((queuedRequest) {
       final requestOptions = queuedRequest['options'] as RequestOptions;
@@ -463,14 +468,14 @@ class ApiClientService {
       });
     })).whenComplete(() {
       _requestQueue.clear();
-      print("✅ [ApiClientService] Request queue processed.");
+      // print("✅ [ApiClientService] Request queue processed.");
     });
   }
 
   Future<Response<dynamic>> _queueRequest(RequestOptions options) {
     final completer = Completer<Response<dynamic>>();
     _requestQueue.add({'options': options, 'completer': completer});
-    print("📝 [ApiClientService] Request ${options.path} queued.");
+    // print("📝 [ApiClientService] Request ${options.path} queued.");
     return completer.future;
   }
 }
@@ -493,8 +498,6 @@ class _AuthInterceptor extends Interceptor {
     final accessToken = apiClient.getAccessToken();
     if (accessToken != null && accessToken.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $accessToken';
-      // 🔥 Debug Log: Verify Authorization header is set
-      // print("🔑 [Interceptor] Attaching Token to ${options.path}: ${accessToken.substring(0, 10)}...");
     }
     return handler.next(options);
   }
@@ -543,17 +546,18 @@ class _AuthInterceptor extends Interceptor {
 
       // 🔥 Check if token was just refreshed (within 10s) to prevent infinite loop
       // If the token in the request matches the current token, and we refreshed recently,
-      // it means the new token is also invalid (e.g., user blocked).
-      final isTokenMatch = requestToken == currentToken;
+      // 🔥 Check if token was just refreshed (within 10s) to prevent infinite loop
+      // final isTokenMatch = requestToken == currentToken; // This check is flawed if requestToken is null or manipulated
+      // We should trust the server's 401 response mostly.
+
+      // If we recently refreshed (last 3 seconds) and still get 401, it's likely a persistent issue or race condition
       if (apiClient._lastRefreshTime != null &&
           DateTime.now().difference(apiClient._lastRefreshTime!).inSeconds <
-              10) {
-        if (isTokenMatch) {
-          print(
-              "❌ [Interceptor] Loop detected: Freshly refreshed token (${apiClient._lastRefreshTime}) still returns 401. Forcing logout.");
-          await apiClient.clearTokensAndLogout();
-          return handler.reject(err);
-        }
+              3) {
+        print("❌ [Interceptor] 401 received immediately after refresh (<3s).");
+        // Instead of forcing logout, let's just reject this specific request to avoid crashing the app flow
+        // The user might be able to recover or manual logout.
+        return handler.reject(err);
       }
 
       if (!apiClient._isRefreshing) {
@@ -564,7 +568,10 @@ class _AuthInterceptor extends Interceptor {
 
           if (newAccessToken != null && newAccessToken.isNotEmpty) {
             print(
-                "✅ [Interceptor] Token refreshed, processing queue and retrying original request.");
+                "✅ [Interceptor] Token refreshed, waiting 500ms before retrying...");
+
+            // 🔥 Add delay to allow server state to propagate if needed
+            await Future.delayed(const Duration(milliseconds: 500));
 
             apiClient._processQueue(newAccessToken);
 

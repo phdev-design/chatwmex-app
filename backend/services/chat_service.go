@@ -2,9 +2,12 @@ package services
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"chatwme/backend/database"
+	"chatwme/backend/messaging"
 	"chatwme/backend/models"
 	"chatwme/backend/utils"
 
@@ -16,12 +19,16 @@ import (
 type ChatService struct {
 	store         database.Store
 	encryptionKey []byte
+	cache         *CacheService
+	mq            *messaging.RabbitMQClient
 }
 
-func NewChatService(store database.Store, encryptionKey []byte) *ChatService {
+func NewChatService(store database.Store, encryptionKey []byte, cache *CacheService, mq *messaging.RabbitMQClient) *ChatService {
 	return &ChatService{
 		store:         store,
 		encryptionKey: encryptionKey,
+		cache:         cache,
+		mq:            mq,
 	}
 }
 
@@ -47,6 +54,18 @@ func (s *ChatService) SaveMessage(ctx context.Context, senderID, senderName, roo
 	collection := s.store.Collection("messages")
 	if _, err := collection.InsertOne(ctx, message); err != nil {
 		return models.Message{}, err
+	}
+
+	// Publish to RabbitMQ (Fire and Forget)
+	if s.mq != nil {
+		go func() {
+			payload, _ := json.Marshal(message)
+			mqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			// Routing key: chat.room.{roomID}
+			routingKey := fmt.Sprintf("chat.room.%s", roomID)
+			s.mq.PublishMessage(mqCtx, routingKey, payload)
+		}()
 	}
 
 	return message, nil
@@ -84,6 +103,18 @@ func (s *ChatService) SaveMessageWithID(ctx context.Context, messageIDHex, sende
 		return models.Message{}, false, err
 	}
 
+	// Publish to RabbitMQ (Fire and Forget)
+	if s.mq != nil {
+		go func() {
+			payload, _ := json.Marshal(message)
+			mqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			// Routing key: chat.room.{roomID}
+			routingKey := fmt.Sprintf("chat.room.%s", roomID)
+			s.mq.PublishMessage(mqCtx, routingKey, payload)
+		}()
+	}
+
 	return message, true, nil
 }
 
@@ -102,6 +133,15 @@ func (s *ChatService) UpdateRoomLastMessage(ctx context.Context, roomID primitiv
 }
 
 func (s *ChatService) IsUserInRoom(ctx context.Context, roomID primitive.ObjectID, userID string) (bool, error) {
+	// 1. Check Cache
+	if s.cache != nil {
+		isInRoom, found, err := s.cache.IsUserInRoom(ctx, userID, roomID.Hex())
+		if err == nil && found {
+			return isInRoom, nil
+		}
+	}
+
+	// 2. Check Database
 	collection := s.store.Collection("chat_rooms")
 	filter := bson.M{
 		"_id": roomID,
@@ -112,13 +152,27 @@ func (s *ChatService) IsUserInRoom(ctx context.Context, roomID primitive.ObjectI
 	}
 
 	err := collection.FindOne(ctx, filter).Err()
+	var result bool
 	if err == nil {
-		return true, nil
+		result = true
+	} else if err == mongo.ErrNoDocuments {
+		result = false
+		err = nil // Reset error for return
+	} else {
+		return false, err
 	}
-	if err == mongo.ErrNoDocuments {
-		return false, nil
+
+	// 3. Update Cache (Async)
+	if s.cache != nil {
+		go func() {
+			// Create a new context for cache update to avoid cancellation
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			s.cache.SetUserInRoom(cacheCtx, userID, roomID.Hex(), result)
+		}()
 	}
-	return false, err
+
+	return result, nil
 }
 
 // MarkMessagesAsRead 标记房间内的消息为已读
@@ -144,12 +198,35 @@ func (s *ChatService) MarkMessagesAsRead(ctx context.Context, roomID primitive.O
 
 // IsUserBlocked 檢查 blockedID 是否被 blockerID 封鎖
 func (s *ChatService) IsUserBlocked(ctx context.Context, blockerID, blockedID string) (bool, error) {
+	// 1. Check Cache
+	if s.cache != nil {
+		isBlocked, found, err := s.cache.IsUserBlocked(ctx, blockerID, blockedID)
+		if err == nil && found {
+			return isBlocked, nil
+		}
+	}
+
+	// 2. Check Database
 	collection := s.store.Collection("blocked_users")
 	count, err := collection.CountDocuments(ctx, bson.M{
 		"blocker_id": blockerID,
 		"blocked_id": blockedID,
 	})
-	return count > 0, err
+	if err != nil {
+		return false, err
+	}
+	result := count > 0
+
+	// 3. Update Cache (Async)
+	if s.cache != nil {
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			s.cache.SetUserBlocked(cacheCtx, blockerID, blockedID, result)
+		}()
+	}
+
+	return result, nil
 }
 
 func (s *ChatService) IsUserBlockedByAny(ctx context.Context, blockerIDs []string, blockedID string) (bool, error) {
@@ -166,11 +243,39 @@ func (s *ChatService) IsUserBlockedByAny(ctx context.Context, blockerIDs []strin
 
 // GetRoomParticipants 獲取聊天室的所有參與者 ID
 func (s *ChatService) GetRoomParticipants(ctx context.Context, roomID primitive.ObjectID) ([]string, error) {
+	// 1. Check Cache
+	if s.cache != nil {
+		participants, found, err := s.cache.GetRoomParticipants(ctx, roomID.Hex())
+		if err == nil && found {
+			return participants, nil
+		}
+	}
+
+	// 2. Check Database
 	collection := s.store.Collection("chat_rooms")
 	var room models.ChatRoom
 	err := collection.FindOne(ctx, bson.M{"_id": roomID}).Decode(&room)
 	if err != nil {
 		return nil, err
 	}
+
+	// 3. Update Cache (Async)
+	if s.cache != nil {
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			s.cache.SetRoomParticipants(cacheCtx, roomID.Hex(), room.Participants)
+		}()
+	}
+
 	return room.Participants, nil
+}
+
+// CheckRateLimit checks if user is sending too many messages
+func (s *ChatService) CheckRateLimit(ctx context.Context, userID string) (bool, error) {
+	if s.cache == nil {
+		return true, nil // No cache, no rate limit (or use memory?)
+	}
+	// Limit: 5 messages per second
+	return s.cache.CheckRateLimit(ctx, userID, 5, 1*time.Second)
 }

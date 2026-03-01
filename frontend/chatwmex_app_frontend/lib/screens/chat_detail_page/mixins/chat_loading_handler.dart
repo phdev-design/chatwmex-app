@@ -56,6 +56,13 @@ mixin ChatLoadingHandler<T extends StatefulWidget> on State<T> {
       debugPrint('從伺服器載入歷史記錄失敗: $e');
       if (mounted) {
         hasLoadingError = true;
+
+        // 🔥 忽略 401 錯誤
+        if (e.toString().contains('401') ||
+            e.toString().contains('Unauthorized')) {
+          return;
+        }
+
         if (!loadedFromCache) {
           // 如果連緩存都沒有，才顯示錯誤
           ScaffoldMessenger.of(buildContext).showSnackBar(
@@ -108,6 +115,12 @@ mixin ChatLoadingHandler<T extends StatefulWidget> on State<T> {
     } catch (e) {
       debugPrint('載入更多訊息時出錯: $e');
       if (mounted) {
+        // 🔥 忽略 401 錯誤
+        if (e.toString().contains('401') ||
+            e.toString().contains('Unauthorized')) {
+          return;
+        }
+
         ScaffoldMessenger.of(buildContext).showSnackBar(
           SnackBar(content: Text('載入更多失敗: $e'), backgroundColor: Colors.red),
         );

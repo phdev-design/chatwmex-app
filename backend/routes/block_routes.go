@@ -18,12 +18,15 @@ func SetupBlockRoutes(router *mux.Router) {
 	// Get list of blocked users
 	// GET /api/v1/users/blocked
 	userRouter.HandleFunc("/blocked", controllers.GetBlockedUsers).Methods("GET")
+	userRouter.HandleFunc("/blocked", controllers.GetBlockedUsers).Methods("OPTIONS") // Add OPTIONS for CORS preflight
 
 	// Block a user
 	// POST /api/v1/users/{id}/block
 	userRouter.HandleFunc("/{id}/block", controllers.BlockUser).Methods("POST")
+	userRouter.HandleFunc("/{id}/block", controllers.BlockUser).Methods("OPTIONS")
 
 	// Unblock a user
 	// POST /api/v1/users/{id}/unblock
 	userRouter.HandleFunc("/{id}/unblock", controllers.UnblockUser).Methods("POST")
+	userRouter.HandleFunc("/{id}/unblock", controllers.UnblockUser).Methods("OPTIONS")
 }

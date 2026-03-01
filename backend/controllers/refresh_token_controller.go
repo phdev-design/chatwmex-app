@@ -30,7 +30,7 @@ type RefreshTokenResponse struct {
 // RefreshToken 處理 Token 刷新請求
 // 端點：POST /api/v1/refresh-token
 // 請求體：{"refresh_token": "..."}
-// 響應：{"access_token": "...", "refresh_token": "...", "expires_in": 86400}
+// 響應：{"access_token": "...", "refresh_token": "...", "expires_in": 604800}
 func RefreshToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -163,7 +163,7 @@ func RefreshToken(w http.ResponseWriter, r *http.Request) {
 	response := RefreshTokenResponse{
 		AccessToken:  newAccessToken,
 		RefreshToken: newRefreshToken, // 如果為空，前端會保留舊的
-		ExpiresIn:    24 * 60 * 60,    // 24 小時（以秒為單位）
+		ExpiresIn:    7 * 24 * 60 * 60,    // 7 天（以秒為單位）
 	}
 
 	// 13. 返回成功響應

@@ -569,6 +569,19 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 
 		log.Printf("Message from %s (UserID: %s) in room %s: %s", user.Username, user.ID, payload.Room, payload.Content)
 
+		// 0. [安全檢查] 速率限制
+		rateCtx, rateCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer rateCancel()
+		allowed, err := chatService.CheckRateLimit(rateCtx, user.ID)
+		if err != nil {
+			log.Printf("Rate limit check failed for UserID %s: %v", user.ID, err)
+			// Fail open or closed? Let's fail open but log it.
+		} else if !allowed {
+			log.Printf("Rate limit exceeded for UserID %s", user.ID)
+			respondError("rate_limit_exceeded")
+			return
+		}
+
 		roomObjectID, err := primitive.ObjectIDFromHex(payload.Room)
 		if err != nil {
 			log.Printf("Invalid Room ObjectID for message: %s, Error: %v", payload.Room, err)

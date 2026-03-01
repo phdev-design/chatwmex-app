@@ -33,7 +33,7 @@ class IOSNetworkMonitorService {
     if (_isInitialized) return;
 
     try {
-      print('IOSNetworkMonitorService: 初始化 iOS 網路監控服務');
+      // print('IOSNetworkMonitorService: 初始化 iOS 網路監控服務');
 
       // 檢查初始網路狀態
       await _checkInitialConnectivity();
@@ -45,8 +45,8 @@ class IOSNetworkMonitorService {
       _startPeriodicConnectivityCheck();
 
       _isInitialized = true;
-      print(
-          'IOSNetworkMonitorService: iOS 網路監控服務初始化完成，當前狀態: ${_isOnline ? "在線" : "離線"}');
+      // print(
+      //     'IOSNetworkMonitorService: iOS 網路監控服務初始化完成，當前狀態: ${_isOnline ? "在線" : "離線"}');
     } catch (e) {
       print('IOSNetworkMonitorService: 初始化失敗: $e');
       _isOnline = false;
@@ -77,15 +77,15 @@ class IOSNetworkMonitorService {
   }
 
 // 修改 _startPeriodicConnectivityCheck 的間隔
-void _startPeriodicConnectivityCheck() {
-  _connectivityCheckTimer?.cancel();
-  _connectivityCheckTimer = Timer.periodic(
-    const Duration(seconds: 15), // 從30秒改為15秒
-    (timer) {
-      _verifyActualConnectivity();
-    },
-  );
-}
+  void _startPeriodicConnectivityCheck() {
+    _connectivityCheckTimer?.cancel();
+    _connectivityCheckTimer = Timer.periodic(
+      const Duration(seconds: 15), // 從30秒改為15秒
+      (timer) {
+        _verifyActualConnectivity();
+      },
+    );
+  }
 
   /// 更新連接狀態
   Future<void> _updateConnectionStatus(List<ConnectivityResult> results) async {
@@ -106,7 +106,7 @@ void _startPeriodicConnectivityCheck() {
 
     // 如果狀態發生變化，通知監聽器
     if (wasOnline != _isOnline) {
-      print('IOSNetworkMonitorService: 網路狀態變化: ${_isOnline ? "在線" : "離線"}');
+      // print('IOSNetworkMonitorService: 網路狀態變化: ${_isOnline ? "在線" : "離線"}');
       _notifyConnectionListeners(_isOnline);
     }
   }
@@ -114,7 +114,7 @@ void _startPeriodicConnectivityCheck() {
   /// 🔥 新增：驗證實際網路連接
   Future<void> _verifyActualConnectivity() async {
     try {
-      print('IOSNetworkMonitorService: 驗證實際網路連接...');
+      // print('IOSNetworkMonitorService: 驗證實際網路連接...');
 
       // 嘗試多個測試端點
       final testUrls = [
@@ -138,11 +138,11 @@ void _startPeriodicConnectivityCheck() {
 
           if (response.statusCode == 200) {
             connectionVerified = true;
-            print('IOSNetworkMonitorService: 實際網路連接驗證成功 (${url})');
+            // print('IOSNetworkMonitorService: 實際網路連接驗證成功 (${url})');
             break;
           }
         } catch (e) {
-          print('IOSNetworkMonitorService: 測試 ${url} 失敗: $e');
+          // print('IOSNetworkMonitorService: 測試 ${url} 失敗: $e');
           continue;
         }
       }
@@ -171,15 +171,15 @@ void _startPeriodicConnectivityCheck() {
   /// 註冊連接狀態監聽器
   void addConnectionListener(Function(bool) listener) {
     _connectionListeners.add(listener);
-    print(
-        'IOSNetworkMonitorService: 註冊連接監聽器，當前總數: ${_connectionListeners.length}');
+    // print(
+    //     'IOSNetworkMonitorService: 註冊連接監聽器，當前總數: ${_connectionListeners.length}');
   }
 
   /// 移除連接狀態監聽器
   void removeConnectionListener(Function(bool) listener) {
     _connectionListeners.remove(listener);
-    print(
-        'IOSNetworkMonitorService: 移除連接監聽器，當前總數: ${_connectionListeners.length}');
+    // print(
+    //     'IOSNetworkMonitorService: 移除連接監聽器，當前總數: ${_connectionListeners.length}');
   }
 
   /// 通知所有監聽器
@@ -196,7 +196,7 @@ void _startPeriodicConnectivityCheck() {
   /// 手動檢查網路連接
   Future<bool> checkConnection() async {
     try {
-      print('IOSNetworkMonitorService: 手動檢查網路連接...');
+      // print('IOSNetworkMonitorService: 手動檢查網路連接...');
 
       // 先檢查基本連接狀態
       final connectivityResults = await _connectivity.checkConnectivity();
@@ -225,7 +225,7 @@ void _startPeriodicConnectivityCheck() {
 
   /// 🔥 新增：強制重新檢查網路狀態
   Future<void> forceRecheck() async {
-    print('IOSNetworkMonitorService: 強制重新檢查網路狀態');
+    // print('IOSNetworkMonitorService: 強制重新檢查網路狀態');
     await checkConnection();
   }
 
@@ -234,7 +234,7 @@ void _startPeriodicConnectivityCheck() {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       if (!_isOnline) {
-        print('IOSNetworkMonitorService: 嘗試自動重連...');
+        // print('IOSNetworkMonitorService: 嘗試自動重連...');
         onReconnect();
       }
     });
@@ -275,7 +275,7 @@ void _startPeriodicConnectivityCheck() {
 
   /// 清理資源
   void dispose() {
-    print('IOSNetworkMonitorService: 清理 iOS 網路監控服務');
+    // print('IOSNetworkMonitorService: 清理 iOS 網路監控服務');
     _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
     _connectivityCheckTimer?.cancel();

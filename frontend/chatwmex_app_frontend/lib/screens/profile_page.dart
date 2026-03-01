@@ -231,26 +231,71 @@ class _ProfilePageState extends State<ProfilePage>
               Navigator.pop(context);
               final status =
                   await _notificationService.requestNotificationPermission();
+
               if (status.isGranted) {
-                setState(() {
-                  _notificationsEnabled = true;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('通知權限已開啟！'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                if (mounted) {
+                  setState(() {
+                    _notificationsEnabled = true;
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('通知權限已開啟！'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } else if (status.isPermanentlyDenied) {
+                if (mounted) {
+                  _showOpenSettingsDialog();
+                }
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('請到設定中手動開啟通知權限'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('需要通知權限才能接收消息通知'),
+                      action: SnackBarAction(
+                        label: '去設置',
+                        textColor: Colors.white,
+                        onPressed: () async {
+                          await _notificationService.openAppSettings();
+                          final newStatus = await _notificationService
+                              .checkNotificationPermission();
+                          if (newStatus && mounted) {
+                            setState(() {
+                              _notificationsEnabled = true;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                }
               }
             },
             child: const Text('開啟權限'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showOpenSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('需要權限'),
+        content: const Text('通知權限已被關閉。請在設置中手動開啟通知權限，以便接收新消息通知。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _notificationService.openAppSettings();
+            },
+            child: const Text('去設置'),
           ),
         ],
       ),

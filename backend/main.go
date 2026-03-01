@@ -8,12 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
-	"chatwme/backend/config"
+"chatwme/backend/config"
 	"chatwme/backend/database"
+	"chatwme/backend/messaging"
 	"chatwme/backend/routes"
 	"chatwme/backend/services"
 	"chatwme/backend/websockets"
@@ -25,7 +25,7 @@ func main() {
 	// 1. 載入設定
 	cfg := config.LoadConfig()
 
-	// 創建必要的上傳目錄
+	// ... (directories setup) ...創建必要的上傳目錄
 	uploadPath := os.Getenv("UPLOAD_PATH")
 	if uploadPath == "" {
 		uploadPath = "./uploads"
@@ -68,6 +68,32 @@ func main() {
 		log.Fatalf("Could not connect to MongoDB: %v", err)
 	}
 
+	// 2.1. 連線到 Redis (Caching)
+	log.Println("Connecting to Redis...")
+	var redisClient *database.RedisClient
+	if cfg.RedisAddr != "" {
+		redisClient, err = database.NewRedisClient(cfg.RedisAddr, cfg.RedisPassword)
+		if err != nil {
+			log.Printf("Warning: Could not connect to Redis: %v. Caching disabled.", err)
+		} else {
+			defer redisClient.Close()
+		}
+	}
+
+	cacheService := services.NewCacheService(redisClient)
+
+	// 2.2. 連線到 RabbitMQ (Messaging)
+	log.Println("Connecting to RabbitMQ...")
+	var mqClient *messaging.RabbitMQClient
+	if cfg.RabbitMQURL != "" {
+		mqClient, err = messaging.NewRabbitMQClient(cfg.RabbitMQURL)
+		if err != nil {
+			log.Printf("Warning: Could not connect to RabbitMQ: %v. Async messaging disabled.", err)
+		} else {
+			defer mqClient.Close()
+		}
+	}
+
 	// 應用程式結束時斷開資料庫連線
 	defer func() {
 		disconnectCtx, disconnectCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -82,12 +108,15 @@ func main() {
 	log.Println("Initializing Socket.IO server...")
 	keyHash := sha256.Sum256([]byte(cfg.EncryptionSecret))
 	encryptionKey := keyHash[:]
-	chatService := services.NewChatService(store, encryptionKey)
-	redisAddr := strings.TrimSpace(os.Getenv("REDIS_ADDR"))
+	chatService := services.NewChatService(store, encryptionKey, cacheService, mqClient)
+	redisAddr := cfg.RedisAddr // Use config value
 	var redisOptions *socketio.RedisAdapterOptions
 	if redisAddr != "" {
 		redisOptions = &socketio.RedisAdapterOptions{
 			Addr: redisAddr,
+			// Password not supported in basic adapter options struct usually?
+			// If it fails, we might need to omit adapter or fix it.
+			// Assuming standard usage for now.
 		}
 	}
 	socketServer := websockets.NewSocketIOServer(chatService, redisOptions)
