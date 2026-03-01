@@ -288,16 +288,18 @@ class _ChatDetailPageState extends State<ChatDetailPage>
           widget.chatRoom.id, _onMessageReceived);
 
       // 注册连接状态监听
+      final connectionKey = 'chat_detail_connection_${widget.chatRoom.id}';
       chatService.registerConnectionListener(
-          'chat_detail_page', _onConnectionChanged);
+          connectionKey, _onConnectionChanged);
 
       // 註冊 Reaction 更新監聽
       chatService.registerReactionUpdateListener(
           widget.chatRoom.id, _onReactionUpdate);
 
       // 註冊已讀監聽
+      final readKey = 'chat_detail_read_${widget.chatRoom.id}';
       chatService.registerMessageReadListener(
-          widget.chatRoom.id, _onMessageRead);
+          readKey, _onMessageRead);
 
       // 🔥 新增：註冊 Typing 監聽
       chatService.registerTypingListener(

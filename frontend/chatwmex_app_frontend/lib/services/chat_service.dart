@@ -646,6 +646,9 @@ class ChatService {
     }
   }
 
+  // 🔥 新增：同步鎖
+  bool _isSyncing = false;
+
   Future<void> _uploadAndSendVoiceMessage(chat_msg.Message message) async {
     try {
       print('ChatService: Uploading voice message ${message.id}...');
@@ -660,7 +663,6 @@ class ChatService {
           'ChatService: Voice uploaded, emitting socket event (Temp ID: ${message.id})');
 
       // 2. Broadcast via Socket
-      // We do NOT call API to save message. We let the backend handle it upon receiving the socket event.
       if (_socketClient.isConnected) {
         final messageData = {
           'id': message.id, // Send Temp ID
@@ -673,14 +675,43 @@ class ChatService {
           'timestamp': message.timestamp.toIso8601String(),
           'type': 'voice',
         };
-        _socketClient.emit('voice_message', messageData);
+
+        // 🔥 任務 1：使用 emitWithAck 並在成功後更新本地狀態
+        _socketClient.emitWithAck('voice_message', messageData, ack: (data) async {
+           if (data != null && data['ok'] == true) {
+             // 這裡其實不需要做太多，因為後端會廣播 voice_message，
+             // 而前端的 ChatMessageHandler 會處理替換邏輯。
+             // 但為了確保 syncPendingMessages 不會無限循環，我們需要將狀態標記為 sent。
+             // 更好的做法是：收到自己的廣播時刪除本地 pending 消息。
+             // 不過，為了保險起見，我們在這裡也做一次狀態更新。
+             print('ChatService: 語音消息發送 ACK 確認 (Temp: ${message.id})');
+             
+             // 注意：這裡我們不刪除消息，因為收到廣播時會處理。
+             // 我們只更新狀態為 sent，這樣 syncPendingMessages 就不會再次處理它。
+             // 或者，我們可以直接刪除並插入新消息？
+             // 由於後端廣播會帶回真實 ID，我們等待廣播處理替換比較好。
+             // 但為了防止 sync 重複，我們暫時標記為 sent。
+             // 可是如果標記為 sent，廣播來了之後找不到 pending 怎麼辦？
+             // ChatMessageHandler 的邏輯是：
+             // if (message.tempId != null) { ... replace ... pendingTempMessages.remove ... }
+             // 所以，這裡最好的做法是什麼都不做，等待廣播。
+             // 但是，如果不更新狀態，syncPendingMessages 下次又會抓到它。
+             // 所以我們必須更新狀態。
+             await _dbHelper.updateMessageStatus(message.id, chat_msg.MessageStatus.sent);
+           }
+        });
+        
         print('ChatService: Voice message emitted to socket');
       } else {
         throw Exception('Socket not connected during voice send');
       }
     } catch (e) {
       print('ChatService: Voice upload/send failed: $e');
-      // For now, keep as sending (pending) so background sync can retry.
+      // 🔥 任務 2：更新狀態為 failed 並通知 UI
+      await _dbHelper.updateMessageStatus(
+          message.id, chat_msg.MessageStatus.failed);
+      _notifyMessageReceived(
+          message.copyWith(status: chat_msg.MessageStatus.failed));
     }
   }
 
@@ -708,13 +739,26 @@ class ChatService {
           'type': 'image',
           'timestamp': message.timestamp.toIso8601String(),
         };
-        _socketClient.emit('image_message', messageData);
+
+        // 🔥 任務 1：使用 emitWithAck
+        _socketClient.emitWithAck('image_message', messageData, ack: (data) async {
+           if (data != null && data['ok'] == true) {
+             print('ChatService: 圖片消息發送 ACK 確認 (Temp: ${message.id})');
+             await _dbHelper.updateMessageStatus(message.id, chat_msg.MessageStatus.sent);
+           }
+        });
+        
         print('ChatService: Image message emitted to socket');
       } else {
         throw Exception('Socket not connected during image send');
       }
     } catch (e) {
       print('ChatService: Image upload failed: $e');
+      // 🔥 任務 2：更新狀態為 failed 並通知 UI
+      await _dbHelper.updateMessageStatus(
+          message.id, chat_msg.MessageStatus.failed);
+      _notifyMessageReceived(
+          message.copyWith(status: chat_msg.MessageStatus.failed));
     }
   }
 
@@ -742,13 +786,26 @@ class ChatService {
           'type': 'video',
           'timestamp': message.timestamp.toIso8601String(),
         };
-        _socketClient.emit('video_message', messageData);
+
+        // 🔥 任務 1：使用 emitWithAck
+        _socketClient.emitWithAck('video_message', messageData, ack: (data) async {
+           if (data != null && data['ok'] == true) {
+             print('ChatService: 視頻消息發送 ACK 確認 (Temp: ${message.id})');
+             await _dbHelper.updateMessageStatus(message.id, chat_msg.MessageStatus.sent);
+           }
+        });
+
         print('ChatService: Video message emitted to socket');
       } else {
         throw Exception('Socket not connected during video send');
       }
     } catch (e) {
       print('ChatService: Video upload failed: $e');
+      // 🔥 任務 2：更新狀態為 failed 並通知 UI
+      await _dbHelper.updateMessageStatus(
+          message.id, chat_msg.MessageStatus.failed);
+      _notifyMessageReceived(
+          message.copyWith(status: chat_msg.MessageStatus.failed));
     }
   }
 
@@ -831,11 +888,18 @@ class ChatService {
     });
 
     // 🔥 Typing 事件监听
-    socket.on('typing_start', (data) {
+    socket.on('typing_start', (data) async {
       try {
         if (data is Map) {
           final roomId = data['room']?.toString();
           final username = data['sender_name']?.toString();
+          final userId = data['sender_id']?.toString();
+          
+          // 🔥 任務 5：前端過濾掉自己的 Typing 狀態
+          final userInfo = await TokenStorage.getUser();
+          final currentUserId = userInfo?['id']?.toString();
+          if (userId == currentUserId) return;
+
           if (roomId != null && username != null) {
             _notifyTyping(roomId, username, true);
           }
@@ -845,11 +909,18 @@ class ChatService {
       }
     });
 
-    socket.on('typing_end', (data) {
+    socket.on('typing_end', (data) async {
       try {
         if (data is Map) {
           final roomId = data['room']?.toString();
           final username = data['sender_name']?.toString();
+          final userId = data['sender_id']?.toString();
+          
+          // 🔥 任務 5：前端過濾掉自己的 Typing 狀態
+          final userInfo = await TokenStorage.getUser();
+          final currentUserId = userInfo?['id']?.toString();
+          if (userId == currentUserId) return;
+
           if (roomId != null && username != null) {
             _notifyTyping(roomId, username, false);
           }
@@ -891,7 +962,7 @@ class ChatService {
       }
     });
 
-    socket.on('chat_message', (data) {
+    socket.on('chat_message', (data) async {
       try {
         print('Received message data: $data');
 
@@ -903,6 +974,19 @@ class ChatService {
         }
 
         final message = chat_msg.Message.fromJson(messageData);
+
+        // 🔥 任務 3：前端過濾掉自己的回音消息 (僅當沒有 tempId 時，避免重複顯示)
+        // 注意：如果有 tempId，ChatMessageHandler 會處理替換，所以不應過濾
+        final userInfo = await TokenStorage.getUser();
+        final currentUserId = userInfo?['id']?.toString();
+        
+        if (currentUserId != null && 
+            message.senderId == currentUserId && 
+            message.tempId == null) {
+          print('ChatService: 忽略自己的回音消息 (無 tempId)');
+          return;
+        }
+
         _notifyMessageReceived(message);
       } catch (e) {
         print('Error parsing message: $e');
@@ -1103,25 +1187,37 @@ class ChatService {
 
   /// 同步待發送消息
   Future<void> syncPendingMessages() async {
+    // 🔥 任務 6：同步鎖機制
+    if (_isSyncing) {
+      print('ChatService: 同步正在進行中，跳過此次請求');
+      return;
+    }
+    _isSyncing = true;
+
     try {
-      final pendingMessages = await _dbHelper.getPendingMessages();
-      if (pendingMessages.isEmpty) return;
+      // 循環處理直到沒有待發送消息，確保在同步期間新加入的消息也能被處理
+      while (true) {
+        final pendingMessages = await _dbHelper.getPendingMessages();
+        if (pendingMessages.isEmpty) break;
 
-      print('ChatService: 發現 ${pendingMessages.length} 條待發送消息，開始同步...');
+        print('ChatService: 發現 ${pendingMessages.length} 條待發送消息，開始同步...');
 
-      for (final msg in pendingMessages) {
-        if (msg.type == chat_msg.MessageType.text) {
-          await _resendPendingMessage(msg);
-        } else if (msg.type == chat_msg.MessageType.voice) {
-          await _uploadAndSendVoiceMessage(msg);
-        } else if (msg.type == chat_msg.MessageType.image) {
-          await _uploadAndSendImageMessage(msg);
-        } else if (msg.type == chat_msg.MessageType.video) {
-          await _uploadAndSendVideoMessage(msg);
+        for (final msg in pendingMessages) {
+          if (msg.type == chat_msg.MessageType.text) {
+            await _resendPendingMessage(msg);
+          } else if (msg.type == chat_msg.MessageType.voice) {
+            await _uploadAndSendVoiceMessage(msg);
+          } else if (msg.type == chat_msg.MessageType.image) {
+            await _uploadAndSendImageMessage(msg);
+          } else if (msg.type == chat_msg.MessageType.video) {
+            await _uploadAndSendVideoMessage(msg);
+          }
         }
       }
     } catch (e) {
       print('ChatService: 同步待發送消息失敗: $e');
+    } finally {
+      _isSyncing = false; // 釋放鎖
     }
   }
 
@@ -1210,17 +1306,36 @@ class ChatService {
     _socketClient.emit('leave_room', roomId);
   }
 
-  void sendMessage(String roomId, String content,
-      {chat_msg.MessageType type = chat_msg.MessageType.text}) {
-    final messageData = {
-      'room': roomId,
-      'content': content,
-      'type': type.toString().split('.').last,
-      'timestamp': DateTime.now().toIso8601String(),
-    };
+  Future<void> sendMessage(String roomId, String content,
+      {chat_msg.MessageType type = chat_msg.MessageType.text}) async {
+    
+    // 🔥 任務 6：確保手動發送的消息被排入佇列
+    final userInfo = await TokenStorage.getUser();
+    final currentUserId = userInfo?['id']?.toString() ?? '';
+    final currentUserName = userInfo?['username']?.toString() ?? 'Me';
+    
+    final tempId = 'temp_text_${_uuid.v4()}';
+    final tempMessage = chat_msg.Message(
+      id: tempId,
+      senderId: currentUserId,
+      senderName: currentUserName,
+      content: content,
+      timestamp: DateTime.now(),
+      roomId: roomId,
+      type: type,
+      status: chat_msg.MessageStatus.sending,
+    );
 
-    if (!_socketClient.emit('chat_message', messageData)) {
-      throw Exception('Socket not connected');
+    // 1. 先存入本地數據庫 (作為 Pending)
+    await _dbHelper.insertMessages([tempMessage]);
+    _notifyMessageReceived(tempMessage);
+
+    // 2. 觸發同步 (如果正在同步，syncPendingMessages 會自動跳過或處理)
+    if (_connectionManager.isOnline) {
+      // 這裡不直接 emit，而是調用 syncPendingMessages 來保證順序和鎖機制
+      // 或者，為了 UI 響應速度，如果沒有正在同步，可以直接發送？
+      // 為了嚴格的順序，我們應該交給 syncPendingMessages。
+      syncPendingMessages();
     }
   }
 

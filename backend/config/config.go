@@ -112,7 +112,7 @@ func LoadConfig() AppConfig {
 			// 開發環境，支援多種測試 URL
 			testHost := os.Getenv("TEST_HOST")
 			if testHost == "" {
-				testHost = "192.168.100.150" // 修正為 .150 以匹配其他服務
+				testHost = "192.168.100.114" // 修正為本機 IP .114
 			}
 			storageBaseURL = "http://" + testHost + ":8080/uploads" // 確保加上端口和 http
 		}
@@ -133,7 +133,8 @@ func LoadConfig() AppConfig {
 			"http://localhost:8080",
 			"http://127.0.0.1:8080",
 			"http://192.168.100.111:8080",
-			"http://192.168.100.150:8080", // 🔥 新增 .150
+			"http://192.168.100.150:8080",
+			"http://192.168.100.114:8080", // 🔥 新增 .114
 			"*", // 開發環境允許所有來源
 		}
 	}

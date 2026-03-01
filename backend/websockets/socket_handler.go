@@ -11,14 +11,16 @@ import (
 	"chatwme/backend/services"
 	"chatwme/backend/utils"
 
+	"github.com/golang-jwt/jwt/v5"
 	socketio "github.com/googollee/go-socket.io"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // AuthenticatedUser 用于储存从 token 解析出的使用者资讯
 type AuthenticatedUser struct {
-	ID       string
-	Username string
+	ID        string
+	Username  string
+	ExpiresAt *jwt.NumericDate // 🔥 新增：Token 過期時間
 }
 
 // ChatMessagePayload 定义了从客户端接收到的聊天讯息结构
@@ -70,6 +72,69 @@ func toInt64(value interface{}) int64 {
 	return 0
 }
 
+// validateUserAndRoomAccess 統一驗證用戶權限與速率限制
+func validateUserAndRoomAccess(
+	s socketio.Conn,
+	roomID string,
+	chatService *services.ChatService,
+) (*AuthenticatedUser, primitive.ObjectID, error) {
+	// 1. 獲取用戶信息
+	user, ok := s.Context().(*AuthenticatedUser)
+	if !ok || user == nil {
+		return nil, primitive.NilObjectID, fmt.Errorf("unauthorized")
+	}
+
+	// 2. Token 過期檢查
+	if user.ExpiresAt != nil && user.ExpiresAt.Time.Before(time.Now()) {
+		log.Printf("Token expired for user %s. Disconnecting...", user.Username)
+		s.Close()
+		return nil, primitive.NilObjectID, fmt.Errorf("token_expired")
+	}
+
+	// 3. 速率限制檢查
+	rateCtx, rateCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer rateCancel()
+	allowed, err := chatService.CheckRateLimit(rateCtx, user.ID)
+	if err != nil {
+		log.Printf("Rate limit check failed for UserID %s: %v", user.ID, err)
+	} else if !allowed {
+		return nil, primitive.NilObjectID, fmt.Errorf("rate_limit_exceeded")
+	}
+
+	// 4. 驗證房間 ID 格式
+	roomObjectID, err := primitive.ObjectIDFromHex(roomID)
+	if err != nil {
+		return nil, primitive.NilObjectID, fmt.Errorf("invalid_room_id")
+	}
+
+	// 5. 驗證是否為房間成員
+	authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer authCancel()
+	isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
+	if err != nil || !isMember {
+		return nil, primitive.NilObjectID, fmt.Errorf("not_room_member")
+	}
+
+	// 6. 檢查是否被封鎖 (Block Check)
+	participants, err := chatService.GetRoomParticipants(authCtx, roomObjectID)
+	if err == nil {
+		blockerIDs := make([]string, 0, len(participants))
+		for _, participantID := range participants {
+			if participantID != user.ID {
+				blockerIDs = append(blockerIDs, participantID)
+			}
+		}
+		if len(blockerIDs) > 0 {
+			isBlocked, err := chatService.IsUserBlockedByAny(authCtx, blockerIDs, user.ID)
+			if err == nil && isBlocked {
+				return nil, primitive.NilObjectID, fmt.Errorf("blocked_by_participant")
+			}
+		}
+	}
+
+	return user, roomObjectID, nil
+}
+
 // NewSocketIOServer 建立并配置一个新的 Socket.IO 伺服器
 func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio.RedisAdapterOptions) *socketio.Server {
 	server := socketio.NewServer(nil)
@@ -81,15 +146,16 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 
 	// 在現有的事件處理中添加語音消息支持
 	server.OnEvent("/", "voice_message", func(s socketio.Conn, payload map[string]interface{}) {
-		user, ok := s.Context().(*AuthenticatedUser)
-		if !ok || user == nil {
-			log.Printf("Error: Could not get user from context for socket %s", s.ID())
+		// 1. 驗證權限與速率限制
+		room, ok := payload["room"].(string)
+		if !ok {
+			log.Printf("Invalid room in voice message")
 			return
 		}
 
-		room, ok := payload["room"].(string)
-		if !ok {
-			log.Printf("Invalid room in voice message from %s", user.Username)
+		user, roomObjectID, err := validateUserAndRoomAccess(s, room, chatService)
+		if err != nil {
+			log.Printf("Voice message validation failed: %v", err)
 			return
 		}
 
@@ -97,21 +163,6 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in voice message from %s", user.Username)
-			return
-		}
-
-		roomObjectID, err := primitive.ObjectIDFromHex(room)
-		if err != nil {
-			log.Printf("Invalid room ID in voice message: %s", room)
-			return
-		}
-
-		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer authCancel()
-
-		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
-		if err != nil || !isMember {
-			log.Printf("Unauthorized voice message attempt by %s in room %s", user.ID, room)
 			return
 		}
 
@@ -183,15 +234,16 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 
 	// 🔥 新增：支持图片消息广播
 	server.OnEvent("/", "image_message", func(s socketio.Conn, payload map[string]interface{}) {
-		user, ok := s.Context().(*AuthenticatedUser)
-		if !ok || user == nil {
-			log.Printf("Error: Could not get user from context for socket %s", s.ID())
+		// 1. 驗證權限與速率限制
+		room, ok := payload["room"].(string)
+		if !ok {
+			log.Printf("Invalid room in image message")
 			return
 		}
 
-		room, ok := payload["room"].(string)
-		if !ok {
-			log.Printf("Invalid room in image message from %s", user.Username)
+		user, roomObjectID, err := validateUserAndRoomAccess(s, room, chatService)
+		if err != nil {
+			log.Printf("Image message validation failed: %v", err)
 			return
 		}
 
@@ -199,21 +251,6 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in image message from %s", user.Username)
-			return
-		}
-
-		roomObjectID, err := primitive.ObjectIDFromHex(room)
-		if err != nil {
-			log.Printf("Invalid room ID in image message: %s", room)
-			return
-		}
-
-		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer authCancel()
-
-		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
-		if err != nil || !isMember {
-			log.Printf("Unauthorized image message attempt by %s in room %s", user.ID, room)
 			return
 		}
 
@@ -279,37 +316,23 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 
 	// 🔥 新增：支持视频消息广播
 	server.OnEvent("/", "video_message", func(s socketio.Conn, payload map[string]interface{}) {
-		user, ok := s.Context().(*AuthenticatedUser)
-		if !ok || user == nil {
-			log.Printf("Error: Could not get user from context for socket %s", s.ID())
-			return
-		}
-
+		// 1. 驗證權限與速率限制
 		room, ok := payload["room"].(string)
 		if !ok {
-			log.Printf("Invalid room in video message from %s", user.Username)
+			log.Printf("Invalid room in video message")
 			return
 		}
 
-		messageID, _ := payload["id"].(string)
+		user, roomObjectID, err := validateUserAndRoomAccess(s, room, chatService)
+		if err != nil {
+			log.Printf("Video message validation failed: %v", err)
+			return
+		}
+
+		tempID, _ := payload["id"].(string)
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in video message from %s", user.Username)
-			return
-		}
-
-		roomObjectID, err := primitive.ObjectIDFromHex(room)
-		if err != nil {
-			log.Printf("Invalid room ID in video message: %s", room)
-			return
-		}
-
-		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer authCancel()
-
-		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
-		if err != nil || !isMember {
-			log.Printf("Unauthorized video message attempt by %s in room %s", user.ID, room)
 			return
 		}
 
@@ -331,9 +354,9 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer messageCancel()
 
-		savedMessage, inserted, err := chatService.SaveMessageWithID(
+		// 🔥 修正：使用 SaveMessage
+		savedMessage, err := chatService.SaveMessage(
 			messageCtx,
-			messageID,
 			user.ID,
 			user.Username,
 			room,
@@ -349,15 +372,14 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		}
 
 		broadcastTimestamp, _ := payload["timestamp"].(string)
-		if inserted {
+		if broadcastTimestamp == "" {
 			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
-		} else if broadcastTimestamp == "" {
-			broadcastTimestamp = time.Now().Format(time.RFC3339)
 		}
 
 		// 广播视频消息给房间内所有用户
 		videoMessageData := map[string]interface{}{
 			"id":          savedMessage.ID.Hex(),
+			"temp_id":     tempID, // 🔥 返回 temp_id
 			"sender_id":   user.ID,
 			"sender_name": user.Username,
 			"room":        room,
@@ -368,15 +390,14 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 
 		log.Printf("Broadcasting video message from %s in room %s", user.Username, room)
 		server.BroadcastToRoom("/", room, "video_message", videoMessageData)
-		if inserted {
-			go func(ts time.Time) {
-				updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer updateCancel()
-				if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[视频]", ts); err != nil {
-					log.Printf("Failed to update room last message: %v", err)
-				}
-			}(savedMessage.Timestamp)
-		}
+		
+		go func(ts time.Time) {
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer updateCancel()
+			if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[视频]", ts); err != nil {
+				log.Printf("Failed to update room last message: %v", err)
+			}
+		}(savedMessage.Timestamp)
 	})
 
 	// 🔥 新增：处理 "mark_read" 事件
@@ -394,8 +415,6 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		}
 
 		// 更新数据库中的消息状态
-		// 注意：这里需要访问数据库，我们假设 chatService 有相应的方法，或者直接在這裡操作
-		// 为了简单起见，我们直接在这里调用 chatService 的方法 (需要新增)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
@@ -440,11 +459,6 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			"is_typing":   true,
 		}
 
-		// 广播给房间内的其他人（除了自己）
-		// socket.io-go 的 BroadcastToRoom 默认会发给所有人包括自己吗？通常是的。
-		// 但在这里我们希望接收端过滤掉自己。或者我们可以尝试用 s.BroadcastTo 排除自己。
-		// server.BroadcastToRoom 确实是广播给房间里的所有 socket。
-		// 客户端需要自己过滤 sender_id == current_user_id。
 		server.BroadcastToRoom("/", room, "typing_start", typingData)
 	})
 
@@ -491,8 +505,9 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		}
 
 		user := &AuthenticatedUser{
-			ID:       claims.UserID,
-			Username: claims.Username,
+			ID:        claims.UserID,
+			Username:  claims.Username,
+			ExpiresAt: claims.ExpiresAt, // 🔥 儲存過期時間
 		}
 		s.SetContext(user)
 
@@ -556,74 +571,15 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			}
 		}
 
-		user, ok := s.Context().(*AuthenticatedUser)
-		if !ok || user == nil {
-			log.Printf("Error: Could not get user from context for socket %s", s.ID())
-			respondError("unauthorized")
+		// 1. 驗證權限與速率限制
+		user, roomObjectID, err := validateUserAndRoomAccess(s, payload.Room, chatService)
+		if err != nil {
+			log.Printf("Chat message validation failed: %v", err)
+			respondError(err.Error())
 			return
 		}
 
 		log.Printf("Message from %s (UserID: %s) in room %s: %s", user.Username, user.ID, payload.Room, payload.Content)
-
-		// 0. [安全檢查] 速率限制
-		rateCtx, rateCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer rateCancel()
-		allowed, err := chatService.CheckRateLimit(rateCtx, user.ID)
-		if err != nil {
-			log.Printf("Rate limit check failed for UserID %s: %v", user.ID, err)
-			// Fail open or closed? Let's fail open but log it.
-		} else if !allowed {
-			log.Printf("Rate limit exceeded for UserID %s", user.ID)
-			respondError("rate_limit_exceeded")
-			return
-		}
-
-		roomObjectID, err := primitive.ObjectIDFromHex(payload.Room)
-		if err != nil {
-			log.Printf("Invalid Room ObjectID for message: %s, Error: %v", payload.Room, err)
-			respondError("invalid_room")
-			return
-		}
-
-		authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer authCancel()
-
-		isMember, err := chatService.IsUserInRoom(authCtx, roomObjectID, user.ID)
-		if err != nil {
-			log.Printf("Failed to validate room access for UserID %s in room %s: %v", user.ID, payload.Room, err)
-			respondError("room_access_check_failed")
-			return
-		}
-		if !isMember {
-			log.Printf("Unauthorized message attempt by UserID %s in room %s", user.ID, payload.Room)
-			respondError("not_in_room")
-			return
-		}
-
-		participants, err := chatService.GetRoomParticipants(authCtx, roomObjectID)
-		if err != nil {
-			log.Printf("Failed to get room participants for block check: %v", err)
-			respondError("internal_error")
-			return
-		}
-
-		blockerIDs := make([]string, 0, len(participants))
-		for _, participantID := range participants {
-			if participantID != user.ID {
-				blockerIDs = append(blockerIDs, participantID)
-			}
-		}
-
-		if len(blockerIDs) > 0 {
-			isBlocked, err := chatService.IsUserBlockedByAny(authCtx, blockerIDs, user.ID)
-			if err != nil {
-				log.Printf("Error checking block status: %v", err)
-			} else if isBlocked {
-				log.Printf("Message rejected: User %s is blocked by a participant", user.ID)
-				respondError("blocked")
-				return
-			}
-		}
 
 		// 設置消息類型預設值
 		messageType := payload.Type
@@ -657,7 +613,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			"read_by":     []string{}, // 🔥 新增：初始已读列表
 		}
 
-		// 4. [關鍵修正] 廣播給房間內所有用戶，包括發送者自己
+		// 4. [關鍵修正] 廣播給房間內的所有用戶，包括發送者自己
 		log.Printf("Broadcasting message to room %s from %s: %s", payload.Room, user.Username, payload.Content)
 		server.BroadcastToRoom("/", payload.Room, "chat_message", messageToBroadcast)
 
