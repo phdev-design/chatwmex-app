@@ -60,6 +60,22 @@ func (u *messageUsecase) GetHistory(ctx context.Context, userID, contactID strin
 	return u.messageRepo.GetHistory(ctx, userID, contactID, limit, offset)
 }
 
+// SaveOfflineMessage stores a message for offline delivery.
+func (u *messageUsecase) SaveOfflineMessage(c context.Context, userID string, msg *domain.Message) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	return u.messageRepo.StoreOfflineMessage(ctx, userID, msg)
+}
+
+// FetchOfflineMessages retrieves and clears offline messages for a user.
+func (u *messageUsecase) FetchOfflineMessages(c context.Context, userID string) ([]*domain.Message, error) {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	return u.messageRepo.GetOfflineMessages(ctx, userID)
+}
+
 func (u *messageUsecase) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
 	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
 	defer cancel()

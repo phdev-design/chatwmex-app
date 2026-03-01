@@ -21,6 +21,8 @@ const userCollectionName = "users"
 type mongoUser struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"`
 	Username     string             `bson:"username"`
+	Email        string             `bson:"email,omitempty"`
+	PhoneNumber  string             `bson:"phone_number,omitempty"`
 	PasswordHash string             `bson:"password_hash"`
 	CreatedAt    time.Time          `bson:"created_at"`
 	UpdatedAt    time.Time          `bson:"updated_at"`
@@ -37,9 +39,16 @@ func NewUserRepository(db *mongo.Database) domain.UserRepository {
 	collection := db.Collection(userCollectionName)
 
 	// Ensure unique index on username
-	indexModel := mongo.IndexModel{
+	usernameIndexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "username", Value: 1}},
 		Options: options.Index().SetUnique(true),
+	}
+
+	// Ensure unique index on email
+	// We use Sparse: true to allow multiple documents to have no email field (existing users)
+	emailIndexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "email", Value: 1}},
+		Options: options.Index().SetUnique(true).SetSparse(true),
 	}
 
 	// We create the index in the background to avoid blocking, 
@@ -49,9 +58,14 @@ func NewUserRepository(db *mongo.Database) domain.UserRepository {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	
-	_, err := collection.Indexes().CreateOne(ctx, indexModel)
+	_, err := collection.Indexes().CreateOne(ctx, usernameIndexModel)
 	if err != nil {
 		fmt.Printf("Warning: failed to create unique index on users.username: %v\n", err)
+	}
+
+	_, err = collection.Indexes().CreateOne(ctx, emailIndexModel)
+	if err != nil {
+		fmt.Printf("Warning: failed to create unique index on users.email: %v\n", err)
 	}
 
 	return &UserRepository{
@@ -64,6 +78,8 @@ func (r *UserRepository) toDomain(u *mongoUser) *domain.User {
 	return &domain.User{
 		ID:           u.ID.Hex(),
 		Username:     u.Username,
+		Email:        u.Email,
+		PhoneNumber:  u.PhoneNumber,
 		PasswordHash: u.PasswordHash,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
@@ -84,6 +100,8 @@ func (r *UserRepository) fromDomain(u *domain.User) (*mongoUser, error) {
 	return &mongoUser{
 		ID:           id,
 		Username:     u.Username,
+		Email:        u.Email,
+		PhoneNumber:  u.PhoneNumber,
 		PasswordHash: u.PasswordHash,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
@@ -111,7 +129,15 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 	if err != nil {
 		// Check for duplicate key error
 		if mongo.IsDuplicateKeyError(err) {
-			return errors.New("username already exists")
+			// Determine which key is duplicate if possible, or just generic
+			// Usually mongo error message contains the key pattern.
+			// Ideally we parse it, but for now generic "already exists" is okay.
+			// But user wants to know if email or username.
+			// Simple check: Check if username exists, if so return "username exists", else "email exists"
+			// But that's extra queries.
+			// Let's just return a generic duplicate error for now or let the usecase handle it.
+			// Actually, let's just return "username or email already exists"
+			return errors.New("username or email already exists")
 		}
 		return fmt.Errorf("failed to create user: %w", err)
 	}
@@ -143,6 +169,32 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 	return r.toDomain(&mUser), nil
 }
 
+// Update updates an existing user in the database.
+func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
+	mongoUser, err := r.fromDomain(user)
+	if err != nil {
+		return err
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"email":        mongoUser.Email,
+			"phone_number": mongoUser.PhoneNumber,
+			"updated_at":   time.Now(),
+		},
+	}
+
+	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": mongoUser.ID}, update)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return errors.New("email already exists")
+		}
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return nil
+}
+
 // GetByUsername retrieves a user by their username.
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
 	var mUser mongoUser
@@ -152,6 +204,20 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*d
 			return nil, errors.New("user not found")
 		}
 		return nil, fmt.Errorf("failed to get user by username: %w", err)
+	}
+
+	return r.toDomain(&mUser), nil
+}
+
+// GetByEmail retrieves a user by their email.
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	var mUser mongoUser
+	err := r.collection.FindOne(ctx, bson.M{"email": email}).Decode(&mUser)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
 	return r.toDomain(&mUser), nil

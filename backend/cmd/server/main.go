@@ -15,6 +15,7 @@ import (
 	"chatwmex_backend/internal/delivery/websocket"
 	"chatwmex_backend/internal/domain"
 	"chatwmex_backend/internal/infrastructure"
+	"chatwmex_backend/internal/infrastructure/notification"
 	"chatwmex_backend/internal/infrastructure/rabbitmq"
 	"chatwmex_backend/internal/repository/mongo_repo"
 	"chatwmex_backend/internal/repository/redis_repo"
@@ -75,6 +76,8 @@ func main() {
 	userRepo := mongo_repo.NewUserRepository(db)
 	messageRepo := mongo_repo.NewMessageRepository(db, cryptor)
 	roomRepo := mongo_repo.NewRoomRepository(db)
+	friendRepo := mongo_repo.NewFriendRepository(db)
+	deviceRepo := mongo_repo.NewDeviceRepository(db)
 	onlineRepo := redis_repo.NewOnlineRepository(redisClient)
 
 	// 4. Initialize Usecases
@@ -82,7 +85,8 @@ func main() {
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
 	messageUsecase := usecase.NewMessageUsecase(messageRepo, timeout)
-	roomUsecase := usecase.NewRoomUsecase(roomRepo, timeout)
+	roomUsecase := usecase.NewRoomUsecase(roomRepo, messageRepo, timeout)
+	deviceUsecase := usecase.NewDeviceUsecase(deviceRepo, timeout)
 
 	// 5. Initialize HTTP Server
 	if cfg.AppEnv == "release" {
@@ -99,6 +103,17 @@ func main() {
 	}
 	authMiddleware := middleware.AuthMiddleware(cfg.JWTSecret)
 
+	// Initialize Notification Service
+	// If OneSignal config is missing, use a mock or nil.
+	// We require it for "Push Notification" feature.
+	var notificationService domain.NotificationService
+	if cfg.OneSignalAppID != "" && cfg.OneSignalAPIKey != "" {
+		notificationService = notification.NewOneSignalService(cfg.OneSignalAppID, cfg.OneSignalAPIKey)
+	} else {
+		log.Println("Warning: OneSignal config missing, push notifications will be disabled")
+		// Ideally use a no-op mock
+	}
+
 	// Initialize WebSocket Hub
 	rabbitIn := make(chan *domain.Message)
 	
@@ -113,23 +128,53 @@ func main() {
 		}
 	}
 	
-	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn)
+	// Hub needs NotificationService to send push when user offline
+	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, notificationService)
 	
 	// Create SocketController
 	socketController := websocket.NewSocketController(hub, messageUsecase)
 	
 	go hub.Run()
 
+	// Initialize FriendUsecase (Requires Hub/NotificationService for notifications)
+	// We passed Hub to FriendUsecase before because Hub implemented NotificationService (via SendNotification method stub)
+	// But now we have a real NotificationService.
+	// FriendUsecase expects `domain.NotificationService`.
+	// Hub *also* has SendNotification method.
+	// Let's use the real notificationService for FriendUsecase if we want Push.
+	// OR use Hub if we want WebSocket notification + Push fallback?
+	// The previous implementation injected `hub` into `FriendUsecase`.
+	// Hub's `SendNotification` was just sending WS.
+	// We should update Hub to use `notificationService` internally for fallback, OR update FriendUsecase to use `notificationService` directly.
+	// If we use `notificationService` directly in FriendUsecase, we get Push but maybe not WS realtime if app is open?
+	// `OneSignalService` only does Push.
+	// We want BOTH: WS if online, Push if offline.
+	// Hub is the best place for this logic.
+	// So Hub should wrap `notificationService`.
+	// And FriendUsecase should keep using Hub (as NotificationService).
+	
+	friendUsecase := usecase.NewFriendUsecase(friendRepo, userRepo, hub, timeout)
 
 	// Register Handlers
 	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret)
 	delivery.NewMessageHandler(r, messageUsecase, authMiddleware)
 	delivery.NewRoomHandler(r, roomUsecase, authMiddleware)
 	delivery.NewOnlineHandler(r, onlineRepo, authMiddleware)
+	delivery.NewFriendHandler(r, friendUsecase, cfg.JWTSecret)
+	delivery.NewDeviceHandler(r, deviceUsecase, authMiddleware)
 	
 	// Register WebSocket Route
 	r.GET("/ws", func(c *gin.Context) {
 		websocket.ServeWs(hub, c, cfg.JWTSecret, socketController)
+	})
+	
+	// Register Metrics Endpoint
+	r.GET("/metrics", func(c *gin.Context) {
+		// Simple metrics
+		c.JSON(http.StatusOK, gin.H{
+			"active_connections": hub.GetActiveConnectionCount(),
+			"timestamp":          time.Now(),
+		})
 	})
 
 	// 7. Start Server with Graceful Shutdown

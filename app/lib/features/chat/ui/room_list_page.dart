@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:app/core/storage/storage_service.dart';
 
@@ -14,6 +15,27 @@ class RoomListPage extends ConsumerStatefulWidget {
 
 class _RoomListPageState extends ConsumerState<RoomListPage> {
   final TextEditingController _searchController = TextEditingController();
+  String? _currentUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+  }
+
+  Future<void> _loadUserId() async {
+    final userId = await ref.read(storageServiceProvider).read('user_id');
+    if (mounted) {
+      if (userId == null) {
+        // Should not happen if logged in, but safe to redirect
+        context.go('/login');
+        return;
+      }
+      setState(() {
+        _currentUserId = userId;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -22,30 +44,34 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
   }
 
   void _onSearchChanged(String query) {
-    // Debounce logic could be added here
-    ref.read(roomListViewModelProvider.notifier).searchUsers(query);
-  }
-
-  void _logout() async {
-    await ref.read(storageServiceProvider).deleteAll();
-    if (mounted) context.go('/login');
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(roomListViewModelProvider);
-    // TODO: Get real user ID from provider
-    final userId = "user1"; 
+
+    if (_currentUserId == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final filteredRooms = state.rooms.where((room) {
+      return room.name.toLowerCase().contains(
+        _searchController.text.toLowerCase(),
+      );
+    }).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chats'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-          ),
-        ],
+        leading: IconButton(
+          icon: const CircleAvatar(child: Icon(Icons.person, size: 20)),
+          onPressed: () => context.push('/profile'),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/new-chat'),
+        child: const Icon(Icons.add),
       ),
       body: Column(
         children: [
@@ -54,57 +80,33 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
             child: TextField(
               controller: _searchController,
               decoration: const InputDecoration(
-                hintText: 'Search users...',
+                hintText: 'Search chats...',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
               ),
               onChanged: _onSearchChanged,
             ),
           ),
-          Expanded(
-            child: _searchController.text.isNotEmpty
-                ? _buildSearchResults(state, userId)
-                : _buildRoomList(state, userId),
-          ),
+          Expanded(child: _buildRoomList(filteredRooms, _currentUserId!)),
         ],
       ),
     );
   }
 
-  Widget _buildSearchResults(RoomListState state, String userId) {
-    if (state.searchResults.isEmpty) {
-      return const Center(child: Text('No users found'));
+  Widget _buildRoomList(List<Room> rooms, String userId) {
+    if (rooms.isEmpty) {
+      return const Center(child: Text('No chats found'));
     }
-    return ListView.builder(
-      itemCount: state.searchResults.length,
-      itemBuilder: (context, index) {
-        final user = state.searchResults[index];
-        return ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.person)),
-          title: Text(user.username),
-          subtitle: Text(user.email),
-          onTap: () => _openChat(context, user.id, user.username, false, userId),
-        );
-      },
-    );
-  }
 
-  Widget _buildRoomList(RoomListState state, String userId) {
-    if (state.isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (state.rooms.isEmpty) {
-      return const Center(child: Text('No chats yet'));
-    }
-    
     return ListView.builder(
-      itemCount: state.rooms.length,
+      itemCount: rooms.length,
       itemBuilder: (context, index) {
-        final room = state.rooms[index];
-        final timeStr = room.lastMessageTime != null 
-            ? DateFormat('HH:mm').format(room.lastMessageTime!) 
+        final room = rooms[index];
+        final timeStr = room.lastMessageTime != null
+            ? DateFormat('HH:mm').format(room.lastMessageTime!)
             : '';
-            
+
+        final isRoom = room.type == 'group';
         return ListTile(
           leading: Stack(
             children: [
@@ -125,10 +127,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                     ),
                     child: Text(
                       '${room.unreadCount}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -138,8 +137,14 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(room.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text(timeStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                room.name,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                timeStr,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ],
           ),
           subtitle: Text(
@@ -147,17 +152,25 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontWeight: room.unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+              fontWeight: room.unreadCount > 0
+                  ? FontWeight.bold
+                  : FontWeight.normal,
               color: room.unreadCount > 0 ? Colors.black87 : Colors.grey,
             ),
           ),
-          onTap: () => _openChat(context, room.id, room.name, true, userId),
+          onTap: () => _openChat(context, room.id, room.name, isRoom, userId),
         );
       },
     );
   }
 
-  void _openChat(BuildContext context, String roomId, String title, bool isRoom, String userId) async {
+  void _openChat(
+    BuildContext context,
+    String roomId,
+    String title,
+    bool isRoom,
+    String userId,
+  ) async {
     final token = await ref.read(storageServiceProvider).read('jwt_token');
     if (mounted && token != null) {
       context.push(

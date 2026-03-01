@@ -1,13 +1,15 @@
+import 'dart:io';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/storage/storage_service.dart';
-import 'package:dio/dio.dart';
+import 'package:app/core/notification/notification_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class AuthRepository {
   final NetworkService _networkService;
   final StorageService _storageService;
+  final NotificationService _notificationService;
 
-  AuthRepository(this._networkService, this._storageService);
+  AuthRepository(this._networkService, this._storageService, this._notificationService);
 
   Future<void> login(String username, String password) async {
     try {
@@ -16,13 +18,33 @@ class AuthRepository {
         'password': password,
       });
       
-      final token = response.data['token'];
-      final userId = response.data['user_id'];
+      final data = response.data['data'];
+      final token = data['token'];
+      final userId = data['user_info']['id'];
+      final usernameStr = data['user_info']['username'];
       
       await _storageService.save('jwt_token', token);
       await _storageService.save('user_id', userId);
+      await _storageService.save('username', usernameStr);
+
+      // Register Device for Push Notifications
+      final deviceId = await _notificationService.getSubscriptionId();
+      if (deviceId != null) {
+        await _registerDevice(deviceId);
+      }
     } catch (e) {
       throw e;
+    }
+  }
+
+  Future<void> _registerDevice(String deviceId) async {
+    try {
+      await _networkService.client.post('/devices/register', data: {
+        'device_id': deviceId,
+        'platform': Platform.isAndroid ? 'android' : 'ios',
+      });
+    } catch (e) {
+      print('Failed to register device: $e');
     }
   }
 
@@ -35,12 +57,23 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
-    await _storageService.deleteAll();
+    try {
+      // Unregister Device
+      final deviceId = await _notificationService.getSubscriptionId();
+      if (deviceId != null) {
+        await _networkService.client.delete('/devices/$deviceId');
+      }
+    } catch (e) {
+      print('Failed to unregister device: $e');
+    } finally {
+      await _storageService.deleteAll();
+    }
   }
 }
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final network = ref.watch(networkServiceProvider);
   final storage = ref.watch(storageServiceProvider);
-  return AuthRepository(network, storage);
+  final notification = ref.watch(notificationServiceProvider);
+  return AuthRepository(network, storage, notification);
 });

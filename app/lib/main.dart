@@ -4,8 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:app/features/auth/ui/login_page.dart';
 import 'package:app/features/chat/ui/chat_detail_page.dart';
 import 'package:app/features/chat/ui/room_list_page.dart';
+import 'package:app/features/friend/ui/add_friend_page.dart';
+import 'package:app/features/friend/ui/friend_requests_page.dart';
+import 'package:app/features/friend/ui/new_chat_page.dart';
+import 'package:app/features/profile/ui/profile_page.dart';
 import 'package:app/core/notification/notification_service.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/core/theme/theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,6 +51,22 @@ class _MyAppState extends ConsumerState<MyApp> {
           builder: (context, state) => const RoomListPage(),
         ),
         GoRoute(
+          path: '/profile',
+          builder: (context, state) => const ProfilePage(),
+        ),
+        GoRoute(
+          path: '/new-chat',
+          builder: (context, state) => const NewChatPage(),
+        ),
+        GoRoute(
+          path: '/add-friend',
+          builder: (context, state) => const AddFriendPage(),
+        ),
+        GoRoute(
+          path: '/friend-requests',
+          builder: (context, state) => const FriendRequestsPage(),
+        ),
+        GoRoute(
           path: '/chat',
           builder: (context, state) {
             final extra = state.extra as Map<String, dynamic>?;
@@ -76,10 +97,9 @@ class _MyAppState extends ConsumerState<MyApp> {
 
     return MaterialApp.router(
       title: 'ChatWmex',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       routerConfig: router,
     );
   }

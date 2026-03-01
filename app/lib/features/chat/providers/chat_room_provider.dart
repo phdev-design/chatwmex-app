@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/models/message.dart';
 import 'package:app/core/network/network_service.dart';
@@ -68,57 +69,63 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   ChatRoomState build(ChatRoomParams arg) {
     _network = ref.watch(networkServiceProvider);
     _wsService = ref.watch(webSocketServiceProvider);
-    
+
     // Connect WebSocket
     _wsService.connect();
 
     // Listen to WS events
     final subscription = _wsService.events.listen((data) {
-       if (data is Map) {
-         final event = data['event'];
-         final payload = data['data'];
+      if (data is Map) {
+        final event = data['event'];
+        final payload = data['data'];
 
-         if (event == 'chat_message') {
-            try {
-              final message = Message.fromJson(payload);
-              if ((arg.isRoom && message.roomId == arg.roomId) || 
-                  (!arg.isRoom && (message.senderId == arg.roomId || message.receiverId == arg.roomId))) {
-                _addMessage(message);
-                if (message.senderId != arg.currentUserId) {
-                  markAsRead();
-                }
+        if (event == 'chat_message') {
+          try {
+            final message = Message.fromJson(payload);
+            if ((arg.isRoom && message.roomId == arg.roomId) ||
+                (!arg.isRoom &&
+                    (message.senderId == arg.roomId ||
+                        message.receiverId == arg.roomId))) {
+              _addMessage(message);
+              if (message.senderId != arg.currentUserId) {
+                markAsRead();
               }
-            } catch (e) {
-              print('Error parsing message: $e');
             }
-         } else if (event == 'typing_start') {
-           // Basic typing indicator logic
-           final roomId = payload['room_id'];
-           final userId = payload['user_id'];
-           
-           if (roomId == arg.roomId && userId != arg.currentUserId) {
-             if (!state.typingUsers.contains(userId)) {
-               state = state.copyWith(typingUsers: [...state.typingUsers, userId]);
-               
-               // Auto clear after 3 seconds
-               Future.delayed(const Duration(seconds: 3), () {
-                 if (state.typingUsers.contains(userId)) {
-                   state = state.copyWith(
-                     typingUsers: state.typingUsers.where((id) => id != userId).toList(),
-                   );
-                 }
-               });
-             }
-           }
-         }
-       }
+          } catch (e) {
+            print('Error parsing message: $e');
+          }
+        } else if (event == 'typing_start') {
+          // Basic typing indicator logic
+          final roomId = payload['room_id'];
+          final userId = payload['user_id'];
+
+          if (roomId == arg.roomId && userId != arg.currentUserId) {
+            if (!state.typingUsers.contains(userId)) {
+              state = state.copyWith(
+                typingUsers: [...state.typingUsers, userId],
+              );
+
+              // Auto clear after 3 seconds
+              Future.delayed(const Duration(seconds: 3), () {
+                if (state.typingUsers.contains(userId)) {
+                  state = state.copyWith(
+                    typingUsers: state.typingUsers
+                        .where((id) => id != userId)
+                        .toList(),
+                  );
+                }
+              });
+            }
+          }
+        }
+      }
     });
 
     ref.onDispose(() {
       subscription.cancel();
     });
 
-    loadHistory();
+    Future.microtask(() => loadHistory());
 
     return const ChatRoomState(isConnected: true);
   }
@@ -133,27 +140,36 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   Future<void> loadHistory({int limit = 50, int offset = 0}) async {
     if (offset == 0) state = state.copyWith(isLoading: true);
     try {
-      final response = await _network.client.get('/messages/history', 
+      final response = await _network.client.get(
+        '/messages/history',
         queryParameters: {
           'contact_id': arg.roomId,
           'limit': limit,
           'offset': offset,
         },
       );
-      
+
       final List<dynamic> list = response.data['data'];
       final history = list.map((e) => Message.fromJson(e)).toList();
 
       state = state.copyWith(
-        messages: offset == 0 ? history.reversed.toList() : [...history.reversed, ...state.messages],
+        messages: offset == 0
+            ? history.reversed.toList()
+            : [...history.reversed, ...state.messages],
         isLoading: false,
       );
+      if (offset == 0) {
+        markAsRead();
+      }
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
-  Future<void> sendMessage(String content, {MessageType type = MessageType.text}) async {
+  Future<void> sendMessage(
+    String content, {
+    MessageType type = MessageType.text,
+  }) async {
     final payload = {
       'receiver_id': arg.isRoom ? null : arg.roomId,
       'room_id': arg.isRoom ? arg.roomId : null,
@@ -164,11 +180,22 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _wsService.send('chat_message', payload);
   }
 
+  Future<void> sendMedia(File file, MessageType type) async {
+    state = state.copyWith(isSending: true);
+    try {
+      final url = await _network.uploadFile(
+        file,
+        type == MessageType.image ? 'image' : 'voice',
+      );
+      await sendMessage(url, type: type);
+      state = state.copyWith(isSending: false);
+    } catch (e) {
+      state = state.copyWith(isSending: false, error: e.toString());
+    }
+  }
+
   Future<void> markAsRead() async {
-    final payload = {
-      'conversation_id': arg.roomId,
-      'is_room': arg.isRoom,
-    };
+    final payload = {'conversation_id': arg.roomId, 'is_room': arg.isRoom};
     _wsService.send('mark_read', payload);
   }
 
@@ -178,4 +205,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 }
 
 // Provider Definition
-final chatRoomProvider = NotifierProvider.family<ChatRoomViewModel, ChatRoomState, ChatRoomParams>(ChatRoomViewModel.new);
+final chatRoomProvider =
+    NotifierProvider.family<ChatRoomViewModel, ChatRoomState, ChatRoomParams>(
+      ChatRoomViewModel.new,
+    );

@@ -33,7 +33,7 @@ class RoomListState {
 
 class RoomListViewModel extends Notifier<RoomListState> {
   late final ChatRepository _repository;
-  
+
   @override
   RoomListState build() {
     _repository = ref.watch(chatRepositoryProvider);
@@ -46,7 +46,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
     final subscription = wsService.events.listen((data) {
       if (data is Map) {
         final event = data['event'];
-        if (event == 'chat_message') {
+        if (event == 'chat_message' || event == 'read_receipt') {
           fetchRooms();
         }
       }
@@ -58,7 +58,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
 
     // Initial fetch
     Future.microtask(() => fetchRooms());
-    
+
     return const RoomListState();
   }
 
@@ -86,4 +86,5 @@ class RoomListViewModel extends Notifier<RoomListState> {
   }
 }
 
-final roomListViewModelProvider = NotifierProvider<RoomListViewModel, RoomListState>(RoomListViewModel.new);
+final roomListViewModelProvider =
+    NotifierProvider<RoomListViewModel, RoomListState>(RoomListViewModel.new);

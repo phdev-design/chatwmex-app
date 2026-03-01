@@ -17,6 +17,8 @@ type Config struct {
 	RabbitMQURL   string `mapstructure:"RABBITMQ_URL"`
 	EncryptionKey string `mapstructure:"ENCRYPTION_KEY"`
 	JWTSecret     string `mapstructure:"JWT_SECRET"`
+	OneSignalAppID string `mapstructure:"ONESIGNAL_APP_ID"`
+	OneSignalAPIKey string `mapstructure:"ONESIGNAL_API_KEY"`
 }
 
 func LoadConfig() (*Config, error) {

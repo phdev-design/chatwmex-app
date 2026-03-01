@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"chatwmex_backend/internal/domain"
@@ -9,12 +10,14 @@ import (
 
 type roomUsecase struct {
 	roomRepo       domain.RoomRepository
+	messageRepo    domain.MessageRepository
 	contextTimeout time.Duration
 }
 
-func NewRoomUsecase(repo domain.RoomRepository, timeout time.Duration) domain.RoomUsecase {
+func NewRoomUsecase(roomRepo domain.RoomRepository, messageRepo domain.MessageRepository, timeout time.Duration) domain.RoomUsecase {
 	return &roomUsecase{
-		roomRepo:       repo,
+		roomRepo:       roomRepo,
+		messageRepo:    messageRepo,
 		contextTimeout: timeout,
 	}
 }
@@ -53,5 +56,50 @@ func (u *roomUsecase) GetRoomMembers(c context.Context, roomID string) ([]string
 func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.Room, error) {
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
-	return u.roomRepo.GetUserRooms(ctx, userID)
+
+	// 1. Get Group Rooms
+	rooms, err := u.roomRepo.GetUserRooms(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, room := range rooms {
+		room.Type = "group"
+		// If needed, fetch last message for group rooms here
+	}
+
+	// 2. Get DM Conversations
+	conversations, err := u.messageRepo.GetConversations(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, conv := range conversations {
+		rooms = append(rooms, &domain.Room{
+			ID:              conv.OtherUserID, // Use UserID as RoomID for DM
+			Name:            conv.OtherUsername,
+			Type:            "dm",
+			LastMessage:     conv.LastMessage,
+			LastMessageTime: conv.LastMessageTime,
+			UnreadCount:     conv.UnreadCount,
+			UpdatedAt:       conv.LastMessageTime,
+		})
+	}
+
+	// 3. Sort by last activity (UpdatedAt or LastMessageTime)
+	sort.Slice(rooms, func(i, j int) bool {
+		t1 := rooms[i].UpdatedAt
+		if !rooms[i].LastMessageTime.IsZero() {
+			t1 = rooms[i].LastMessageTime
+		}
+		
+		t2 := rooms[j].UpdatedAt
+		if !rooms[j].LastMessageTime.IsZero() {
+			t2 = rooms[j].LastMessageTime
+		}
+		
+		return t1.After(t2)
+	})
+
+	return rooms, nil
 }

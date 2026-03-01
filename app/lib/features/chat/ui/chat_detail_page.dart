@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:app/features/chat/providers/chat_room_provider.dart';
 import 'package:app/models/message.dart';
+import 'package:app/core/media/media_service.dart';
 
 class ChatDetailPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -26,6 +29,7 @@ class ChatDetailPage extends ConsumerStatefulWidget {
 class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  bool _isRecording = false;
 
   ChatRoomParams get _params => ChatRoomParams(
         roomId: widget.roomId,
@@ -61,6 +65,33 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     if (text.isNotEmpty) {
       ref.read(chatRoomProvider(_params).notifier).sendMessage(text);
       _textController.clear();
+    }
+  }
+
+  void _pickImage(ImageSource source) async {
+    final mediaService = ref.read(mediaServiceProvider);
+    final file = await mediaService.pickImage(source);
+    if (file != null) {
+      ref.read(chatRoomProvider(_params).notifier).sendMedia(file, MessageType.image);
+    }
+  }
+
+  void _toggleRecording() async {
+    final mediaService = ref.read(mediaServiceProvider);
+    if (_isRecording) {
+      final path = await mediaService.stopRecording();
+      setState(() => _isRecording = false);
+      if (path != null) {
+        ref.read(chatRoomProvider(_params).notifier).sendMedia(File(path), MessageType.voice);
+      }
+    } else {
+      final path = await mediaService.getTemporaryAudioPath();
+      try {
+        await mediaService.startRecording(path);
+        setState(() => _isRecording = true);
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -121,6 +152,19 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                   child: Row(
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.photo),
+                        onPressed: () => _pickImage(ImageSource.gallery),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.camera_alt),
+                        onPressed: () => _pickImage(ImageSource.camera),
+                      ),
+                      IconButton(
+                        icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                        color: _isRecording ? Colors.red : null,
+                        onPressed: _toggleRecording,
+                      ),
                       Expanded(
                         child: TextField(
                           controller: _textController,
@@ -147,6 +191,21 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
   }
 
   Widget _buildMessageBubble(Message msg, bool isMe) {
+    Widget content;
+    if (msg.type == MessageType.image) {
+      content = Image.network(msg.content);
+    } else if (msg.type == MessageType.voice) {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_arrow),
+          const Text('Voice Message'),
+        ],
+      );
+    } else {
+      content = Text(msg.content, style: TextStyle(color: isMe ? Colors.white : Colors.black));
+    }
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -159,7 +218,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(msg.content, style: TextStyle(color: isMe ? Colors.white : Colors.black)),
+            content,
+            const SizedBox(height: 2),
             Text(
               "${msg.createdAt.hour}:${msg.createdAt.minute}",
               style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey),

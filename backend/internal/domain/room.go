@@ -5,14 +5,18 @@ import (
 	"time"
 )
 
-// Room represents a chat room (group).
+// Room represents a chat room (group) or a DM conversation.
 type Room struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	OwnerID   string    `json:"owner_id"`
-	Members   []string  `json:"members"` // List of UserIDs
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	OwnerID         string    `json:"owner_id,omitempty"`
+	Members         []string  `json:"members,omitempty"` // List of UserIDs
+	Type            string    `json:"type"`              // "group" or "dm"
+	LastMessage     string    `json:"last_message,omitempty"`
+	LastMessageTime time.Time `json:"last_message_time,omitempty"`
+	UnreadCount     int       `json:"unread_count"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // RoomRepository defines the interface for room data persistence.

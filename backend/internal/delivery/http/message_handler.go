@@ -93,6 +93,12 @@ func (h *MessageHandler) GetHistory(c *gin.Context) {
 
 	contactID := c.Query("contactID")
 	if contactID == "" {
+		contactID = c.Query("contactId")
+	}
+	if contactID == "" {
+		contactID = c.Query("contact_id")
+	}
+	if contactID == "" {
 		response.Error(c, http.StatusBadRequest, "contactID is required")
 		return
 	}

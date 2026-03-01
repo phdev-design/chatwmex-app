@@ -14,6 +14,10 @@ class NotificationService {
       // Navigate to chat?
     });
   }
+
+  Future<String?> getSubscriptionId() async {
+    return OneSignal.User.pushSubscription.id;
+  }
 }
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {

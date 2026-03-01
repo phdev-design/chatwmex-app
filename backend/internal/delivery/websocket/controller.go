@@ -102,6 +102,13 @@ func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 	} else {
 		c.hub.broadcast <- &msg
 	}
+	
+	// Send ACK to sender
+	c.respondSuccess(client, "message_ack", map[string]string{
+		"message_id":    msg.ID,
+		"client_msg_id": msg.ClientMsgID,
+		"status":        "sent",
+	})
 }
 
 // handleMediaMessage handles validation and processing for media messages.
@@ -148,8 +155,10 @@ func (c *SocketController) OnMarkRead(client *Client, data []byte) {
 		return
 	}
 
-	// Optionally broadcast a read receipt event
-	// c.hub.broadcast <- ...
+	c.respondSuccess(client, "read_receipt", map[string]interface{}{
+		"conversation_id": payload.ConversationID,
+		"is_room":         payload.IsRoom,
+	})
 }
 
 // OnTypingStart handles typing indicators.

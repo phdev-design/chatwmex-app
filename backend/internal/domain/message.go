@@ -8,9 +8,10 @@ import (
 // Message represents a chat message.
 // Content is stored encrypted in the database but decrypted in this domain model.
 type Message struct {
-	ID         string    `json:"id"`
-	SenderID   string    `json:"sender_id"`
-	ReceiverID string    `json:"receiver_id,omitempty"` // For 1-on-1 chat, empty if RoomID is set
+	ID          string    `json:"id"`
+	ClientMsgID string    `json:"client_msg_id,omitempty"` // For idempotency and ACK tracking
+	SenderID    string    `json:"sender_id"`
+	ReceiverID  string    `json:"receiver_id,omitempty"` // For 1-on-1 chat, empty if RoomID is set
 	RoomID     string    `json:"room_id,omitempty"`     // For Group chat, empty if ReceiverID is set
 	Content    string    `json:"content"`               // Business level content (plaintext)
 	Type       string    `json:"type"`              // "text", "image", "read_receipt"
@@ -26,8 +27,24 @@ type MessageRepository interface {
 	StoreMessage(ctx context.Context, msg *Message) error
 	
 	GetHistory(ctx context.Context, userID, contactID string, limit, offset int) ([]*Message, error)
+	// Offline Message Handling
+	StoreOfflineMessage(ctx context.Context, userID string, msg *Message) error
+	GetOfflineMessages(ctx context.Context, userID string) ([]*Message, error)
+	
+	// GetConversations retrieves DM conversations for a user.
+	GetConversations(ctx context.Context, userID string) ([]*Conversation, error)
+
 	// MarkAsRead marks all messages in a conversation (room or DM) as read by userID
 	MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error
+}
+
+// Conversation represents a summary of a chat (DM).
+type Conversation struct {
+	OtherUserID     string    `json:"other_user_id"`
+	OtherUsername   string    `json:"other_username"`
+	LastMessage     string    `json:"last_message"`
+	LastMessageTime time.Time `json:"last_message_time"`
+	UnreadCount     int       `json:"unread_count"`
 }
 
 // MessageUsecase defines the interface for message business logic.
@@ -37,5 +54,10 @@ type MessageUsecase interface {
 	SendMessage(ctx context.Context, msg *Message) error
 	
 	GetHistory(ctx context.Context, userID, contactID string, limit, offset int) ([]*Message, error)
+	
+	// Offline Queue
+	SaveOfflineMessage(ctx context.Context, userID string, msg *Message) error
+	FetchOfflineMessages(ctx context.Context, userID string) ([]*Message, error)
+	
 	MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error
 }

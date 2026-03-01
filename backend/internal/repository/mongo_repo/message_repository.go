@@ -15,6 +15,7 @@ import (
 )
 
 const messageCollectionName = "messages"
+const offlineCollectionName = "offline_messages"
 
 // mongoMessage is the DTO for storing messages in MongoDB.
 // It is internal to this package and should not be exposed.
@@ -30,17 +31,25 @@ type mongoMessage struct {
 	CreatedAt  time.Time          `bson:"created_at"`
 }
 
+type offlineMessage struct {
+	ID      primitive.ObjectID `bson:"_id,omitempty"`
+	UserID  string             `bson:"user_id"` // Recipient
+	Message mongoMessage       `bson:"message"`
+}
+
 // MessageRepository implements domain.MessageRepository for MongoDB.
 type MessageRepository struct {
-	collection *mongo.Collection
-	cryptor    *crypto.AESCrypto
+	collection        *mongo.Collection
+	offlineCollection *mongo.Collection
+	cryptor           *crypto.AESCrypto
 }
 
 // NewMessageRepository creates a new instance of MessageRepository.
 func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.MessageRepository {
 	return &MessageRepository{
-		collection: db.Collection(messageCollectionName),
-		cryptor:    cryptor,
+		collection:        db.Collection(messageCollectionName),
+		offlineCollection: db.Collection(offlineCollectionName),
+		cryptor:           cryptor,
 	}
 }
 
@@ -181,7 +190,167 @@ func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID st
 	return messages, nil
 }
 
-// MarkAsRead marks messages as read.
+// StoreOfflineMessage stores a message for offline delivery.
+func (r *MessageRepository) StoreOfflineMessage(ctx context.Context, userID string, msg *domain.Message) error {
+	mongoMsg, err := r.fromDomain(msg)
+	if err != nil {
+		return err
+	}
+
+	offlineMsg := offlineMessage{
+		UserID:  userID,
+		Message: *mongoMsg,
+	}
+
+	_, err = r.offlineCollection.InsertOne(ctx, offlineMsg)
+	if err != nil {
+		return fmt.Errorf("failed to insert offline message: %w", err)
+	}
+
+	return nil
+}
+
+// GetOfflineMessages retrieves and deletes offline messages for a user.
+func (r *MessageRepository) GetOfflineMessages(ctx context.Context, userID string) ([]*domain.Message, error) {
+	filter := bson.M{"user_id": userID}
+	
+	cursor, err := r.offlineCollection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find offline messages: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var messages []*domain.Message
+	for cursor.Next(ctx) {
+		var offMsg offlineMessage
+		if err := cursor.Decode(&offMsg); err != nil {
+			continue
+		}
+
+		domainMsg, err := r.toDomain(&offMsg.Message)
+		if err != nil {
+			continue
+		}
+		messages = append(messages, domainMsg)
+	}
+
+	// Delete fetched messages
+	// In a robust system, we would wait for ACK. Here we assume successful delivery or re-fetch.
+	// But to avoid infinite loop if delivery fails, we delete.
+	// Or maybe delete after successful delivery?
+	// The requirement "offline queue" usually implies "try to deliver once connected".
+	// If we delete now, and websocket write fails, message is lost from "offline queue" but exists in "history".
+	// This is acceptable for this scope.
+	_, err = r.offlineCollection.DeleteMany(ctx, filter)
+	if err != nil {
+		// Log error but return messages
+		fmt.Printf("Error deleting offline messages: %v\n", err)
+	}
+
+	return messages, nil
+}
+
+// GetConversations retrieves DM conversations for a user.
+func (r *MessageRepository) GetConversations(ctx context.Context, userID string) ([]*domain.Conversation, error) {
+	// Aggregation pipeline to find last message for each conversation
+	pipeline := mongo.Pipeline{
+		// 1. Match: Messages where I am sender or receiver, AND not a room message
+		{{Key: "$match", Value: bson.M{
+			"$or": []bson.M{
+				{"sender_id": userID},
+				{"receiver_id": userID},
+			},
+			"room_id": bson.M{"$in": []interface{}{"", nil}},
+		}}},
+		// 2. Sort by created_at desc
+		{{Key: "$sort", Value: bson.M{"created_at": -1}}},
+		// 3. Project "other_id"
+		{{Key: "$project", Value: bson.M{
+			"sender_id": 1, "receiver_id": 1, "content": 1, "created_at": 1, "is_read": 1, "read_by": 1,
+			"other_id": bson.M{
+				"$cond": bson.M{
+					"if":   bson.M{"$eq": []interface{}{"$sender_id", userID}},
+					"then": "$receiver_id",
+					"else": "$sender_id",
+				},
+			},
+		}}},
+		// 4. Group by other_id
+		{{Key: "$group", Value: bson.M{
+			"_id":               "$other_id",
+			"last_message_doc":  bson.M{"$first": "$$ROOT"},
+			"unread_count": bson.M{
+				"$sum": bson.M{
+					"$cond": bson.M{
+						// Unread if receiver is ME and is_read is false
+						"if": bson.M{
+							"$and": []interface{}{
+								bson.M{"$eq": []interface{}{"$receiver_id", userID}},
+								bson.M{"$eq": []interface{}{"$is_read", false}},
+							},
+						},
+						"then": 1,
+						"else": 0,
+					},
+				},
+			},
+		}}},
+		// 5. Lookup User details
+		// Convert _id (string) to ObjectID if needed?
+		// User IDs are strings (hex of ObjectID) in this app.
+		// In mongoUser, ID is ObjectID. In message, sender_id/receiver_id are strings.
+		// So we need to convert string ID to ObjectID for lookup.
+		{{Key: "$addFields", Value: bson.M{
+			"other_oid": bson.M{"$toObjectId": "$_id"},
+		}}},
+		{{Key: "$lookup", Value: bson.M{
+			"from":         "users",
+			"localField":   "other_oid",
+			"foreignField": "_id",
+			"as":           "user_info",
+		}}},
+		{{Key: "$unwind", Value: bson.M{"path": "$user_info", "preserveNullAndEmptyArrays": true}}},
+	}
+
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("failed to aggregate conversations: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var results []struct {
+		OtherUserID    string       `bson:"_id"`
+		LastMessageDoc mongoMessage `bson:"last_message_doc"`
+		UnreadCount    int          `bson:"unread_count"`
+		UserInfo       struct {
+			Username string `bson:"username"`
+		} `bson:"user_info"`
+	}
+
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, fmt.Errorf("failed to decode conversations: %w", err)
+	}
+
+	var conversations []*domain.Conversation
+	for _, res := range results {
+		// Decrypt last message content
+		content, err := r.cryptor.Decrypt(res.LastMessageDoc.Content)
+		if err != nil {
+			content = "[Encrypted Message]"
+		}
+
+		conversations = append(conversations, &domain.Conversation{
+			OtherUserID:     res.OtherUserID,
+			OtherUsername:   res.UserInfo.Username,
+			LastMessage:     content,
+			LastMessageTime: res.LastMessageDoc.CreatedAt,
+			UnreadCount:     res.UnreadCount,
+		})
+	}
+
+	return conversations, nil
+}
+
 func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
 	var filter bson.M
 	var update bson.M

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,10 @@ class ChatRepository {
     } catch (e) {
       throw e;
     }
+  }
+
+  Future<String> uploadMedia(File file, String type) async {
+    return await _networkService.uploadFile(file, type);
   }
 }
 

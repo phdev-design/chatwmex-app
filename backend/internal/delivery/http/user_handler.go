@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"chatwmex_backend/internal/delivery/http/middleware"
 	"chatwmex_backend/internal/domain"
 	"chatwmex_backend/pkg/response"
 	"chatwmex_backend/pkg/token"
@@ -28,17 +29,24 @@ func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string) {
 		api.POST("/register", handler.Register)
 		api.POST("/login", handler.Login)
 	}
+
+	protected := r.Group("/api/v1/users")
+	protected.Use(middleware.AuthMiddleware(jwtSecret))
+	{
+		protected.PUT("/profile", handler.UpdateProfile)
+	}
 }
 
 // RegisterRequest defines the request body for user registration.
 type RegisterRequest struct {
 	Username string `json:"username" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
 // LoginRequest defines the request body for user login.
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
+	Username string `json:"username" binding:"required"` // Can be username or email
 	Password string `json:"password" binding:"required"`
 }
 
@@ -46,6 +54,12 @@ type LoginRequest struct {
 type LoginResponse struct {
 	Token    string       `json:"token"`
 	UserInfo *domain.User `json:"user_info"`
+}
+
+// UpdateProfileRequest defines the request body for updating user profile.
+type UpdateProfileRequest struct {
+	Email       string `json:"email" binding:"omitempty,email"`
+	PhoneNumber string `json:"phone_number" binding:"omitempty"`
 }
 
 // Register handles user registration.
@@ -57,12 +71,12 @@ func (h *UserHandler) Register(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	err := h.UserUsecase.Register(ctx, req.Username, req.Password)
+	err := h.UserUsecase.Register(ctx, req.Username, req.Email, req.Password)
 	if err != nil {
 		// Depending on the error type, we might want to return different status codes.
 		// For simplicity, we return 400 for duplicate user (handled in usecase logic ideally mapped to specific error)
 		// and 500 for others.
-		if err.Error() == "username already exists" {
+		if err.Error() == "username already exists" || err.Error() == "email already exists" {
 			response.Error(c, http.StatusConflict, err.Error())
 			return
 		}
@@ -147,19 +161,14 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// I will fetch the user by username using the repository directly? No, handler shouldn't touch repo.
 	
 	// I will parse the ID from the mock string returned by `Login`.
-	// Usecase: return "mock-jwt-token-for-" + user.ID
-	// Handler: id := strings.TrimPrefix(token, "mock-jwt-token-for-")
-	// It's ugly but it works with the current codebase state without breaking changes.
+	// Usecase: return user.ID
+	// Handler: userID := mockToken
 	
-	mockToken, err := h.UserUsecase.Login(ctx, req.Username, req.Password)
+	userID, err := h.UserUsecase.Login(ctx, req.Username, req.Password)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, err.Error())
 		return
 	}
-	
-	// Extract ID from the mock token (Temporary workaround to avoid refactoring Usecase interface)
-	// In a real refactor, Login should return *domain.User
-	userID := mockToken[len("mock-jwt-token-for-"):]
 	
 	// Generate Real JWT
 	tokenString, err := token.GenerateToken(userID, h.JWTSecret, 7*24*time.Hour)
@@ -181,4 +190,36 @@ func (h *UserHandler) Login(c *gin.Context) {
 	}
 	
 	response.Success(c, resp)
+}
+
+// UpdateProfile handles user profile updates.
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	userID := c.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	ctx := c.Request.Context()
+	err := h.UserUsecase.UpdateProfile(ctx, userID, req.Email, req.PhoneNumber)
+	if err != nil {
+		if err.Error() == "invalid email format" || err.Error() == "invalid phone number format" {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err.Error() == "email already exists" {
+			response.Error(c, http.StatusConflict, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, "Profile updated successfully")
 }

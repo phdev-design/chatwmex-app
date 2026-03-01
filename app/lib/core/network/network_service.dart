@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/core/storage/storage_service.dart';
@@ -7,8 +8,14 @@ class NetworkService {
   final StorageService _storageService;
 
   NetworkService(this._storageService) {
+    // Detect Platform to set correct localhost
+    String baseUrl = 'http://localhost:8080/api/v1';
+    if (Platform.isAndroid) {
+      baseUrl = 'http://10.0.2.2:8080/api/v1';
+    }
+    
     _dio = Dio(BaseOptions(
-      baseUrl: 'http://localhost:8080/api/v1', // TODO: Use env config
+      baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
       headers: {'Content-Type': 'application/json'},
@@ -30,6 +37,21 @@ class NetworkService {
         return handler.next(e);
       },
     ));
+  }
+
+  Future<String> uploadFile(File file, String type) async {
+    final fileName = file.path.split('/').last;
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(file.path, filename: fileName),
+      'type': type, // 'image' or 'voice'
+    });
+
+    try {
+      final response = await _dio.post('/upload', data: formData);
+      return response.data['url']; // Assuming backend returns { "url": "..." }
+    } catch (e) {
+      throw Exception('Upload failed: $e');
+    }
   }
 
   Dio get client => _dio;
