@@ -95,6 +95,36 @@ class ApiClientService {
     }
   }
 
+  // 🔥 新增：上傳語音 (僅上傳，不發送消息)
+  Future<String?> uploadVoice(File voiceFile) async {
+    try {
+      String fileName = voiceFile.path.split('/').last;
+      // 確保文件名以 .m4a 結尾 (或根據實際情況)
+      if (!fileName.endsWith('.m4a')) {
+        fileName += '.m4a';
+      }
+
+      FormData formData = FormData.fromMap({
+        "voice":
+            await MultipartFile.fromFile(voiceFile.path, filename: fileName),
+      });
+
+      // 假設後端有這個通用上傳接口，類似 image/video
+      Response response = await dio.post(
+        '/api/v1/rooms/upload/voice',
+        data: formData,
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return response.data['url'];
+      }
+      return null;
+    } catch (e) {
+      print("Error uploading voice: $e");
+      return null;
+    }
+  }
+
   // 🔥 新增：發送消息 (HTTP Fallback)
   Future<Map<String, dynamic>?> sendMessage(
       String roomId, String content, String type,

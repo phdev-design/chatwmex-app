@@ -21,6 +21,7 @@ class Message {
       isDecryptionError; // ✅ Renamed from decryptionFailed per user request
   final List<String> readBy; // 🔥 新增：已讀用戶列表
   final MessageStatus status; // 🔥 新增：消息狀態
+  final String? tempId; // 🔥 新增：臨時 ID (用於精準替換)
 
   Message({
     required this.id,
@@ -37,6 +38,7 @@ class Message {
     this.isDecryptionError = false, // ✅ Initialize
     this.readBy = const [], // 🔥 Initialize
     this.status = MessageStatus.sent, // 🔥 Default to sent
+    this.tempId, // 🔥 Initialize
   });
 
   Map<String, dynamic> toMap() {
@@ -54,6 +56,7 @@ class Message {
       'reactions': jsonEncode(reactions),
       'read_by': jsonEncode(readBy),
       'status': status.index,
+      // temp_id 不一定需要存入本地 DB，因为本地存的是临时消息本身
     };
   }
 
@@ -158,6 +161,7 @@ class Message {
         reactions: reactions,
         isDecryptionError: isDecryptionError, // ✅ Set flag
         readBy: readBy, // 🔥 Set readBy
+        tempId: json['temp_id']?.toString(), // 🔥 Set tempId from Socket data
       );
 
       // 🔥 嚴格驗證語音消息的完整性
@@ -317,6 +321,7 @@ class Message {
     bool? isDecryptionError,
     List<String>? readBy,
     MessageStatus? status,
+    String? tempId,
   }) {
     return Message(
       id: id ?? this.id,
@@ -333,6 +338,7 @@ class Message {
       isDecryptionError: isDecryptionError ?? this.isDecryptionError,
       readBy: readBy ?? this.readBy,
       status: status ?? this.status,
+      tempId: tempId ?? this.tempId,
     );
   }
 

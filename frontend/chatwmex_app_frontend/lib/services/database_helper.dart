@@ -154,6 +154,17 @@ CREATE TABLE messages (
     );
   }
 
+  Future<void> updateMessageReaction(
+      String id, Map<String, List<String>> reactions) async {
+    final db = await instance.database;
+    await db.update(
+      'messages',
+      {'reactions': jsonEncode(reactions)},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<void> updateMessageReadBy(String id, List<String> readBy) async {
     final db = await instance.database;
     await db.update(

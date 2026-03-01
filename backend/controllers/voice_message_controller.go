@@ -40,6 +40,55 @@ func init() {
 	storageService = services.GetStorageService()
 }
 
+// UploadVoice 僅上傳語音文件，不保存消息到數據庫
+func UploadVoice(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// 1. 驗證用戶
+	_, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok {
+		http.Error(w, `{"error": "無法獲取用戶 ID"}`, http.StatusUnauthorized)
+		return
+	}
+
+	// 2. 解析文件
+	err := r.ParseMultipartForm(10 << 20) // 10MB
+	if err != nil {
+		http.Error(w, `{"error": "無法解析上傳的文件"}`, http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("voice")
+	if err != nil {
+		http.Error(w, `{"error": "沒有找到語音文件"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	if !isValidAudioFile(header.Filename) {
+		http.Error(w, `{"error": "不支持的音頻格式"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 3. 上傳到存儲
+	filePath, err := storageService.UploadFile(file, header, "audio")
+	if err != nil {
+		log.Printf("Error uploading voice file: %v", err)
+		http.Error(w, `{"error": "文件上傳失敗"}`, http.StatusInternalServerError)
+		return
+	}
+
+	publicURL := storageService.GetPublicURL(filePath)
+
+	// 4. 返回 URL
+	response := map[string]interface{}{
+		"url": publicURL,
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
+}
+
 // UploadVoiceMessage 處理語音消息上傳 - 🔥 統一存儲到 messages 集合
 func UploadVoiceMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

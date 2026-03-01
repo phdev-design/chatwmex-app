@@ -45,8 +45,25 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       return;
     }
 
-    // 檢查是否為臨時消息的真實版本
-    final updatedMessages = _copyMessages();
+    final updatedMessages = _copyMessages(); // Added back
+
+    // 檢查是否為臨時消息的真實版本 (精準替換)
+    if (message.tempId != null) {
+      final tempId = message.tempId!;
+      final tempMessageIndex = updatedMessages.indexWhere((m) => m.id == tempId);
+
+      if (tempMessageIndex != -1) {
+        print('精準替換臨時消息 $tempId 為真實消息 ${message.id}');
+        updatedMessages[tempMessageIndex] = message;
+        _setMessages(updatedMessages);
+        pendingTempMessages.remove(tempId);
+        knownMessageIds.remove(tempId); // Remove temp ID
+        knownMessageIds.add(message.id); // Add real ID
+        return;
+      }
+    }
+
+    // 檢查是否為臨時消息的真實版本 (模糊匹配 - 兼容舊邏輯或無 tempId 情況)
     final tempMessageIndex = updatedMessages.indexWhere((m) =>
         m.id.startsWith('temp_') &&
         m.content == message.content &&
@@ -55,11 +72,12 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
 
     if (tempMessageIndex != -1) {
       final tempMessage = updatedMessages[tempMessageIndex];
-      print('替換臨時消息 ${tempMessage.id} 為真實消息 ${message.id}');
+      print('模糊替換臨時消息 ${tempMessage.id} 為真實消息 ${message.id}');
 
       updatedMessages[tempMessageIndex] = message;
       _setMessages(updatedMessages);
       pendingTempMessages.remove(tempMessage.id);
+      knownMessageIds.remove(tempMessage.id);
       knownMessageIds.add(message.id);
       return;
     }

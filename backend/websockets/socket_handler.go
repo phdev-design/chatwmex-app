@@ -93,7 +93,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
-		messageID, _ := payload["id"].(string)
+		tempID, _ := payload["id"].(string)
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in voice message from %s", user.Username)
@@ -133,9 +133,9 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer messageCancel()
 
-		savedMessage, inserted, err := chatService.SaveMessageWithID(
+		// 🔥 修正：使用 SaveMessage 讓後端生成 ID，而不是使用前端的臨時 ID
+		savedMessage, err := chatService.SaveMessage(
 			messageCtx,
-			messageID,
 			user.ID,
 			user.Username,
 			room,
@@ -151,15 +151,14 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		}
 
 		broadcastTimestamp, _ := payload["timestamp"].(string)
-		if inserted {
+		if broadcastTimestamp == "" {
 			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
-		} else if broadcastTimestamp == "" {
-			broadcastTimestamp = time.Now().Format(time.RFC3339)
 		}
 
 		// 廣播語音消息給房間內所有用戶
 		voiceMessageData := map[string]interface{}{
-			"id":          savedMessage.ID.Hex(),
+			"id":          savedMessage.ID.Hex(), // 後端生成的真實 ID
+			"temp_id":     tempID,                // 🔥 返回前端的臨時 ID
 			"sender_id":   user.ID,
 			"sender_name": user.Username,
 			"room":        room,
@@ -172,15 +171,14 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 
 		log.Printf("Broadcasting voice message from %s in room %s", user.Username, room)
 		server.BroadcastToRoom("/", room, "voice_message", voiceMessageData)
-		if inserted {
-			go func(ts time.Time) {
-				updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer updateCancel()
-				if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[语音消息]", ts); err != nil {
-					log.Printf("Failed to update room last message: %v", err)
-				}
-			}(savedMessage.Timestamp)
-		}
+		
+		go func(ts time.Time) {
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer updateCancel()
+			if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[语音消息]", ts); err != nil {
+				log.Printf("Failed to update room last message: %v", err)
+			}
+		}(savedMessage.Timestamp)
 	})
 
 	// 🔥 新增：支持图片消息广播
@@ -197,7 +195,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 			return
 		}
 
-		messageID, _ := payload["id"].(string)
+		tempID, _ := payload["id"].(string)
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in image message from %s", user.Username)
@@ -233,9 +231,9 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		messageCtx, messageCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer messageCancel()
 
-		savedMessage, inserted, err := chatService.SaveMessageWithID(
+		// 🔥 修正：使用 SaveMessage
+		savedMessage, err := chatService.SaveMessage(
 			messageCtx,
-			messageID,
 			user.ID,
 			user.Username,
 			room,
@@ -251,15 +249,14 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		}
 
 		broadcastTimestamp, _ := payload["timestamp"].(string)
-		if inserted {
+		if broadcastTimestamp == "" {
 			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
-		} else if broadcastTimestamp == "" {
-			broadcastTimestamp = time.Now().Format(time.RFC3339)
 		}
 
 		// 广播图片消息给房间内所有用户
 		imageMessageData := map[string]interface{}{
 			"id":          savedMessage.ID.Hex(),
+			"temp_id":     tempID, // 🔥 返回 temp_id
 			"sender_id":   user.ID,
 			"sender_name": user.Username,
 			"room":        room,
@@ -270,15 +267,14 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 
 		log.Printf("Broadcasting image message from %s in room %s", user.Username, room)
 		server.BroadcastToRoom("/", room, "image_message", imageMessageData)
-		if inserted {
-			go func(ts time.Time) {
-				updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer updateCancel()
-				if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[图片]", ts); err != nil {
-					log.Printf("Failed to update room last message: %v", err)
-				}
-			}(savedMessage.Timestamp)
-		}
+		
+		go func(ts time.Time) {
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer updateCancel()
+			if err := chatService.UpdateRoomLastMessage(updateCtx, roomObjectID, "[图片]", ts); err != nil {
+				log.Printf("Failed to update room last message: %v", err)
+			}
+		}(savedMessage.Timestamp)
 	})
 
 	// 🔥 新增：支持视频消息广播

@@ -25,7 +25,8 @@ func SetupChatRoomRoutes(router *mux.Router) {
 	roomRouter.HandleFunc("/{id}/messages", controllers.SendMessage).Methods("POST")      // 發送消息
 	
 	// 語音消息路由 - 修正路由路徑
-	roomRouter.HandleFunc("/{id}/voice", controllers.UploadVoiceMessage).Methods("POST")           // 上傳語音消息
+	roomRouter.HandleFunc("/{id}/voice", controllers.UploadVoiceMessage).Methods("POST")           // 上傳語音消息 (會創建消息)
+	roomRouter.HandleFunc("/upload/voice", controllers.UploadVoice).Methods("POST")                // 僅上傳語音 (不創建消息)
 	roomRouter.HandleFunc("/voice/{messageId}/url", controllers.GetVoiceMessageURL).Methods("GET") // 獲取語音消息URL
 
 	// 图片消息路由

@@ -650,56 +650,36 @@ class ChatService {
     try {
       print('ChatService: Uploading voice message ${message.id}...');
 
-      // Upload using VoiceApiService
-      final voiceMsg = await VoiceApiService.uploadVoiceMessage(
-        roomId: message.roomId,
-        filePath: message.fileUrl!,
-        duration: message.duration ?? 0,
-      );
+      // 1. Upload using ApiClientService (Generic upload)
+      final voiceUrl =
+          await ApiClientService().uploadVoice(File(message.fileUrl!));
 
-      // Convert VoiceMessage to Message
-      final sentMessage = chat_msg.Message(
-        id: voiceMsg.id,
-        senderId: voiceMsg.senderId,
-        senderName: voiceMsg.senderName,
-        content: '[語音消息]',
-        timestamp: voiceMsg.timestamp,
-        roomId: voiceMsg.roomId,
-        type: chat_msg.MessageType.voice,
-        fileUrl: voiceMsg.fileUrl,
-        duration: voiceMsg.duration,
-        fileSize: voiceMsg.fileSize,
-        status: chat_msg.MessageStatus.sent,
-      );
+      if (voiceUrl == null) throw Exception('Voice upload failed');
 
       print(
-          'ChatService: Voice message uploaded & sent (Temp: ${message.id} -> Server: ${sentMessage.id})');
+          'ChatService: Voice uploaded, emitting socket event (Temp ID: ${message.id})');
 
-      // Update DB
-      await _dbHelper.deleteMessage(message.id);
-      await _dbHelper.insertMessages([sentMessage]);
-
-      // Notify UI
-      _notifyMessageReceived(sentMessage);
-
-      // 🔥 Broadcast to other users via Socket
+      // 2. Broadcast via Socket
+      // We do NOT call API to save message. We let the backend handle it upon receiving the socket event.
       if (_socketClient.isConnected) {
         final messageData = {
-          'id': sentMessage.id,
-          'sender_id': sentMessage.senderId,
-          'sender_name': sentMessage.senderName,
-          'room': sentMessage.roomId,
-          'file_url': sentMessage.fileUrl,
-          'duration': sentMessage.duration,
-          'file_size': sentMessage.fileSize,
-          'timestamp': sentMessage.timestamp.toIso8601String(),
+          'id': message.id, // Send Temp ID
+          'sender_id': message.senderId,
+          'sender_name': message.senderName,
+          'room': message.roomId,
+          'file_url': voiceUrl,
+          'duration': message.duration,
+          'file_size': message.fileSize,
+          'timestamp': message.timestamp.toIso8601String(),
           'type': 'voice',
         };
         _socketClient.emit('voice_message', messageData);
-        print('ChatService: Voice message broadcasted to room');
+        print('ChatService: Voice message emitted to socket');
+      } else {
+        throw Exception('Socket not connected during voice send');
       }
     } catch (e) {
-      print('ChatService: Voice upload failed: $e');
+      print('ChatService: Voice upload/send failed: $e');
       // For now, keep as sending (pending) so background sync can retry.
     }
   }
@@ -713,35 +693,25 @@ class ChatService {
           await api_service.ChatApiService.uploadImage(File(message.fileUrl!));
       if (imageUrl == null) throw Exception('Image upload failed');
 
-      // 2. Send Message via API to get ID and storage
-      final sentMessage = await api_service.ChatApiService.sendImageMessage(
-        message.roomId,
-        imageUrl,
-      );
-
       print(
-          'ChatService: Image message uploaded & sent (Temp: ${message.id} -> Server: ${sentMessage.id})');
+          'ChatService: Image uploaded, emitting socket event (Temp ID: ${message.id})');
 
-      // 3. Update DB
-      await _dbHelper.deleteMessage(message.id);
-      await _dbHelper.insertMessages([sentMessage]);
-
-      // 4. Notify UI
-      _notifyMessageReceived(sentMessage);
-
-      // 5. Broadcast via Socket
+      // 2. Broadcast via Socket
       if (_socketClient.isConnected) {
         final messageData = {
-          'id': sentMessage.id,
-          'sender_id': sentMessage.senderId,
-          'sender_name': sentMessage.senderName,
-          'room': sentMessage.roomId,
-          'file_url': sentMessage.fileUrl,
+          'id': message.id, // Send Temp ID
+          'sender_id': message.senderId,
+          'sender_name': message.senderName,
+          'room': message.roomId,
+          'file_url': imageUrl,
           'content': '[图片]',
           'type': 'image',
-          'timestamp': sentMessage.timestamp.toIso8601String(),
+          'timestamp': message.timestamp.toIso8601String(),
         };
         _socketClient.emit('image_message', messageData);
+        print('ChatService: Image message emitted to socket');
+      } else {
+        throw Exception('Socket not connected during image send');
       }
     } catch (e) {
       print('ChatService: Image upload failed: $e');
@@ -757,35 +727,25 @@ class ChatService {
           await api_service.ChatApiService.uploadVideo(File(message.fileUrl!));
       if (videoUrl == null) throw Exception('Video upload failed');
 
-      // 2. Send Message via API
-      final sentMessage = await api_service.ChatApiService.sendVideoMessage(
-        message.roomId,
-        videoUrl,
-      );
-
       print(
-          'ChatService: Video message uploaded & sent (Temp: ${message.id} -> Server: ${sentMessage.id})');
+          'ChatService: Video uploaded, emitting socket event (Temp ID: ${message.id})');
 
-      // 3. Update DB
-      await _dbHelper.deleteMessage(message.id);
-      await _dbHelper.insertMessages([sentMessage]);
-
-      // 4. Notify UI
-      _notifyMessageReceived(sentMessage);
-
-      // 5. Broadcast via Socket
+      // 2. Broadcast via Socket
       if (_socketClient.isConnected) {
         final messageData = {
-          'id': sentMessage.id,
-          'sender_id': sentMessage.senderId,
-          'sender_name': sentMessage.senderName,
-          'room': sentMessage.roomId,
-          'file_url': sentMessage.fileUrl,
+          'id': message.id, // Send Temp ID
+          'sender_id': message.senderId,
+          'sender_name': message.senderName,
+          'room': message.roomId,
+          'file_url': videoUrl,
           'content': '[视频]',
           'type': 'video',
-          'timestamp': sentMessage.timestamp.toIso8601String(),
+          'timestamp': message.timestamp.toIso8601String(),
         };
         _socketClient.emit('video_message', messageData);
+        print('ChatService: Video message emitted to socket');
+      } else {
+        throw Exception('Socket not connected during video send');
       }
     } catch (e) {
       print('ChatService: Video upload failed: $e');
@@ -839,6 +799,7 @@ class ChatService {
           roomId: messageData['room'] ?? '',
           type: chat_msg.MessageType.image,
           fileUrl: messageData['file_url'],
+          tempId: messageData['temp_id']?.toString(), // 🔥 Parse temp_id
         );
 
         _notifyMessageReceived(message);
@@ -860,6 +821,8 @@ class ChatService {
         }
 
         if (roomId != null && userId != null) {
+          // 🔥 Sync to DB (Best effort, maybe need to implement markRoomAsRead in DB helper)
+          // For now, we notify UI.
           _notifyMessageRead(roomId, userId);
         }
       } catch (e) {
@@ -919,6 +882,7 @@ class ChatService {
           fileUrl: messageData['file_url'],
           duration: messageData['duration'] as int?,
           fileSize: messageData['file_size'] as int?,
+          tempId: messageData['temp_id']?.toString(), // 🔥 Parse temp_id
         );
 
         _notifyMessageReceived(message);
@@ -945,7 +909,37 @@ class ChatService {
       }
     });
 
-    socket.on('reaction_update', (data) {
+    socket.on('video_message', (data) {
+      try {
+        print('Received video message data: $data');
+
+        Map<String, dynamic> messageData;
+        if (data is String) {
+          messageData = jsonDecode(data);
+        } else {
+          messageData = Map<String, dynamic>.from(data);
+        }
+
+        final message = chat_msg.Message(
+          id: messageData['id'] ?? '',
+          senderId: messageData['sender_id'] ?? '',
+          senderName: messageData['sender_name'] ?? '',
+          content: '[视频]',
+          timestamp: DateTime.parse(
+              messageData['timestamp'] ?? DateTime.now().toIso8601String()),
+          roomId: messageData['room'] ?? '',
+          type: chat_msg.MessageType.video,
+          fileUrl: messageData['file_url'],
+          tempId: messageData['temp_id']?.toString(), // 🔥 Parse temp_id
+        );
+
+        _notifyMessageReceived(message);
+      } catch (e) {
+        print('Error parsing video message: $e');
+      }
+    });
+
+    socket.on('reaction_update', (data) async {
       print('ChatService: 收到 reaction 更新: $data');
       try {
         Map<String, dynamic> reactionData;
@@ -969,6 +963,10 @@ class ChatService {
 
           print(
               'ChatService: 解析 reaction - messageId: $messageId, reactions: $reactions');
+          
+          // 🔥 Sync to DB
+          await _dbHelper.updateMessageReaction(messageId, reactions);
+          
           _notifyReactionUpdate(messageId, reactions);
         }
       } catch (e) {
