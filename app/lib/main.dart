@@ -4,9 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:app/features/auth/ui/login_page.dart';
 import 'package:app/features/chat/ui/chat_detail_page.dart';
 import 'package:app/features/chat/ui/room_list_page.dart';
+import 'package:app/core/notification/notification_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  
   runApp(
     const ProviderScope(
       child: MyApp(),
@@ -14,11 +17,23 @@ void main() {
   );
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Initialize OneSignal
+    ref.read(notificationServiceProvider).init();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = GoRouter(
       initialLocation: '/login',
       routes: [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:app/core/storage/storage_service.dart';
 
@@ -95,14 +96,61 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     if (state.rooms.isEmpty) {
       return const Center(child: Text('No chats yet'));
     }
+    
     return ListView.builder(
       itemCount: state.rooms.length,
       itemBuilder: (context, index) {
         final room = state.rooms[index];
+        final timeStr = room.lastMessageTime != null 
+            ? DateFormat('HH:mm').format(room.lastMessageTime!) 
+            : '';
+            
         return ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.group)),
-          title: Text(room.name),
-          subtitle: const Text('Last message...'), // Could show last message preview
+          leading: Stack(
+            children: [
+              const CircleAvatar(child: Icon(Icons.group)),
+              if (room.unreadCount > 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      '${room.unreadCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(room.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(timeStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+          subtitle: Text(
+            room.lastMessage ?? 'No messages yet',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: room.unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+              color: room.unreadCount > 0 ? Colors.black87 : Colors.grey,
+            ),
+          ),
           onTap: () => _openChat(context, room.id, room.name, true, userId),
         );
       },

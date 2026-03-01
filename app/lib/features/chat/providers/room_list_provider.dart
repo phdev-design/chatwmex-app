@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
+import 'package:app/core/websocket/websocket_service.dart';
 
 class RoomListState {
   final List<Room> rooms;
@@ -32,16 +33,32 @@ class RoomListState {
 
 class RoomListViewModel extends Notifier<RoomListState> {
   late final ChatRepository _repository;
-
+  
   @override
   RoomListState build() {
     _repository = ref.watch(chatRepositoryProvider);
-    // Initial fetch handled by user or when screen mounts
-    // We can call it here but better to separate side-effects from build if possible,
-    // or use FutureProvider for simple fetching.
-    // For Notifier, calling async in build is tricky.
-    // Let's just return initial state and let UI trigger fetch or use Future.microtask
+    final wsService = ref.watch(webSocketServiceProvider);
+
+    // Connect WebSocket
+    wsService.connect();
+
+    // Listen to WS events
+    final subscription = wsService.events.listen((data) {
+      if (data is Map) {
+        final event = data['event'];
+        if (event == 'chat_message') {
+          fetchRooms();
+        }
+      }
+    });
+
+    ref.onDispose(() {
+      subscription.cancel();
+    });
+
+    // Initial fetch
     Future.microtask(() => fetchRooms());
+    
     return const RoomListState();
   }
 

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:app/view_models/chat_room_view_model.dart';
+import 'package:app/features/chat/providers/chat_room_provider.dart';
 import 'package:app/models/message.dart';
 
 class ChatDetailPage extends ConsumerStatefulWidget {
@@ -104,23 +104,41 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
                   ),
           ),
           SafeArea(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      decoration: const InputDecoration(hintText: 'Type a message...'),
-                      onSubmitted: (_) => _sendMessage(),
+            child: Column(
+              children: [
+                if (state.typingUsers.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Someone is typing...',
+                        style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic, fontSize: 12),
+                      ),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: _sendMessage,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          decoration: const InputDecoration(hintText: 'Type a message...'),
+                          onSubmitted: (_) => _sendMessage(),
+                          onChanged: (_) {
+                            ref.read(chatRoomProvider(_params).notifier).startTyping();
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.send),
+                        onPressed: _sendMessage,
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
