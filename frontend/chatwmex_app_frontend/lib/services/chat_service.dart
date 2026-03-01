@@ -676,31 +676,40 @@ class ChatService {
           'type': 'voice',
         };
 
-        // 🔥 任務 1：使用 emitWithAck 並在成功後更新本地狀態
-        _socketClient.emitWithAck('voice_message', messageData, ack: (data) async {
-           if (data != null && data['ok'] == true) {
-             // 這裡其實不需要做太多，因為後端會廣播 voice_message，
-             // 而前端的 ChatMessageHandler 會處理替換邏輯。
-             // 但為了確保 syncPendingMessages 不會無限循環，我們需要將狀態標記為 sent。
-             // 更好的做法是：收到自己的廣播時刪除本地 pending 消息。
-             // 不過，為了保險起見，我們在這裡也做一次狀態更新。
-             print('ChatService: 語音消息發送 ACK 確認 (Temp: ${message.id})');
-             
-             // 注意：這裡我們不刪除消息，因為收到廣播時會處理。
-             // 我們只更新狀態為 sent，這樣 syncPendingMessages 就不會再次處理它。
-             // 或者，我們可以直接刪除並插入新消息？
-             // 由於後端廣播會帶回真實 ID，我們等待廣播處理替換比較好。
-             // 但為了防止 sync 重複，我們暫時標記為 sent。
-             // 可是如果標記為 sent，廣播來了之後找不到 pending 怎麼辦？
-             // ChatMessageHandler 的邏輯是：
-             // if (message.tempId != null) { ... replace ... pendingTempMessages.remove ... }
-             // 所以，這裡最好的做法是什麼都不做，等待廣播。
-             // 但是，如果不更新狀態，syncPendingMessages 下次又會抓到它。
-             // 所以我們必須更新狀態。
-             await _dbHelper.updateMessageStatus(message.id, chat_msg.MessageStatus.sent);
-           }
+        _socketClient.emitWithAck('voice_message', messageData,
+            ack: (data) async {
+          if (data != null && data['ok'] == true) {
+            final serverId = data['message_id']?.toString();
+            final serverTimestamp = data['timestamp']?.toString();
+            if (serverId == null || serverId.isEmpty) {
+              await _dbHelper.updateMessageStatus(
+                  message.id, chat_msg.MessageStatus.failed);
+              _notifyMessageReceived(
+                  message.copyWith(status: chat_msg.MessageStatus.failed));
+              return;
+            }
+
+            final updatedMessage = message.copyWith(
+              id: serverId,
+              tempId: message.id,
+              status: chat_msg.MessageStatus.sent,
+              timestamp: serverTimestamp != null
+                  ? DateTime.parse(serverTimestamp)
+                  : message.timestamp,
+              fileUrl: voiceUrl,
+            );
+
+            await _dbHelper.deleteMessage(message.id);
+            await _dbHelper.insertMessages([updatedMessage]);
+            _notifyMessageReceived(updatedMessage);
+          } else {
+            await _dbHelper.updateMessageStatus(
+                message.id, chat_msg.MessageStatus.failed);
+            _notifyMessageReceived(
+                message.copyWith(status: chat_msg.MessageStatus.failed));
+          }
         });
-        
+
         print('ChatService: Voice message emitted to socket');
       } else {
         throw Exception('Socket not connected during voice send');
@@ -740,14 +749,40 @@ class ChatService {
           'timestamp': message.timestamp.toIso8601String(),
         };
 
-        // 🔥 任務 1：使用 emitWithAck
-        _socketClient.emitWithAck('image_message', messageData, ack: (data) async {
-           if (data != null && data['ok'] == true) {
-             print('ChatService: 圖片消息發送 ACK 確認 (Temp: ${message.id})');
-             await _dbHelper.updateMessageStatus(message.id, chat_msg.MessageStatus.sent);
-           }
+        _socketClient.emitWithAck('image_message', messageData,
+            ack: (data) async {
+          if (data != null && data['ok'] == true) {
+            final serverId = data['message_id']?.toString();
+            final serverTimestamp = data['timestamp']?.toString();
+            if (serverId == null || serverId.isEmpty) {
+              await _dbHelper.updateMessageStatus(
+                  message.id, chat_msg.MessageStatus.failed);
+              _notifyMessageReceived(
+                  message.copyWith(status: chat_msg.MessageStatus.failed));
+              return;
+            }
+
+            final updatedMessage = message.copyWith(
+              id: serverId,
+              tempId: message.id,
+              status: chat_msg.MessageStatus.sent,
+              timestamp: serverTimestamp != null
+                  ? DateTime.parse(serverTimestamp)
+                  : message.timestamp,
+              fileUrl: imageUrl,
+            );
+
+            await _dbHelper.deleteMessage(message.id);
+            await _dbHelper.insertMessages([updatedMessage]);
+            _notifyMessageReceived(updatedMessage);
+          } else {
+            await _dbHelper.updateMessageStatus(
+                message.id, chat_msg.MessageStatus.failed);
+            _notifyMessageReceived(
+                message.copyWith(status: chat_msg.MessageStatus.failed));
+          }
         });
-        
+
         print('ChatService: Image message emitted to socket');
       } else {
         throw Exception('Socket not connected during image send');
@@ -787,12 +822,38 @@ class ChatService {
           'timestamp': message.timestamp.toIso8601String(),
         };
 
-        // 🔥 任務 1：使用 emitWithAck
-        _socketClient.emitWithAck('video_message', messageData, ack: (data) async {
-           if (data != null && data['ok'] == true) {
-             print('ChatService: 視頻消息發送 ACK 確認 (Temp: ${message.id})');
-             await _dbHelper.updateMessageStatus(message.id, chat_msg.MessageStatus.sent);
-           }
+        _socketClient.emitWithAck('video_message', messageData,
+            ack: (data) async {
+          if (data != null && data['ok'] == true) {
+            final serverId = data['message_id']?.toString();
+            final serverTimestamp = data['timestamp']?.toString();
+            if (serverId == null || serverId.isEmpty) {
+              await _dbHelper.updateMessageStatus(
+                  message.id, chat_msg.MessageStatus.failed);
+              _notifyMessageReceived(
+                  message.copyWith(status: chat_msg.MessageStatus.failed));
+              return;
+            }
+
+            final updatedMessage = message.copyWith(
+              id: serverId,
+              tempId: message.id,
+              status: chat_msg.MessageStatus.sent,
+              timestamp: serverTimestamp != null
+                  ? DateTime.parse(serverTimestamp)
+                  : message.timestamp,
+              fileUrl: videoUrl,
+            );
+
+            await _dbHelper.deleteMessage(message.id);
+            await _dbHelper.insertMessages([updatedMessage]);
+            _notifyMessageReceived(updatedMessage);
+          } else {
+            await _dbHelper.updateMessageStatus(
+                message.id, chat_msg.MessageStatus.failed);
+            _notifyMessageReceived(
+                message.copyWith(status: chat_msg.MessageStatus.failed));
+          }
         });
 
         print('ChatService: Video message emitted to socket');
@@ -894,7 +955,7 @@ class ChatService {
           final roomId = data['room']?.toString();
           final username = data['sender_name']?.toString();
           final userId = data['sender_id']?.toString();
-          
+
           // 🔥 任務 5：前端過濾掉自己的 Typing 狀態
           final userInfo = await TokenStorage.getUser();
           final currentUserId = userInfo?['id']?.toString();
@@ -915,7 +976,7 @@ class ChatService {
           final roomId = data['room']?.toString();
           final username = data['sender_name']?.toString();
           final userId = data['sender_id']?.toString();
-          
+
           // 🔥 任務 5：前端過濾掉自己的 Typing 狀態
           final userInfo = await TokenStorage.getUser();
           final currentUserId = userInfo?['id']?.toString();
@@ -975,16 +1036,16 @@ class ChatService {
 
         final message = chat_msg.Message.fromJson(messageData);
 
-        // 🔥 任務 3：前端過濾掉自己的回音消息 (僅當沒有 tempId 時，避免重複顯示)
-        // 注意：如果有 tempId，ChatMessageHandler 會處理替換，所以不應過濾
         final userInfo = await TokenStorage.getUser();
         final currentUserId = userInfo?['id']?.toString();
-        
-        if (currentUserId != null && 
-            message.senderId == currentUserId && 
+
+        if (currentUserId != null &&
+            message.senderId == currentUserId &&
             message.tempId == null) {
-          print('ChatService: 忽略自己的回音消息 (無 tempId)');
-          return;
+          final existingMessage = await _dbHelper.getMessageById(message.id);
+          if (existingMessage != null) {
+            return;
+          }
         }
 
         _notifyMessageReceived(message);
@@ -1047,10 +1108,10 @@ class ChatService {
 
           print(
               'ChatService: 解析 reaction - messageId: $messageId, reactions: $reactions');
-          
+
           // 🔥 Sync to DB
           await _dbHelper.updateMessageReaction(messageId, reactions);
-          
+
           _notifyReactionUpdate(messageId, reactions);
         }
       } catch (e) {
@@ -1203,6 +1264,9 @@ class ChatService {
         print('ChatService: 發現 ${pendingMessages.length} 條待發送消息，開始同步...');
 
         for (final msg in pendingMessages) {
+          if (msg.status != chat_msg.MessageStatus.sending) {
+            continue;
+          }
           if (msg.type == chat_msg.MessageType.text) {
             await _resendPendingMessage(msg);
           } else if (msg.type == chat_msg.MessageType.voice) {
@@ -1308,12 +1372,11 @@ class ChatService {
 
   Future<void> sendMessage(String roomId, String content,
       {chat_msg.MessageType type = chat_msg.MessageType.text}) async {
-    
     // 🔥 任務 6：確保手動發送的消息被排入佇列
     final userInfo = await TokenStorage.getUser();
     final currentUserId = userInfo?['id']?.toString() ?? '';
     final currentUserName = userInfo?['username']?.toString() ?? 'Me';
-    
+
     final tempId = 'temp_text_${_uuid.v4()}';
     final tempMessage = chat_msg.Message(
       id: tempId,

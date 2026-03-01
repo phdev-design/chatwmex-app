@@ -91,7 +91,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
       if (otherUserId.isNotEmpty) {
         if (mounted) {
           setState(() {
-            _isBlocked = blockedUsers.any((u) => u.id == otherUserId);
+            _isBlocked = blockedUsers.contains(otherUserId);
           });
         }
       }
@@ -298,8 +298,7 @@ class _ChatDetailPageState extends State<ChatDetailPage>
 
       // 註冊已讀監聽
       final readKey = 'chat_detail_read_${widget.chatRoom.id}';
-      chatService.registerMessageReadListener(
-          readKey, _onMessageRead);
+      chatService.registerMessageReadListener(readKey, _onMessageRead);
 
       // 🔥 新增：註冊 Typing 監聽
       chatService.registerTypingListener(

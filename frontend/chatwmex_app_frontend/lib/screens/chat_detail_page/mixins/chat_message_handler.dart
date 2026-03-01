@@ -50,7 +50,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     // 檢查是否為臨時消息的真實版本 (精準替換)
     if (message.tempId != null) {
       final tempId = message.tempId!;
-      final tempMessageIndex = updatedMessages.indexWhere((m) => m.id == tempId);
+      final tempMessageIndex =
+          updatedMessages.indexWhere((m) => m.id == tempId);
 
       if (tempMessageIndex != -1) {
         print('精準替換臨時消息 $tempId 為真實消息 ${message.id}');
@@ -109,57 +110,7 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
   /// 發送文本消息
   void sendTextMessage(String content) {
     if (content.isEmpty) return;
-
-    final tempId =
-        'temp_${DateTime.now().millisecondsSinceEpoch}_${content.hashCode}';
-
-    final tempMessage = chat_msg.Message(
-      id: tempId,
-      senderId: currentUserId ?? '',
-      senderName: currentUserName ?? '我',
-      content: content,
-      timestamp: DateTime.now(),
-      roomId: currentRoomId,
-      type: chat_msg.MessageType.text,
-    );
-
-    if (isConnected) {
-      final updatedMessages = _copyMessages()..insert(0, tempMessage);
-      _setMessages(updatedMessages);
-      pendingTempMessages.add(tempId);
-      knownMessageIds.add(tempId);
-
-      chatService.sendMessage(currentRoomId, content);
-
-      // 設置臨時消息過期清理
-      Future.delayed(const Duration(seconds: 10), () {
-        if (pendingTempMessages.contains(tempId)) {
-          final updatedMessages = _copyMessages()
-            ..removeWhere((m) => m.id == tempId);
-          _setMessages(updatedMessages);
-          pendingTempMessages.remove(tempId);
-          knownMessageIds.remove(tempId);
-        }
-      });
-    } else {
-      // Socket 未連接，使用 API
-      api_service.ChatApiService.sendMessage(currentRoomId, content)
-          .then((sentMessage) {
-        if (mounted && !knownMessageIds.contains(sentMessage.id)) {
-          final updatedMessages = _copyMessages()..insert(0, sentMessage);
-          knownMessageIds.add(sentMessage.id);
-          updatedMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          _setMessages(updatedMessages);
-        }
-      }).catchError((error) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('發送失敗: $error'), backgroundColor: Colors.red),
-          );
-        }
-      });
-    }
+    chatService.sendMessage(currentRoomId, content);
   }
 
   /// 刪除消息

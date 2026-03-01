@@ -185,6 +185,18 @@ CREATE TABLE messages (
     return result.map((json) => Message.fromMap(json)).toList();
   }
 
+  Future<Message?> getMessageById(String id) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'messages',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return Message.fromMap(result.first);
+  }
+
   Future<void> deleteMessage(String id) async {
     final db = await instance.database;
     await db.delete(

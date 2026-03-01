@@ -145,24 +145,46 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 	}
 
 	// 在現有的事件處理中添加語音消息支持
-	server.OnEvent("/", "voice_message", func(s socketio.Conn, payload map[string]interface{}) {
-		// 1. 驗證權限與速率限制
+	server.OnEvent("/", "voice_message", func(s socketio.Conn, payload map[string]interface{}, ack func(map[string]interface{})) {
+		tempID, _ := payload["id"].(string)
+		respondError := func(message string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":      false,
+					"error":   message,
+					"temp_id": tempID,
+				})
+			}
+		}
+		respondSuccess := func(messageID, timestamp string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":         true,
+					"message_id": messageID,
+					"timestamp":  timestamp,
+					"temp_id":    tempID,
+				})
+			}
+		}
+
 		room, ok := payload["room"].(string)
 		if !ok {
 			log.Printf("Invalid room in voice message")
+			respondError("invalid_room")
 			return
 		}
 
 		user, roomObjectID, err := validateUserAndRoomAccess(s, room, chatService)
 		if err != nil {
 			log.Printf("Voice message validation failed: %v", err)
+			respondError(err.Error())
 			return
 		}
 
-		tempID, _ := payload["id"].(string)
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in voice message from %s", user.Username)
+			respondError("invalid_file_url")
 			return
 		}
 
@@ -178,6 +200,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		voiceContentBytes, err := json.Marshal(voiceInfo)
 		if err != nil {
 			log.Printf("Failed to marshal voice message content: %v", err)
+			respondError("invalid_message")
 			return
 		}
 
@@ -198,6 +221,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		)
 		if err != nil {
 			log.Printf("Failed to save voice message: %v", err)
+			respondError("message_save_failed")
 			return
 		}
 
@@ -205,6 +229,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		if broadcastTimestamp == "" {
 			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
 		}
+		respondSuccess(savedMessage.ID.Hex(), broadcastTimestamp)
 
 		// 廣播語音消息給房間內所有用戶
 		voiceMessageData := map[string]interface{}{
@@ -233,24 +258,46 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 	})
 
 	// 🔥 新增：支持图片消息广播
-	server.OnEvent("/", "image_message", func(s socketio.Conn, payload map[string]interface{}) {
-		// 1. 驗證權限與速率限制
+	server.OnEvent("/", "image_message", func(s socketio.Conn, payload map[string]interface{}, ack func(map[string]interface{})) {
+		tempID, _ := payload["id"].(string)
+		respondError := func(message string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":      false,
+					"error":   message,
+					"temp_id": tempID,
+				})
+			}
+		}
+		respondSuccess := func(messageID, timestamp string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":         true,
+					"message_id": messageID,
+					"timestamp":  timestamp,
+					"temp_id":    tempID,
+				})
+			}
+		}
+
 		room, ok := payload["room"].(string)
 		if !ok {
 			log.Printf("Invalid room in image message")
+			respondError("invalid_room")
 			return
 		}
 
 		user, roomObjectID, err := validateUserAndRoomAccess(s, room, chatService)
 		if err != nil {
 			log.Printf("Image message validation failed: %v", err)
+			respondError(err.Error())
 			return
 		}
 
-		tempID, _ := payload["id"].(string)
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in image message from %s", user.Username)
+			respondError("invalid_file_url")
 			return
 		}
 
@@ -262,6 +309,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		imageContentBytes, err := json.Marshal(imageInfo)
 		if err != nil {
 			log.Printf("Failed to marshal image message content: %v", err)
+			respondError("invalid_message")
 			return
 		}
 
@@ -282,6 +330,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		)
 		if err != nil {
 			log.Printf("Failed to save image message: %v", err)
+			respondError("message_save_failed")
 			return
 		}
 
@@ -289,6 +338,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		if broadcastTimestamp == "" {
 			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
 		}
+		respondSuccess(savedMessage.ID.Hex(), broadcastTimestamp)
 
 		// 广播图片消息给房间内所有用户
 		imageMessageData := map[string]interface{}{
@@ -315,24 +365,46 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 	})
 
 	// 🔥 新增：支持视频消息广播
-	server.OnEvent("/", "video_message", func(s socketio.Conn, payload map[string]interface{}) {
-		// 1. 驗證權限與速率限制
+	server.OnEvent("/", "video_message", func(s socketio.Conn, payload map[string]interface{}, ack func(map[string]interface{})) {
+		tempID, _ := payload["id"].(string)
+		respondError := func(message string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":      false,
+					"error":   message,
+					"temp_id": tempID,
+				})
+			}
+		}
+		respondSuccess := func(messageID, timestamp string) {
+			if ack != nil {
+				ack(map[string]interface{}{
+					"ok":         true,
+					"message_id": messageID,
+					"timestamp":  timestamp,
+					"temp_id":    tempID,
+				})
+			}
+		}
+
 		room, ok := payload["room"].(string)
 		if !ok {
 			log.Printf("Invalid room in video message")
+			respondError("invalid_room")
 			return
 		}
 
 		user, roomObjectID, err := validateUserAndRoomAccess(s, room, chatService)
 		if err != nil {
 			log.Printf("Video message validation failed: %v", err)
+			respondError(err.Error())
 			return
 		}
 
-		tempID, _ := payload["id"].(string)
 		fileURL, ok := payload["file_url"].(string)
 		if !ok || fileURL == "" {
 			log.Printf("Invalid file_url in video message from %s", user.Username)
+			respondError("invalid_file_url")
 			return
 		}
 
@@ -348,6 +420,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		videoContentBytes, err := json.Marshal(videoInfo)
 		if err != nil {
 			log.Printf("Failed to marshal video message content: %v", err)
+			respondError("invalid_message")
 			return
 		}
 
@@ -368,6 +441,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		)
 		if err != nil {
 			log.Printf("Failed to save video message: %v", err)
+			respondError("message_save_failed")
 			return
 		}
 
@@ -375,6 +449,7 @@ func NewSocketIOServer(chatService *services.ChatService, redisOptions *socketio
 		if broadcastTimestamp == "" {
 			broadcastTimestamp = savedMessage.Timestamp.Format(time.RFC3339)
 		}
+		respondSuccess(savedMessage.ID.Hex(), broadcastTimestamp)
 
 		// 广播视频消息给房间内所有用户
 		videoMessageData := map[string]interface{}{

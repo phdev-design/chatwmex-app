@@ -500,19 +500,20 @@ class ChatApiService {
   }
 
   /// 獲取封鎖用戶列表
-  static Future<List<User>> getBlockedUsers() async {
+  static Future<List<String>> getBlockedUsers() async {
     try {
       final response = await apiClient.dio.get('/api/v1/users/blocked');
       if (response.statusCode == 200) {
         final List<dynamic> usersJson = response.data['users'] ?? [];
-        return usersJson.map((json) => User.fromJson(json)).toList();
+        return usersJson.map((id) => id.toString()).toList();
       } else {
         throw Exception('Failed to get blocked users: ${response.statusCode}');
       }
     } catch (e) {
       print('ChatApiService: 獲取封鎖用戶列表失敗: $e');
       // 🔥 如果是 401 錯誤，返回空列表，避免 UI 異常
-      if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
+      if (e.toString().contains('401') ||
+          e.toString().contains('Unauthorized')) {
         return [];
       }
       throw e;
