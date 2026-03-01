@@ -47,12 +47,7 @@ func (c *AESCrypto) Encrypt(plaintext string) (string, error) {
 		return "", err
 	}
 
-	// Seal encrypts and authenticates plaintext, authenticates the additional data
-	// and appends the result to dst, returning the updated slice.
-	// The nonce must be NonceSize() bytes long and unique for all
-	// time, for a given key.
 	ciphertext := aesGCM.Seal(nonce, nonce, []byte(plaintext), nil)
-
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 

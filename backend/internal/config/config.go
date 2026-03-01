@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -21,31 +22,34 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	v := viper.New()
 
-	// Default values
-	v.SetDefault("APP_ENV", "dev")
-
-	// 1. Read from Environment Variables
-	v.AutomaticEnv()
-
-	// 2. Determine which .env file to load
-	// We check the environment variable APP_ENV directly first to decide the file
-	appEnv := os.Getenv("APP_ENV")
-	if appEnv == "" {
-		appEnv = "dev"
+	// 1. Determine environment (dev or release)
+	// Priority: MODE env var > APP_ENV env var > default "dev"
+	env := os.Getenv("MODE")
+	if env == "" {
+		env = os.Getenv("APP_ENV")
+	}
+	if env == "" {
+		env = "dev"
 	}
 
-	// 3. Load config file
-	v.SetConfigName(".env." + appEnv) // e.g., .env.dev or .env.release
+	// Normalize to lowercase
+	env = strings.ToLower(env)
+
+	// 2. Set config file name based on environment
+	v.SetConfigName(".env." + env) // e.g., .env.dev or .env.release
 	v.SetConfigType("env")
-	v.AddConfigPath("configs")      // Look in configs/ directory
-	v.AddConfigPath("./configs")    // Look in current directory/configs
-	v.AddConfigPath("../configs")   // Look in parent/configs (for tests or cmd/server runs)
+	
+	// 3. Add search paths
+	v.AddConfigPath("configs")       // Look in configs/ relative to binary execution
+	v.AddConfigPath("./configs")     // Look in ./configs
+	v.AddConfigPath("../configs")    // Look in parent/configs
 	v.AddConfigPath("../../configs") // Look in grandparent/configs
 
+	// 4. Read from Environment Variables (override config file)
+	v.AutomaticEnv()
+
 	if err := v.ReadInConfig(); err != nil {
-		// It's acceptable if the config file is missing, provided all required variables are set in the environment.
-		// However, for this setup, we'll log a warning.
-		log.Printf("Warning: Config file .env.%s not found or unreadable: %v", appEnv, err)
+		log.Printf("Warning: Config file .env.%s not found or unreadable: %v", env, err)
 	} else {
 		log.Printf("Loaded config from: %s", v.ConfigFileUsed())
 	}
@@ -53,6 +57,11 @@ func LoadConfig() (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Ensure AppEnv is set correctly in struct even if not in file
+	if cfg.AppEnv == "" {
+		cfg.AppEnv = env
 	}
 
 	return &cfg, nil
