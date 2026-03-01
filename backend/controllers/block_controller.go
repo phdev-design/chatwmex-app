@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"chatwme/backend/database"
+	"chatwme/backend/middleware"
 	"chatwme/backend/models"
 
 	"github.com/gorilla/mux"
@@ -24,7 +25,7 @@ func BlockUser(w http.ResponseWriter, r *http.Request) {
 	blockedID := vars["id"]
 
 	// Get current user ID from context (set by auth middleware)
-	userID, ok := r.Context().Value("user_id").(string)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok {
 		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 		return
@@ -89,7 +90,7 @@ func UnblockUser(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	blockedID := vars["id"]
 
-	userID, ok := r.Context().Value("user_id").(string)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok {
 		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 		return
@@ -131,7 +132,7 @@ func UnblockUser(w http.ResponseWriter, r *http.Request) {
 func GetBlockedUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	userID, ok := r.Context().Value("user_id").(string)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok {
 		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 		return

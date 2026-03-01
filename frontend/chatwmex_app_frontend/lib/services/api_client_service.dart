@@ -447,28 +447,44 @@ class ApiClientService {
   // ==================== Request Queue Processing ====================
   void _processQueue(String newAccessToken) {
     if (_requestQueue.isEmpty) {
-      // print("ℹ️ [ApiClientService] Request queue is empty.");
       return;
     }
-
-    // print(
-    //     "🔄 [ApiClientService] Processing ${_requestQueue.length} queued requests.");
 
     Future.wait(_requestQueue.map((queuedRequest) {
       final requestOptions = queuedRequest['options'] as RequestOptions;
       final completer =
           queuedRequest['completer'] as Completer<Response<dynamic>>;
 
-      requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
-
-      return dio.fetch(requestOptions).then((response) {
+      // 使用 dio.request 重新建構請求，而不是 dio.fetch(requestOptions)
+      return dio
+          .request(
+        requestOptions.path,
+        data: requestOptions.data,
+        queryParameters: requestOptions.queryParameters,
+        cancelToken: requestOptions.cancelToken,
+        onReceiveProgress: requestOptions.onReceiveProgress,
+        onSendProgress: requestOptions.onSendProgress,
+        options: Options(
+          method: requestOptions.method,
+          headers: {
+            ...requestOptions.headers,
+            'Authorization': 'Bearer $newAccessToken', // 明確使用新 Token
+          },
+          responseType: requestOptions.responseType,
+          contentType: requestOptions.contentType,
+          validateStatus: requestOptions.validateStatus,
+          receiveTimeout: requestOptions.receiveTimeout,
+          sendTimeout: requestOptions.sendTimeout,
+          extra: requestOptions.extra,
+        ),
+      )
+          .then((response) {
         completer.complete(response);
       }).catchError((error) {
         completer.completeError(error);
       });
     })).whenComplete(() {
       _requestQueue.clear();
-      // print("✅ [ApiClientService] Request queue processed.");
     });
   }
 
@@ -578,17 +594,34 @@ class _AuthInterceptor extends Interceptor {
             final options = err.requestOptions;
 
             // 🔥 Ensure Authorization header is updated with the NEW token
-            options.headers['Authorization'] = 'Bearer $newAccessToken';
+            // options.headers['Authorization'] = 'Bearer $newAccessToken'; // Not needed if we reconstruct request
 
             print("🔍 [Interceptor] Retry Header Check:");
-            print(
-                "   Old Auth Header: ${requestTokenHeader?.substring(0, 10)}...");
             print("   New Access Token: ${newAccessToken.substring(0, 10)}...");
-            print(
-                "   Updated Header: ${options.headers['Authorization']?.substring(0, 10)}...");
 
             try {
-              final response = await apiClient.dio.fetch(options);
+              // 🔥 使用 dio.request 重新發送請求，確保乾淨的 header
+              final response = await apiClient.dio.request(
+                options.path,
+                data: options.data,
+                queryParameters: options.queryParameters,
+                cancelToken: options.cancelToken,
+                onReceiveProgress: options.onReceiveProgress,
+                onSendProgress: options.onSendProgress,
+                options: Options(
+                  method: options.method,
+                  headers: {
+                    ...options.headers,
+                    'Authorization': 'Bearer $newAccessToken', // 強制使用新 Token
+                  },
+                  responseType: options.responseType,
+                  contentType: options.contentType,
+                  validateStatus: options.validateStatus,
+                  receiveTimeout: options.receiveTimeout,
+                  sendTimeout: options.sendTimeout,
+                  extra: options.extra,
+                ),
+              );
               return handler.resolve(response);
             } catch (retryError) {
               print("❌ [Interceptor] Retry failed after refresh: $retryError");
