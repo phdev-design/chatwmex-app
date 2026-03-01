@@ -10,10 +10,14 @@ import (
 	"time"
 
 	"chatwmex_backend/internal/config"
-	"chatwmex_backend/internal/delivery/http"
+	delivery "chatwmex_backend/internal/delivery/http"
 	"chatwmex_backend/internal/delivery/http/middleware"
+	"chatwmex_backend/internal/delivery/websocket"
+	"chatwmex_backend/internal/domain"
 	"chatwmex_backend/internal/infrastructure"
+	"chatwmex_backend/internal/infrastructure/rabbitmq"
 	"chatwmex_backend/internal/repository/mongo_repo"
+	"chatwmex_backend/internal/repository/redis_repo"
 	"chatwmex_backend/internal/usecase"
 	"chatwmex_backend/pkg/crypto"
 
@@ -54,15 +58,31 @@ func main() {
 		log.Fatalf("Failed to initialize crypto service: %v", err)
 	}
 
+	// Redis Connection
+	redisClient, err := infrastructure.NewRedisClient(cfg)
+	if err != nil {
+		// Log warning but don't fail, to allow running without Redis if needed (or make it fatal)
+		log.Printf("Warning: Failed to connect to Redis: %v", err)
+	} else {
+		defer func() {
+			if err := redisClient.Close(); err != nil {
+				log.Printf("Error closing Redis: %v", err)
+			}
+		}()
+	}
+
 	// 3. Initialize Repositories
 	userRepo := mongo_repo.NewUserRepository(db)
 	messageRepo := mongo_repo.NewMessageRepository(db, cryptor)
+	roomRepo := mongo_repo.NewRoomRepository(db)
+	onlineRepo := redis_repo.NewOnlineRepository(redisClient)
 
 	// 4. Initialize Usecases
 	// Set a default timeout for usecase operations
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
 	messageUsecase := usecase.NewMessageUsecase(messageRepo, timeout)
+	roomUsecase := usecase.NewRoomUsecase(roomRepo, timeout)
 
 	// 5. Initialize HTTP Server
 	if cfg.AppEnv == "release" {
@@ -79,9 +99,34 @@ func main() {
 	}
 	authMiddleware := middleware.AuthMiddleware(cfg.JWTSecret)
 
+	// Initialize WebSocket Hub
+	rabbitIn := make(chan *domain.Message)
+	
+	var rabbitClient *rabbitmq.RabbitMQClient
+	if cfg.RabbitMQURL != "" {
+		var err error
+		rabbitClient, err = rabbitmq.NewRabbitMQClient(cfg, rabbitIn)
+		if err != nil {
+			log.Printf("Warning: Failed to connect to RabbitMQ: %v", err)
+		} else {
+			defer rabbitClient.Close()
+		}
+	}
+	
+	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn)
+	go hub.Run()
+
+
 	// Register Handlers
-	http.NewUserHandler(r, userUsecase, cfg.JWTSecret)
-	http.NewMessageHandler(r, messageUsecase, authMiddleware)
+	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret)
+	delivery.NewMessageHandler(r, messageUsecase, authMiddleware)
+	delivery.NewRoomHandler(r, roomUsecase, authMiddleware)
+	delivery.NewOnlineHandler(r, onlineRepo, authMiddleware)
+	
+	// Register WebSocket Route
+	r.GET("/ws", func(c *gin.Context) {
+		websocket.ServeWs(hub, c, cfg.JWTSecret)
+	})
 
 	// 7. Start Server with Graceful Shutdown
 	srv := &http.Server{

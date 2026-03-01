@@ -53,18 +53,16 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 }
 
 // GetChatHistory retrieves the chat history for a user.
-func (u *messageUsecase) GetChatHistory(c context.Context, userID string, contactID string, limit int, offset int) ([]*domain.Message, error) {
-	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+func (u *messageUsecase) GetHistory(ctx context.Context, userID, contactID string, limit, offset int) ([]*domain.Message, error) {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
 	defer cancel()
 
-	// Pagination safety
-	if limit <= 0 {
-		limit = 20 // Default limit
-	}
-	if limit > 100 {
-		limit = 100 // Max limit to prevent abuse
-	}
+	return u.messageRepo.GetHistory(ctx, userID, contactID, limit, offset)
+}
 
-	// Query repository
-	return u.messageRepo.GetHistoryMessages(ctx, userID, contactID, limit, offset)
+func (u *messageUsecase) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
+
+	return u.messageRepo.MarkAsRead(ctx, userID, conversationID, isRoom)
 }

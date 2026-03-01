@@ -1,0 +1,61 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatwmex-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=dev
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB_NAME=chatwmex_dev
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - ENCRYPTION_KEY=12345678901234567890123456789012
+      - JWT_SECRET=super-secret-jwt-key-for-dev-only
+    depends_on:
+      - mongo
+      - redis
+      # - rabbitmq
+    networks:
+      - chatwmex-net
+    restart: always
+
+  mongo:
+    image: mongo:6.0
+    container_name: chatwmex-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - chatwmex-net
+    restart: always
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: chatwmex-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - chatwmex-net
+    restart: always
+
+  # rabbitmq:
+  #   image: rabbitmq:3.11-management-alpine
+  #   container_name: chatwmex-rabbitmq
+  #   ports:
+  #     - "5672:5672"
+  #     - "15672:15672"
+  #   networks:
+  #     - chatwmex-net
+  #   restart: always
+
+volumes:
+  mongo_data:
+
+networks:
+  chatwmex-net:
+    driver: bridge

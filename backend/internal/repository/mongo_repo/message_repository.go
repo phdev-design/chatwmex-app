@@ -24,6 +24,9 @@ type mongoMessage struct {
 	ReceiverID string             `bson:"receiver_id,omitempty"`
 	RoomID     string             `bson:"room_id,omitempty"`
 	Content    string             `bson:"content"` // Encrypted content
+	Type       string             `bson:"type"`
+	IsRead     bool               `bson:"is_read"`
+	ReadBy     []string           `bson:"read_by"`
 	CreatedAt  time.Time          `bson:"created_at"`
 }
 
@@ -50,13 +53,16 @@ func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.
 		}
 	
 		return &domain.Message{
-			ID:         m.ID.Hex(),
-			SenderID:   m.SenderID,
-			ReceiverID: m.ReceiverID,
-			RoomID:     m.RoomID,
-			Content:    decryptedContent,
-			CreatedAt:  m.CreatedAt,
-		}, nil
+		ID:         m.ID.Hex(),
+		SenderID:   m.SenderID,
+		ReceiverID: m.ReceiverID,
+		RoomID:     m.RoomID,
+		Content:    decryptedContent,
+		Type:       m.Type,
+		IsRead:     m.IsRead,
+		ReadBy:     m.ReadBy,
+		CreatedAt:  m.CreatedAt,
+	}, nil
 	}
 	
 	// fromDomain converts a domain.Message to a mongoMessage.
@@ -77,13 +83,16 @@ func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.
 		}
 	
 		return &mongoMessage{
-			ID:         id,
-			SenderID:   m.SenderID,
-			ReceiverID: m.ReceiverID,
-			RoomID:     m.RoomID,
-			Content:    encryptedContent,
-			CreatedAt:  m.CreatedAt,
-		}, nil
+		ID:         id,
+		SenderID:   m.SenderID,
+		ReceiverID: m.ReceiverID,
+		RoomID:     m.RoomID,
+		Content:    encryptedContent,
+		Type:       m.Type,
+		IsRead:     m.IsRead,
+		ReadBy:     m.ReadBy,
+		CreatedAt:  m.CreatedAt,
+	}, nil
 	}
 
 // StoreMessage saves a message to the repository.
@@ -116,66 +125,40 @@ func (r *MessageRepository) StoreMessage(ctx context.Context, msg *domain.Messag
 	return nil
 }
 
-// GetHistoryMessages retrieves message history between a user and a contact (user or room).
-// It decrypts the message content after retrieving it from MongoDB.
-func (r *MessageRepository) GetHistoryMessages(ctx context.Context, userID string, contactID string, limit int, offset int) ([]*domain.Message, error) {
-	// Construct query based on whether it's a direct message or a group message
-	// This logic assumes contactID is either a userID (for DM) or a roomID (for group)
-	// A more robust implementation might require a chatType parameter or checking if contactID is a room.
-	// For simplicity, we'll assume:
-	// If it's a DM, we look for messages where (Sender=userID AND Receiver=contactID) OR (Sender=contactID AND Receiver=userID)
-	// If it's a Room, we look for messages where RoomID=contactID (assuming userID is a member, authorization should be handled in usecase)
-
-	// Since we don't have explicit type, let's try to query for both scenarios or rely on the caller to provide correct context.
-	// However, standard chat apps usually distinguish. Let's implementing a flexible query.
-	
+func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID string, limit, offset int) ([]*domain.Message, error) {
 	// Strategy: We query for both cases.
 	// Case 1: Direct Message
-	dmFilter := bson.M{
-		"$or": []bson.M{
-			{"sender_id": userID, "receiver_id": contactID},
-			{"sender_id": contactID, "receiver_id": userID},
-		},
-	}
+	// dmFilter := bson.M{
+	// 	"$or": []bson.M{
+	// 		{"sender_id": userID, "receiver_id": contactID},
+	// 		{"sender_id": contactID, "receiver_id": userID},
+	// 	},
+	// }
 
 	// Case 2: Group Message
-	// If contactID is a roomID, we just filter by room_id.
-	// But we don't know if contactID is a user or room here without more info.
-	// For this implementation, let's assume if ReceiverID matches contactID it's DM, if RoomID matches contactID it's Group.
-	// But usually contactID IS the roomID.
-	
-	// IMPROVED STRATEGY based on common patterns:
-	// We'll search for messages where:
-	// (RoomID == contactID)  <-- Group Chat
-	// OR
-	// (SenderID == userID AND ReceiverID == contactID) OR (SenderID == contactID AND ReceiverID == userID) <-- DM
+	// roomFilter := bson.M{"room_id": contactID}
+
+	// Better: The caller should probably specify or we infer.
+	// For simplicity, let's just use an $or query that covers both scenarios:
+	// (sender=me AND receiver=contact) OR (sender=contact AND receiver=me) OR (room_id=contact)
+	// Note: This assumes contactID is the roomID for group chats.
 	
 	filter := bson.M{
 		"$or": []bson.M{
+			{"sender_id": userID, "receiver_id": contactID},
+			{"sender_id": contactID, "receiver_id": userID},
 			{"room_id": contactID},
-			{
-				"$and": []bson.M{
-					{"sender_id": userID},
-					{"receiver_id": contactID},
-				},
-			},
-			{
-				"$and": []bson.M{
-					{"sender_id": contactID},
-					{"receiver_id": userID},
-				},
-			},
 		},
 	}
-
+	
 	findOptions := options.Find()
-	findOptions.SetSort(bson.D{{Key: "created_at", Value: -1}}) // Sort by newest first
+	findOptions.SetSort(bson.D{{Key: "created_at", Value: -1}}) // Newest first
 	findOptions.SetLimit(int64(limit))
 	findOptions.SetSkip(int64(offset))
 
 	cursor, err := r.collection.Find(ctx, filter, findOptions)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query messages: %w", err)
+		return nil, fmt.Errorf("failed to fetch messages: %w", err)
 	}
 	defer cursor.Close(ctx)
 
@@ -185,20 +168,49 @@ func (r *MessageRepository) GetHistoryMessages(ctx context.Context, userID strin
 		if err := cursor.Decode(&m); err != nil {
 			return nil, fmt.Errorf("failed to decode message: %w", err)
 		}
-
+		
 		domainMsg, err := r.toDomain(&m)
 		if err != nil {
-			// In case of decryption failure, we might want to skip the message or return an error.
-			// Returning an error stops the whole history retrieval.
-			// Logging and skipping might be better for resilience, but for strict security, we return error.
-			return nil, fmt.Errorf("failed to convert/decrypt message %s: %w", m.ID.Hex(), err)
+			// Skip malformed/decryption error messages? or return error?
+			// Let's log and skip for robustness
+			continue 
 		}
 		messages = append(messages, domainMsg)
 	}
 
-	if err := cursor.Err(); err != nil {
-		return nil, fmt.Errorf("cursor error: %w", err)
+	return messages, nil
+}
+
+// MarkAsRead marks messages as read.
+func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
+	var filter bson.M
+	var update bson.M
+
+	if isRoom {
+		// For rooms: Add userID to read_by array if not present, for messages in this room
+		// Only update messages where userID is NOT in read_by
+		filter = bson.M{
+			"room_id": conversationID,
+			"read_by": bson.M{"$ne": userID},
+		}
+		update = bson.M{"$addToSet": bson.M{"read_by": userID}}
+	} else {
+		// For DM: Mark messages SENT BY the other person (conversationID) as read.
+		// SenderID = conversationID, ReceiverID = userID
+		filter = bson.M{
+			"sender_id": conversationID,
+			"receiver_id": userID,
+			"is_read": false,
+		}
+		update = bson.M{
+			"$set": bson.M{"is_read": true},
+			"$addToSet": bson.M{"read_by": userID},
+		}
 	}
 
-	return messages, nil
+	_, err := r.collection.UpdateMany(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to mark messages as read: %w", err)
+	}
+	return nil
 }

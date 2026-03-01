@@ -146,7 +146,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 // GetByUsername retrieves a user by their username.
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
 	var mUser mongoUser
-	err = r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&mUser)
+	err := r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&mUser)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("user not found")

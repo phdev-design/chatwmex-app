@@ -13,6 +13,9 @@ type Message struct {
 	ReceiverID string    `json:"receiver_id,omitempty"` // For 1-on-1 chat, empty if RoomID is set
 	RoomID     string    `json:"room_id,omitempty"`     // For Group chat, empty if ReceiverID is set
 	Content    string    `json:"content"`               // Business level content (plaintext)
+	Type       string    `json:"type"`              // "text", "image", "read_receipt"
+	IsRead     bool      `json:"is_read,omitempty"` // For backwards compatibility or simple 1-on-1
+	ReadBy     []string  `json:"read_by"`           // List of UserIDs who read the message
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -22,9 +25,9 @@ type MessageRepository interface {
 	// Implementation should handle encryption before storage.
 	StoreMessage(ctx context.Context, msg *Message) error
 	
-	// GetHistoryMessages retrieves message history between a user and a contact (user or room).
-	// contactID can be another userID (for 1-on-1) or a roomID (for group chat).
-	GetHistoryMessages(ctx context.Context, userID string, contactID string, limit int, offset int) ([]*Message, error)
+	GetHistory(ctx context.Context, userID, contactID string, limit, offset int) ([]*Message, error)
+	// MarkAsRead marks all messages in a conversation (room or DM) as read by userID
+	MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error
 }
 
 // MessageUsecase defines the interface for message business logic.
@@ -33,6 +36,6 @@ type MessageUsecase interface {
 	// It should validate the message and delegate to the repository.
 	SendMessage(ctx context.Context, msg *Message) error
 	
-	// GetChatHistory retrieves the chat history for a user.
-	GetChatHistory(ctx context.Context, userID string, contactID string, limit int, offset int) ([]*Message, error)
+	GetHistory(ctx context.Context, userID, contactID string, limit, offset int) ([]*Message, error)
+	MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error
 }
