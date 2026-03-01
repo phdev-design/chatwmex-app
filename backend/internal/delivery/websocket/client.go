@@ -1,13 +1,9 @@
 package websocket
 
 import (
-	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"time"
-
-	"chatwmex_backend/internal/domain"
 
 	"github.com/gorilla/websocket"
 )
@@ -45,6 +41,9 @@ var upgrader = websocket.Upgrader{
 type Client struct {
 	hub *Hub
 
+	// Controller for handling business logic
+	controller *SocketController
+
 	// The websocket connection.
 	conn *websocket.Conn
 
@@ -76,44 +75,8 @@ func (c *Client) readPump() {
 			break
 		}
 
-		// Parse the incoming message
-		var msg domain.Message
-		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("error decoding message: %v", err)
-			continue
-		}
-
-		// Ensure SenderID is set correctly (security)
-		msg.SenderID = c.userID
-		// Ensure timestamp is set (security)
-		msg.CreatedAt = time.Now()
-
-		// Call Usecase to persist the message
-		// Note: We use a short timeout context
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err = c.hub.messageUsecase.SendMessage(ctx, &msg)
-		cancel()
-		
-		if err != nil {
-			log.Printf("error saving message: %v", err)
-			// Optionally send error back to client
-			continue
-		}
-
-		// Broadcast:
-		// If RabbitMQ is configured, publish to RabbitMQ.
-		// RabbitMQ consumer will then feed it back to c.hub.broadcast for local distribution.
-		if c.hub.rabbitMQ != nil {
-			if err := c.hub.rabbitMQ.Publish(&msg); err != nil {
-				log.Printf("error publishing to RabbitMQ: %v", err)
-				// Fallback to local broadcast if RabbitMQ fails?
-				// Or retry? For now, let's fallback to local broadcast to ensure at least local delivery.
-				c.hub.broadcast <- &msg
-			}
-		} else {
-			// No RabbitMQ, just local broadcast
-			c.hub.broadcast <- &msg
-		}
+		// Delegate to Controller
+		c.controller.HandleMessage(c, message)
 	}
 }
 

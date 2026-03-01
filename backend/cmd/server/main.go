@@ -114,6 +114,10 @@ func main() {
 	}
 	
 	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn)
+	
+	// Create SocketController
+	socketController := websocket.NewSocketController(hub, messageUsecase)
+	
 	go hub.Run()
 
 
@@ -125,7 +129,7 @@ func main() {
 	
 	// Register WebSocket Route
 	r.GET("/ws", func(c *gin.Context) {
-		websocket.ServeWs(hub, c, cfg.JWTSecret)
+		websocket.ServeWs(hub, c, cfg.JWTSecret, socketController)
 	})
 
 	// 7. Start Server with Graceful Shutdown

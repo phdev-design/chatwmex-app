@@ -10,7 +10,7 @@ import (
 )
 
 // ServeWs handles websocket requests from the peer.
-func ServeWs(hub *Hub, c *gin.Context, jwtSecret string) {
+func ServeWs(hub *Hub, c *gin.Context, jwtSecret string, controller *SocketController) {
 	// 1. Authenticate via Query Param "token"
 	// Since standard WebSocket API cannot set custom headers easily, we use query param.
 	tokenStr := c.Query("token")
@@ -52,10 +52,11 @@ func ServeWs(hub *Hub, c *gin.Context, jwtSecret string) {
 
 	// 3. Create Client and Register to Hub
 	client := &Client{
-		hub:    hub,
-		conn:   conn,
-		send:   make(chan []byte, 256),
-		userID: userID,
+		hub:        hub,
+		controller: controller,
+		conn:       conn,
+		send:       make(chan []byte, 256),
+		userID:     userID,
 	}
 	client.hub.register <- client
 
