@@ -14,17 +14,14 @@ mixin ChatLifecycleHandler<T extends StatefulWidget>
   void initializeLifecycleHandler() {
     WidgetsBinding.instance.addObserver(this);
     chatService.setCurrentActiveChatRoom(chatRoomId);
-    print("Lifecycle: Observer added.");
   }
 
   // 🔥 修正：改為提供清理方法而非覆寫 dispose
   void disposeLifecycleHandler() {
-    print("Lifecycle: Removing observer.");
     WidgetsBinding.instance.removeObserver(this);
     chatService.unregisterMessageListener('chat_detail_page');
     chatService.unregisterConnectionListener('chat_detail_page');
     chatService.setCurrentActiveChatRoom(null);
-    print('Lifecycle: Cleaned up chat service listeners.');
   }
 
   @override
@@ -32,12 +29,10 @@ mixin ChatLifecycleHandler<T extends StatefulWidget>
     super.didChangeAppLifecycleState(state);
     switch (state) {
       case AppLifecycleState.resumed:
-        print("Lifecycle: App resumed.");
         chatService.setCurrentActiveChatRoom(chatRoomId);
         onAppResumed();
         break;
       case AppLifecycleState.paused:
-        print("Lifecycle: App paused.");
         chatService.setCurrentActiveChatRoom(null);
         onAppPaused();
         break;

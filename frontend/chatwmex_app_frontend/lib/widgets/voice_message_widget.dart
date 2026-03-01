@@ -101,9 +101,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
     });
 
     try {
-      print('VoiceMessageWidget (${widget.voiceMessage.id}): 準備音訊 URL');
-      print('VoiceMessageWidget: 原始 fileUrl - ${widget.voiceMessage.fileUrl}');
-
       // 檢查是否為本地檔案路徑且檔案存在
       // 注意：伺服器相對路徑也可能以 / 開頭，所以必須檢查 File().exists()
       if (widget.voiceMessage.fileUrl.startsWith('/')) {
@@ -118,8 +115,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
           }
           return;
         }
-        print(
-            'VoiceMessageWidget: 本地檔案不存在，嘗試解析為伺服器路徑: ${widget.voiceMessage.fileUrl}');
       }
 
       // 🔥 关键修正：使用 ApiConfig 来构造正确的 URL
@@ -128,11 +123,9 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
       if (widget.voiceMessage.fileUrl.startsWith('http')) {
         // 如果已经是完整 URL，直接使用
         audioUrl = widget.voiceMessage.fileUrl;
-        print('VoiceMessageWidget: 使用完整 HTTP URL: $audioUrl');
       } else {
         // 🔥 使用 ApiConfig 构造完整 URL
         audioUrl = ApiConfig.getAudioFileUrl(widget.voiceMessage.fileUrl);
-        print('VoiceMessageWidget: 构造完整 URL: $audioUrl');
       }
 
       // 🔥 新增：URL 有效性验证
@@ -150,10 +143,8 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
 
       // 🔥 新增：預抓快取（背景），並嘗試 HEAD 驗證
       // 預取語音文件（just_audio 會自動處理）
-      print('VoiceMessageWidget: 預取語音文件: $audioUrl');
       await _validateAudioAccess(audioUrl);
     } catch (e) {
-      print('VoiceMessageWidget (${widget.voiceMessage.id}): 準備 URL 失敗: $e');
       if (!_isDisposed && mounted) {
         setState(() {
           _isLoadingUrl = false;
@@ -190,10 +181,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
       if (response.statusCode != 200) {
         throw Exception('音频文件不可访问，状态码: ${response.statusCode}');
       }
-
-      print('VoiceMessageWidget: 音频文件可访问，状态码: ${response.statusCode}');
     } catch (e) {
-      print('VoiceMessageWidget: 音频文件访问检查失败: $e');
       // 注意：这里不抛出异常，因为某些服务器可能不支持 HEAD 请求
       // 让实际播放时再处理错误
     }
@@ -266,10 +254,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
         await _playerService.resumeVoice();
       } else {
         // 如果播放器已停止，直接播放（播放服務會處理重置）
-        print('VoiceMessageWidget (${widget.voiceMessage.id}): 開始新的播放');
         if (_localFilePath != null) {
-          print(
-              'VoiceMessageWidget (${widget.voiceMessage.id}): 開始播放本地音訊: $_localFilePath');
           final success = await _playerService.playVoice(
             widget.voiceMessage.id,
             _localFilePath!,
@@ -283,9 +268,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
           }
           return;
         }
-
-        print(
-            'VoiceMessageWidget (${widget.voiceMessage.id}): 開始播放音訊: $_playableAudioUrl');
         final success = await _playerService.playVoice(
           widget.voiceMessage.id,
           _playableAudioUrl!,
@@ -301,7 +283,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
         }
       }
     } catch (e) {
-      print('VoiceMessageWidget (${widget.voiceMessage.id}): 播放操作失敗: $e');
       if (mounted) {
         // mounted 檢查
         ScaffoldMessenger.of(context).showSnackBar(
@@ -356,7 +337,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
               height: height,
               decoration: BoxDecoration(
                 color: widget.isFromCurrentUser
-                    ? Colors.white.withOpacity(0.8)
+                    ? Colors.white.withValues(alpha: 0.8)
                     : Theme.of(context).colorScheme.primary,
                 borderRadius: BorderRadius.circular(1.5),
               ),
@@ -397,7 +378,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -418,8 +399,11 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: widget.isFromCurrentUser
-                      ? Colors.white.withOpacity(0.2)
-                      : Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.1),
                 ),
                 child: Material(
                   color: Colors.transparent,
@@ -484,11 +468,11 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                       LinearProgressIndicator(
                         value: progress.clamp(0.0, 1.0),
                         backgroundColor: widget.isFromCurrentUser
-                            ? Colors.white.withOpacity(0.3)
+                            ? Colors.white.withValues(alpha: 0.3)
                             : Theme.of(context)
                                 .colorScheme
                                 .outline
-                                .withOpacity(0.3),
+                                .withValues(alpha: 0.3),
                         valueColor: AlwaysStoppedAnimation<Color>(
                           widget.isFromCurrentUser
                               ? Colors.white
@@ -515,11 +499,11 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                     style: TextStyle(
                       fontSize: 12,
                       color: widget.isFromCurrentUser
-                          ? Colors.white.withOpacity(0.9)
+                          ? Colors.white.withValues(alpha: 0.9)
                           : Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.7),
+                              .withValues(alpha: 0.7),
                     ),
                   ),
                   Text(
@@ -527,11 +511,11 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                     style: TextStyle(
                       fontSize: 10,
                       color: widget.isFromCurrentUser
-                          ? Colors.white.withOpacity(0.7)
+                          ? Colors.white.withValues(alpha: 0.7)
                           : Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.5),
+                              .withValues(alpha: 0.5),
                     ),
                   ),
                 ],
@@ -550,11 +534,11 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                 style: TextStyle(
                   fontSize: 11,
                   color: widget.isFromCurrentUser
-                      ? Colors.white.withOpacity(0.7)
+                      ? Colors.white.withValues(alpha: 0.7)
                       : Theme.of(context)
                           .colorScheme
                           .onSurface
-                          .withOpacity(0.6),
+                          .withValues(alpha: 0.6),
                 ),
               ),
             ],
@@ -572,11 +556,11 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: widget.isFromCurrentUser
-            ? Colors.white.withOpacity(0.2)
+            ? Colors.white.withValues(alpha: 0.2)
             : _getAvatarColor(senderName),
         border: Border.all(
           color: widget.isFromCurrentUser
-              ? Colors.white.withOpacity(0.3)
+              ? Colors.white.withValues(alpha: 0.3)
               : Colors.transparent,
           width: 1,
         ),

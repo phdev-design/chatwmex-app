@@ -92,13 +92,13 @@ class ChatRoomListView extends StatelessWidget {
                     width: 80,
                     height: 80,
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.1),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       isSearching ? Icons.search_off : Icons.chat_bubble_outline,
                       size: 40,
-                      color: theme.colorScheme.primary.withOpacity(0.7),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.7),
                     ),
                   ),
                   
@@ -108,7 +108,7 @@ class ChatRoomListView extends StatelessWidget {
                   Text(
                     isSearching ? '找不到相關聊天室' : '還沒有聊天室',
                     style: theme.textTheme.titleLarge?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -121,7 +121,7 @@ class ChatRoomListView extends StatelessWidget {
                         ? '嘗試搜尋其他關鍵字' 
                         : '點擊右下角按鈕開始聊天',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -131,7 +131,7 @@ class ChatRoomListView extends StatelessWidget {
                     Text(
                       '搜尋建議：\n• 檢查拼寫是否正確\n• 嘗試使用較短的關鍵字\n• 搜尋用戶名或訊息內容',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                       textAlign: TextAlign.center,
                     ),

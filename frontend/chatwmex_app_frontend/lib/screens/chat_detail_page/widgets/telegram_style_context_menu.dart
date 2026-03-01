@@ -119,7 +119,7 @@ class _TelegramStyleContextMenuState extends State<TelegramStyleContextMenu>
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
               child: Container(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -157,7 +157,7 @@ class _TelegramStyleContextMenuState extends State<TelegramStyleContextMenu>
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 15,
               offset: const Offset(0, 4),
             ),
@@ -212,7 +212,7 @@ class _TelegramStyleContextMenuState extends State<TelegramStyleContextMenu>
           width: 24,
           height: 24,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: const Icon(
@@ -235,7 +235,7 @@ class _TelegramStyleContextMenuState extends State<TelegramStyleContextMenu>
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
@@ -251,10 +251,10 @@ class _TelegramStyleContextMenuState extends State<TelegramStyleContextMenu>
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   border: Border(
                     bottom: BorderSide(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       width: 0.5,
                     ),
                   ),
@@ -276,7 +276,7 @@ class _TelegramStyleContextMenuState extends State<TelegramStyleContextMenu>
                     Text(
                       formatMessageTime(widget.message.timestamp),
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withValues(alpha: 0.4),
                         fontSize: 13,
                       ),
                     ),

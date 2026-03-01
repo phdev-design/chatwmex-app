@@ -31,7 +31,7 @@ class ChatRoomTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             color: room.unreadCount > 0
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.05)
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
                 : null,
           ),
           child: Material(
@@ -41,7 +41,8 @@ class ChatRoomTile extends StatelessWidget {
               onTap: onTap,
               onLongPress: onLongPress,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
                     _buildAvatar(context),
@@ -70,7 +71,7 @@ class ChatRoomTile extends StatelessWidget {
             // 添加陰影效果
             boxShadow: [
               BoxShadow(
-                color: getAvatarColor(room.name).withOpacity(0.3),
+                color: getAvatarColor(room.name).withValues(alpha: 0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -103,15 +104,15 @@ class ChatRoomTile extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 4,
                     offset: const Offset(0, 1),
                   ),
                 ],
               ),
               child: const Icon(
-                Icons.group, 
-                color: Colors.white, 
+                Icons.group,
+                color: Colors.white,
                 size: 12,
               ),
             ),
@@ -155,10 +156,12 @@ class ChatRoomTile extends StatelessWidget {
                       child: Text(
                         room.name,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w600,
-                          color: hasUnread 
+                          fontWeight:
+                              hasUnread ? FontWeight.w700 : FontWeight.w600,
+                          color: hasUnread
                               ? theme.colorScheme.onSurface
-                              : theme.colorScheme.onSurface.withOpacity(0.9),
+                              : theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.9),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -170,7 +173,8 @@ class ChatRoomTile extends StatelessWidget {
                       Icon(
                         Icons.people,
                         size: 14,
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                     ],
                   ],
@@ -182,7 +186,7 @@ class ChatRoomTile extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: hasUnread
                       ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface.withOpacity(0.6),
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
                 ),
               ),
@@ -196,10 +200,11 @@ class ChatRoomTile extends StatelessWidget {
                   room.lastMessage.isEmpty ? '暫無訊息' : room.lastMessage,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: hasUnread
-                        ? theme.colorScheme.onSurface.withOpacity(0.9)
-                        : theme.colorScheme.onSurface.withOpacity(0.7),
+                        ? theme.colorScheme.onSurface.withValues(alpha: 0.9)
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
-                    fontStyle: room.lastMessage.isEmpty ? FontStyle.italic : null,
+                    fontStyle:
+                        room.lastMessage.isEmpty ? FontStyle.italic : null,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -212,13 +217,14 @@ class ChatRoomTile extends StatelessWidget {
                     minWidth: 20,
                     minHeight: 20,
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.primary,
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: theme.colorScheme.primary.withOpacity(0.3),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.3),
                         blurRadius: 4,
                         offset: const Offset(0, 1),
                       ),

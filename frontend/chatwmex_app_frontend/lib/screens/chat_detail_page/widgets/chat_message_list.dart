@@ -166,7 +166,7 @@ class ChatMessageList extends StatelessWidget {
       onTap: () => onMessageTap(message),
       child: Container(
         color: isSelected
-            ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
             : Colors.transparent,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -203,7 +203,7 @@ class ChatMessageList extends StatelessWidget {
         border: Border.all(
           color: isSelected
               ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.outline.withOpacity(0.5),
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
           width: 2,
         ),
       ),
@@ -231,7 +231,8 @@ class ChatMessageList extends StatelessWidget {
           Text(
             hasLoadingError ? '載入失敗' : '開始聊天吧！',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
           ),
           if (hasLoadingError) ...[

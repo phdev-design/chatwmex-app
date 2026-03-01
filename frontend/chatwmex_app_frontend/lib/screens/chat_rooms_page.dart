@@ -68,8 +68,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
 
   @override
   void dispose() {
-    print('ChatRoomsPage: 開始清理資源...');
-
     // 設置標記，防止異步操作在 dispose 後執行
     _isDisposed = true;
 
@@ -99,14 +97,11 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
     // 8. 停止背景同步（如果只有這個頁面在使用）
     _stopBackgroundSyncIfNeeded();
 
-    print('ChatRoomsPage: 資源清理完成');
     super.dispose();
   }
 
   // 清理已加入的聊天室
   void _cleanupJoinedRooms() {
-    print('ChatRoomsPage: 清理 ${_joinedRooms.length} 個已加入的聊天室');
-
     // 從聊天服務中離開所有聊天室
     for (final roomId in _joinedRooms) {
       _chatService.leaveRoom(roomId);
@@ -114,36 +109,25 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
 
     // 清空 Set
     _joinedRooms.clear();
-    print('ChatRoomsPage: 聊天室清理完成');
   }
 
   // 取消所有訂閱
   void _cancelAllSubscriptions() {
-    print('ChatRoomsPage: 取消 ${_subscriptions.length} 個 Stream 訂閱');
-
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
     _subscriptions.clear();
-
-    print('ChatRoomsPage: Stream 訂閱清理完成');
   }
 
   // 如果需要，停止背景同步
   void _stopBackgroundSyncIfNeeded() {
-    try {
-      print('ChatRoomsPage: 背景同步狀態檢查完成');
-    } catch (e) {
-      print('ChatRoomsPage: 背景同步清理錯誤: $e');
-    }
+    try {} catch (e) {}
   }
 
   // 安全的狀態更新方法，防止在已銷毀的 Widget 上調用 setState
   void _safeSetState(VoidCallback callback) {
     if (!_isDisposed && mounted) {
       setState(callback);
-    } else {
-      print('ChatRoomsPage: 嘗試在已銷毀的頁面上調用 setState，已忽略');
     }
   }
 
@@ -166,7 +150,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              print('ChatRoomsPage: 用戶選擇暫不開啟權限');
             },
             child: const Text('暫不開啟', style: TextStyle(color: Colors.grey)),
           ),
@@ -186,24 +169,18 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
     try {
       // 初始化通知服務
       await _notificationService.initialize();
-      print('ChatRoomsPage: 通知服務初始化完成');
 
       // 🔥 改進權限檢查邏輯
       var status = await Permission.notification.status;
-      print('ChatRoomsPage: 初始通知權限狀態: $status');
 
       if (status.isGranted) {
-        print('ChatRoomsPage: 通知權限已授予');
       } else if (status.isPermanentlyDenied) {
-        print('ChatRoomsPage: 通知權限已被永久拒絕，顯示引導對話框');
         if (mounted) {
           _showPermissionDeniedDialog();
         }
       } else {
         // 其他狀態（如 denied, restricted），嘗試請求權限
-        print('ChatRoomsPage: 嘗試請求通知權限...');
         status = await _notificationService.requestNotificationPermission();
-        print('ChatRoomsPage: 權限請求結果: $status');
 
         if (status.isPermanentlyDenied) {
           if (mounted) {
@@ -236,7 +213,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
         }
       });
     } catch (e) {
-      print('Error initializing app: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -251,17 +227,12 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
   // 啟動背景同步
   Future<void> _startBackgroundSync() async {
     try {
-      print('ChatRoomsPage: 啟動背景同步');
       await BackgroundSyncService().startBackgroundSync();
-    } catch (e) {
-      print('ChatRoomsPage: 啟動背景同步失敗: $e');
-    }
+    } catch (e) {}
   }
 
   // 🔥 修正：合併重複的函數定義，並確保先清理舊監聽器，防止重複註冊
   void _setupChatServiceCallbacks() {
-    print('ChatRoomsPage: 設置 Socket 回調函數');
-
     // 先清理舊的監聽器
     _chatService.unregisterConnectionListener('chat_rooms_page');
     _chatService.unregisterMessageListener('chat_rooms_page');
@@ -279,7 +250,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
   // 改進的聊天室加入邏輯，避免重複加入
   void _joinAllChatRooms() {
     if (_isDisposed || !_chatService.isConnected) {
-      print('ChatRoomsPage: 頁面已銷毀或服務未連接，跳過加入聊天室');
       return;
     }
 
@@ -288,11 +258,9 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
         if (!_joinedRooms.contains(room.id)) {
           _chatService.joinRoom(room.id);
           _joinedRooms.add(room.id);
-          print('ChatRoomsPage: 加入聊天室 ${room.name} (${room.id})');
         }
       }
     } else {
-      print('ChatRoomsPage: Socket 未連接，延遲加入聊天室');
       Timer(const Duration(seconds: 2), () {
         if (!_isDisposed && _chatService.isConnected) {
           _joinAllChatRooms();
@@ -312,7 +280,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
     // 檢查是否為重複消息
     if (currentRoom.lastMessage == expectedDisplayContent &&
         currentRoom.lastMessageTime.isAtSameMomentAs(message.timestamp)) {
-      print('ChatRoomsPage: 檢測到重複訊息，跳過');
       return;
     }
 
@@ -332,25 +299,15 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
     _chatRooms.removeAt(roomIndex);
     _chatRooms.insert(0, updatedRoom);
     _filterChatRooms(_searchController.text);
-
-    print(
-        'ChatRoomsPage: 更新聊天室: ${updatedRoom.name}, 新消息: ${updatedRoom.lastMessage}, 未讀數: ${updatedRoom.unreadCount}');
   }
 
   // 🔥 修正：改進消息接收處理流程，移除重複的 setState 調用
   void _onNewMessageReceived(Message message) {
     if (_isDisposed || !mounted) {
-      print('ChatRoomsPage: 頁面已銷毀，忽略消息');
       return;
     }
 
-    print('=== ChatRoomsPage 收到消息調試 ===');
-    print('消息來源房間: ${message.roomId}, 發送者: ${message.senderName}');
-    print('是否為自己的消息: ${_isMyMessage(message)}');
-    print('================================');
-
     if (message.id.isEmpty || message.content.isEmpty) {
-      print('ChatRoomsPage: 收到無效訊息，跳過');
       return;
     }
 
@@ -362,17 +319,14 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
       final roomIndex =
           _chatRooms.indexWhere((room) => room.id == message.roomId);
       if (roomIndex != -1) {
-        print('ChatRoomsPage: 找到對應聊天室，索引: $roomIndex');
         _updateRoomWithNewMessage(roomIndex, message);
       } else {
-        print('ChatRoomsPage: 未找到對應聊天室 ${message.roomId}，重新載入列表');
         _loadChatRooms();
       }
     });
 
     // 在狀態更新之外處理通知
     if (!_isMyMessage(message)) {
-      print('ChatRoomsPage: 準備顯示通知');
       _showNewMessageNotification(message);
     }
   }
@@ -395,24 +349,16 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
             message.senderName.isNotEmpty ? message.senderName : '未知聊天室';
       }
 
-      print('ChatRoomsPage: 準備顯示通知 - 來自 ${message.senderName} 在 $chatRoomName');
-      print(
-          'ChatRoomsPage: 當前活躍聊天室: ${_notificationService.currentActiveChatRoom}');
-
       await _notificationService.showChatNotification(
         message: message,
         chatRoomName: chatRoomName,
       );
-      print('ChatRoomsPage: 通知已顯示');
-    } catch (e) {
-      print('ChatRoomsPage: 顯示通知失敗: $e');
-    }
+    } catch (e) {}
   }
 
   // 🔥 修正：改進的載入聊天室方法，添加異步安全檢查
   Future<void> _loadChatRooms() async {
     if (_isDisposed || !mounted) {
-      print('ChatRoomsPage: 頁面已銷毀，取消載入聊天室');
       return;
     }
 
@@ -423,7 +369,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
     }
 
     try {
-      print('ChatRoomsPage: 開始載入聊天室...');
       final rooms = await api_service.ChatApiService.getChatRooms();
 
       if (_isDisposed || !mounted) return;
@@ -457,7 +402,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
             updatedRooms.add(room);
           }
         } catch (e) {
-          print('ChatRoomsPage: 獲取房間 ${room.id} 最後消息失敗: $e');
           updatedRooms.add(room);
         }
       }
@@ -476,7 +420,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
         });
 
         _chatService.updateChatRoomNames(_chatRooms);
-        print('ChatRoomsPage: 已更新 ChatService 聊天室映射');
 
         if (_chatService.isConnected) {
           Timer(const Duration(milliseconds: 500), () {
@@ -487,9 +430,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
         }
         _lastVisitedRoomId = null;
       }
-      print('ChatRoomsPage: 載入了 ${_chatRooms.length} 個聊天室');
     } catch (e) {
-      print('Error loading chat rooms: $e');
       if (mounted && !_isDisposed) {
         setState(() {
           _isLoading = false;
@@ -498,7 +439,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
         // 🔥 忽略 401 錯誤，因為 ApiClientService 會處理登出邏輯
         if (e.toString().contains('401') ||
             e.toString().contains('Unauthorized')) {
-          print('ChatRoomsPage: 檢測到 401 錯誤，忽略 UI 報錯，等待自動登出');
           return;
         }
 
@@ -564,9 +504,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
       if (otherUserMessage.senderName.isNotEmpty) {
         return room.copyWith(name: otherUserMessage.senderName);
       }
-    } catch (e) {
-      print("Could not correct room name for ${room.id}: $e");
-    }
+    } catch (e) {}
     return room;
   }
 
@@ -575,7 +513,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
       setState(() {
         _isConnected = isConnected;
       });
-      print('ChatRoomsPage: 連接狀態變更: $_isConnected');
       if (isConnected && _chatRooms.isNotEmpty) {
         _joinAllChatRooms();
       }
@@ -639,7 +576,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.orange.withOpacity(0.1),
+      color: Colors.orange.withValues(alpha: 0.1),
       child: Row(
         children: [
           Icon(
@@ -658,7 +595,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
           const Spacer(),
           IconButton(
             onPressed: () async {
-              print('ChatRoomsPage: 手動觸發完整恢復流程');
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Row(
@@ -693,7 +629,6 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
                   );
                 }
               } catch (e) {
-                print('ChatRoomsPage: 手動恢復失敗: $e');
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -723,7 +658,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: TextField(
@@ -733,7 +668,8 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
           hintText: '搜尋聊天室或訊息',
           prefixIcon: Icon(
             Icons.search,
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
           ),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
@@ -773,7 +709,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             color: room.unreadCount > 0
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.05)
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
                 : null,
           ),
           child: Material(
@@ -868,7 +804,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
                                           : Theme.of(context)
                                               .colorScheme
                                               .onSurface
-                                              .withOpacity(0.6),
+                                              .withValues(alpha: 0.6),
                                       fontWeight: room.unreadCount > 0
                                           ? FontWeight.w600
                                           : FontWeight.normal,
@@ -893,7 +829,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
                                             : Theme.of(context)
                                                 .colorScheme
                                                 .onSurface
-                                                .withOpacity(0.8),
+                                                .withValues(alpha: 0.8),
                                         fontWeight: room.unreadCount > 0
                                             ? FontWeight.w500
                                             : FontWeight.normal,
@@ -1145,7 +1081,10 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                color: Theme.of(context)
+                    .colorScheme
+                    .outline
+                    .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1225,7 +1164,10 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1342,7 +1284,10 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1643,7 +1588,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
                                       color: Theme.of(context)
                                           .colorScheme
                                           .onSurface
-                                          .withOpacity(0.6),
+                                          .withValues(alpha: 0.6),
                                     ),
                               ),
                               if (_searchController.text.isEmpty) ...[
@@ -1657,7 +1602,7 @@ class _ChatRoomsPageState extends State<ChatRoomsPage>
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurface
-                                            .withOpacity(0.6),
+                                            .withValues(alpha: 0.6),
                                       ),
                                 ),
                               ],

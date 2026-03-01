@@ -31,10 +31,8 @@ class VoiceRecordingService {
       _recorder = FlutterSoundRecorder();
       await _recorder!.openRecorder();
       _isInitialized = true;
-      print('VoiceRecordingService: 初始化成功');
       return true;
     } catch (e) {
-      print('VoiceRecordingService: 初始化失敗: $e');
       return false;
     }
   }
@@ -47,23 +45,18 @@ class VoiceRecordingService {
       final hasPermission = await audioSession.checkMicrophonePermission();
 
       if (hasPermission) {
-        print('VoiceRecordingService: 麥克風權限已授予');
         return PermissionStatus.granted;
       }
 
       // 如果沒有權限，則請求權限
-      print('VoiceRecordingService: 請求麥克風權限...');
       final granted = await audioSession.requestMicrophonePermission();
 
       if (granted) {
-        print('VoiceRecordingService: 麥克風權限請求成功');
         return PermissionStatus.granted;
       } else {
-        print('VoiceRecordingService: 麥克風權限被拒絕');
         return PermissionStatus.denied;
       }
     } catch (e) {
-      print('VoiceRecordingService: 權限檢查或請求時出錯: $e');
       return PermissionStatus.denied;
     }
   }
@@ -71,7 +64,6 @@ class VoiceRecordingService {
   Future<void> startRecording() async {
     // 🔥 新增：開始新錄音前先清理舊狀態
     if (_isRecording) {
-      print('VoiceRecordingService: 強制停止之前的錄音');
       await cancelRecording();
     }
    
@@ -120,10 +112,7 @@ class VoiceRecordingService {
           _durationController?.add(duration);
         }
       });
-
-      print('VoiceRecordingService: 開始錄音 - $_currentRecordingPath');
     } catch (e) {
-      print('VoiceRecordingService: 開始錄音時發生內部錯誤: $e');
       _cleanup(); // 🔥 新增：發生錯誤時清理
       rethrow;
     }
@@ -142,7 +131,6 @@ class VoiceRecordingService {
 
       final fileSize = await file.length();
       if (fileSize == 0) {
-        print('VoiceRecordingService: 錄音檔案為空，取消處理');
         await file.delete();
         _cleanup(); // 🔥 新增：清理狀態
         return null;
@@ -152,8 +140,6 @@ class VoiceRecordingService {
           ? DateTime.now().difference(_recordingStartTime!)
           : Duration.zero;
       
-      print('VoiceRecordingService: 錄音完成 - 時長: ${duration.inSeconds}s, 大小: $fileSize bytes');
-      
       final result = RecordingResult(
           filePath: recordPath, duration: duration, fileSize: fileSize);
       
@@ -162,7 +148,6 @@ class VoiceRecordingService {
       
       return result;
     } catch (e) {
-      print('VoiceRecordingService: 停止錄音失敗: $e');
       _cleanup();
       return null;
     }
@@ -180,18 +165,13 @@ class VoiceRecordingService {
           await file.delete();
         }
       }
-
-      print('VoiceRecordingService: 錄音已取消');
     } catch (e) {
-      print('VoiceRecordingService: 取消錄音失敗: $e');
     } finally {
       _cleanup();
     }
   }
 
   void _cleanup() {
-    print('VoiceRecordingService: 清理錄音狀態');
-    
     _isRecording = false;
     _recordingStartTime = null;
     _currentRecordingPath = null;
@@ -200,14 +180,12 @@ class VoiceRecordingService {
     if (_recordingTimer != null) {
       _recordingTimer!.cancel();
       _recordingTimer = null;
-      print('VoiceRecordingService: 計時器已取消');
     }
     
     // 🔥 改進：更安全的 StreamController 清理
     if (_durationController != null) {
       _durationController!.close();
       _durationController = null;
-      print('VoiceRecordingService: Duration 控制器已關閉');
     }
   }
 
@@ -219,9 +197,7 @@ class VoiceRecordingService {
       }
       _isInitialized = false;
       _cleanup();
-      print('VoiceRecordingService: 已釋放所有資源');
     } catch (e) {
-      print('VoiceRecordingService: 釋放資源時出錯: $e');
     }
   }
 }

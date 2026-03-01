@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
@@ -163,13 +164,14 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  Timer? _authCheckTimer;
 
   @override
   void initState() {
     super.initState();
     _setupAnimations();
     _animationController.forward();
-    _checkAuthStatus();
+    _scheduleAuthCheck();
   }
 
   void _setupAnimations() {
@@ -195,16 +197,20 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _authCheckTimer?.cancel();
     _animationController.dispose();
     super.dispose();
   }
 
+  void _scheduleAuthCheck() {
+    _authCheckTimer?.cancel();
+    _authCheckTimer = Timer(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      _checkAuthStatus();
+    });
+  }
+
   Future<void> _checkAuthStatus() async {
-    // 等待動畫完成
-    await Future.delayed(const Duration(milliseconds: 2500));
-
-    if (!mounted) return;
-
     // 檢查初始化狀態
     if (!widget.initializationSuccess) {
       _showInitializationError();
@@ -321,7 +327,7 @@ class _SplashScreenState extends State<SplashScreen>
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
@@ -347,7 +353,7 @@ class _SplashScreenState extends State<SplashScreen>
                   '連接世界，分享想法',
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withValues(alpha: 0.8),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -355,7 +361,7 @@ class _SplashScreenState extends State<SplashScreen>
                   VersionConfig.shortVersion,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -363,14 +369,14 @@ class _SplashScreenState extends State<SplashScreen>
                 if (!widget.initializationSuccess) ...[
                   Icon(
                     Icons.error_outline,
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withValues(alpha: 0.8),
                     size: 32,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '初始化失敗',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 14,
                     ),
                   ),
@@ -380,7 +386,7 @@ class _SplashScreenState extends State<SplashScreen>
                     height: 32,
                     child: CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.white.withOpacity(0.8),
+                        Colors.white.withValues(alpha: 0.8),
                       ),
                       strokeWidth: 3,
                     ),

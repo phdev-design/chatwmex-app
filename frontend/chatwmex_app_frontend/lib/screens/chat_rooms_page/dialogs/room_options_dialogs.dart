@@ -18,7 +18,7 @@ void showRoomOptionsDialog(BuildContext context, ChatRoom room, VoidCallback onM
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -104,7 +104,8 @@ void _confirmLeaveRoomDialog(BuildContext context, ChatRoom room, VoidCallback o
           Text(
             '離開後您將：\n• 無法接收群組訊息\n• 需要重新邀請才能加入',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              color:
+                  Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
         ],

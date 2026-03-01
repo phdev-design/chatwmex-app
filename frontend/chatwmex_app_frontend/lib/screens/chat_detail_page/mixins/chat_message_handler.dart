@@ -37,11 +37,8 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
   void handleNewMessageReceived(chat_msg.Message message) {
     if (message.roomId != currentRoomId || !mounted) return;
 
-    print('收到新消息: ${message.content}');
-
     // 檢查是否為已知消息
     if (knownMessageIds.contains(message.id)) {
-      print('消息 ${message.id} 已存在，跳過重複處理');
       return;
     }
 
@@ -54,7 +51,6 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
           updatedMessages.indexWhere((m) => m.id == tempId);
 
       if (tempMessageIndex != -1) {
-        print('精準替換臨時消息 $tempId 為真實消息 ${message.id}');
         updatedMessages[tempMessageIndex] = message;
         _setMessages(updatedMessages);
         pendingTempMessages.remove(tempId);
@@ -73,7 +69,6 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
 
     if (tempMessageIndex != -1) {
       final tempMessage = updatedMessages[tempMessageIndex];
-      print('模糊替換臨時消息 ${tempMessage.id} 為真實消息 ${message.id}');
 
       updatedMessages[tempMessageIndex] = message;
       _setMessages(updatedMessages);
@@ -91,7 +86,6 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
         !m.id.startsWith('temp_'));
 
     if (duplicateIndex != -1) {
-      print('檢測到內容重複的消息，跳過');
       return;
     }
 

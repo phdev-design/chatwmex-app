@@ -8,7 +8,7 @@ class ApiConfig {
       'https://api.myapp.com'; // TODO: Replace with your actual production domain
 
   // 開發環境 URL (Fallback if .env is missing)
-  static const String _baseUrlLocalhost = 'http://localhost:8080';
+  static const String _baseUrlLocalhost = 'http://127.0.0.1:8080';
 
   // 🔥 關鍵修正：動態獲取當前平台的正確 URL
   static String get currentUrl {

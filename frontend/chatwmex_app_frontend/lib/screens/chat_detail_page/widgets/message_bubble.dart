@@ -106,14 +106,14 @@ class _MessageBubbleState extends State<MessageBubble> {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.3),
+                                      .withValues(alpha: 0.3),
                                   blurRadius: 15,
                                   spreadRadius: 1,
                                 ),
                               ]
                             : [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
+                                  color: Colors.black.withValues(alpha: 0.05),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),
@@ -173,16 +173,15 @@ class _MessageBubbleState extends State<MessageBubble> {
           const SizedBox(height: 8),
           InkWell(
             onTap: () {
-              print('Retry decryption');
               _showDecryptionOptions(context);
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.red.withOpacity(0.3),
+                  color: Colors.red.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -326,11 +325,11 @@ class _MessageBubbleState extends State<MessageBubble> {
                 style: TextStyle(
                   fontSize: 12,
                   color: widget.isMe
-                      ? Colors.white.withOpacity(0.7)
+                      ? Colors.white.withValues(alpha: 0.7)
                       : Theme.of(context)
                           .colorScheme
                           .onSurface
-                          .withOpacity(0.6),
+                          .withValues(alpha: 0.6),
                 ),
               ),
               if (widget.isMe) ...[
@@ -350,7 +349,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       return Icon(
         Icons.access_time,
         size: 14,
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withValues(alpha: 0.7),
       );
     } else if (widget.message.status == chat_msg.MessageStatus.failed) {
       return GestureDetector(
@@ -374,7 +373,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       size: 16,
       color: widget.message.readBy.isNotEmpty
           ? Colors.blue.shade100
-          : Colors.white.withOpacity(0.7),
+          : Colors.white.withValues(alpha: 0.7),
     );
   }
 

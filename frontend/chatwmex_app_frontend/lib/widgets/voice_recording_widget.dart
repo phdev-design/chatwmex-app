@@ -101,12 +101,8 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget>
 
     _keyboardWasVisible = _isKeyboardVisible();
     
-    print('VoiceRecordingWidget: 開始錄音，鍵盤狀態: ${_keyboardWasVisible ? "可見" : "隱藏"}');
-
     if (_keyboardWasVisible) {
-      print('VoiceRecordingWidget: 鍵盤已顯示，保持鍵盤狀態');
     } else {
-      print('VoiceRecordingWidget: 鍵盤未顯示，確保不彈出鍵盤');
       FocusScope.of(context).unfocus();
     }
 
@@ -191,14 +187,12 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget>
     widget.onRecordingStateChanged?.call(false);
 
     if (_keyboardWasVisible) {
-      print('VoiceRecordingWidget: 錄音結束，恢復鍵盤顯示');
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           SystemChannels.textInput.invokeMethod('TextInput.show');
         }
       });
     } else {
-      print('VoiceRecordingWidget: 錄音結束，保持鍵盤隱藏');
     }
   }
 
@@ -299,7 +293,7 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget>
               borderRadius: BorderRadius.circular(30),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 )

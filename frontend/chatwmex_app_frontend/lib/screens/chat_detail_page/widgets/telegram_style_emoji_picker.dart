@@ -121,7 +121,7 @@ class _TelegramStyleEmojiPickerState extends State<TelegramStyleEmojiPicker>
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: Container(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
               ),
             ),
           ),
@@ -140,11 +140,11 @@ class _TelegramStyleEmojiPickerState extends State<TelegramStyleEmojiPicker>
                 margin: const EdgeInsets.symmetric(horizontal: 40),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.grey[850]?.withOpacity(0.95),
+                  color: Colors.grey[850]?.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(30),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 20,
                       spreadRadius: 5,
                     ),
@@ -250,9 +250,8 @@ class _TappableEmojiState extends State<_TappableEmoji>
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: _isPressed
-                ? Colors.white.withOpacity(0.1)
-                : Colors.transparent,
+            color:
+                _isPressed ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(25),
           ),
           child: Text(

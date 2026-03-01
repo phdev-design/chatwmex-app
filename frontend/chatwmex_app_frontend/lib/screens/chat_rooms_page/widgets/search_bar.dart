@@ -18,7 +18,7 @@ class SearchBarWidget extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: TextField(
@@ -28,7 +28,7 @@ class SearchBarWidget extends StatelessWidget {
           hintText: '搜尋聊天室或訊息',
           prefixIcon: Icon(
             Icons.search,
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
           ),
           suffixIcon: controller.text.isNotEmpty
               ? IconButton(

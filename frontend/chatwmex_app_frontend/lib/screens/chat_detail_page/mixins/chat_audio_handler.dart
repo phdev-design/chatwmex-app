@@ -16,13 +16,11 @@ mixin ChatAudioHandler<T extends StatefulWidget> on State<T> {
   void initializeAudioHandler() {
     _notificationPlayer = AudioPlayer();
     _notificationPlayer.setReleaseMode(ReleaseMode.stop);
-    print("AudioHandler: Initialized.");
   }
 
   /// 釋放音頻資源
   void disposeAudioHandler() {
     _notificationPlayer.dispose();
-    print("AudioHandler: Disposed.");
   }
 
   /// 播放新消息通知音效
@@ -42,10 +40,8 @@ mixin ChatAudioHandler<T extends StatefulWidget> on State<T> {
           AssetSource('audio/mixkit-long-pop-2358.wav'),
         );
         _lastNotificationTime = now;
-        print('AudioHandler: Played notification sound.');
       }
     } catch (e) {
-      print('AudioHandler: Failed to play notification sound: $e');
     }
   }
 

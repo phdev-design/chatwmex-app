@@ -140,7 +140,6 @@ class SocketClient {
     required bool isReconnect,
   }) async {
     if (!_allowReconnect) {
-      print('SocketClient: initialize() skipped because reconnect is disabled');
       return;
     }
 
@@ -155,8 +154,6 @@ class SocketClient {
         _socket!.disconnect();
         _socket = null;
       }
-
-      print('Initializing socket connection to: ${ApiConfig.baseUrl}');
 
       _socket = IO.io(
         ApiConfig.baseUrl,
@@ -181,7 +178,6 @@ class SocketClient {
 
       _socket!.connect();
     } catch (e) {
-      print('Socket initialization error: $e');
       _setState(_SocketConnectionState.disconnected);
       _onAuthError(e);
 
@@ -262,7 +258,6 @@ class SocketClient {
     if (_socket == null) return;
 
     _socket!.onConnect((_) {
-      print('Socket connected successfully');
       _cancelReconnectTimer();
       _cancelConnectTimeout();
       _setState(_SocketConnectionState.connected);
@@ -272,7 +267,6 @@ class SocketClient {
     });
 
     _socket!.onDisconnect((reason) {
-      print('Socket disconnected: $reason');
       _cancelConnectTimeout();
       _setState(_SocketConnectionState.disconnected);
       _stopHeartbeat();
@@ -284,7 +278,6 @@ class SocketClient {
     });
 
     _socket!.onConnectError((error) {
-      print('Socket connection error: $error');
       _cancelConnectTimeout();
       _setState(_SocketConnectionState.disconnected);
       _onConnectionChanged(false);
@@ -296,18 +289,15 @@ class SocketClient {
     });
 
     _socket!.on('auth_error', (data) {
-      print('Socket auth error: $data');
       _onAuthError(data);
     });
 
     _socket!.onReconnectAttempt((attemptCount) {
-      print('Attempting to reconnect... Attempt: $attemptCount');
       _setState(_SocketConnectionState.reconnecting);
       _onConnectionChanged(false);
     });
 
     _socket!.onReconnect((attemptCount) {
-      print('Reconnected successfully after $attemptCount attempts');
       _cancelReconnectTimer();
       _cancelConnectTimeout();
       _setState(_SocketConnectionState.connected);
@@ -317,7 +307,6 @@ class SocketClient {
     });
 
     _socket!.onReconnectError((error) {
-      print('Reconnection error: $error');
       _cancelConnectTimeout();
       _setState(_SocketConnectionState.disconnected);
       _onConnectionChanged(false);
@@ -329,23 +318,17 @@ class SocketClient {
     });
 
     _socket!.onReconnectFailed((_) {
-      print('All reconnection attempts failed');
       _cancelConnectTimeout();
       _setState(_SocketConnectionState.disconnected);
       _onConnectionChanged(false);
       _scheduleReconnect();
     });
 
-    _socket!.on('pong', (_) {
-      // print('Received pong from server');
-    });
+    _socket!.on('pong', (_) {});
 
-    _socket!.on('error', (error) {
-      print('Socket error: $error');
-    });
+    _socket!.on('error', (error) {});
 
     _socket!.on('connect_error', (error) {
-      print('Connection error: $error');
       _cancelConnectTimeout();
       _setState(_SocketConnectionState.disconnected);
       _onConnectionChanged(false);
@@ -485,31 +468,24 @@ class ChatService {
     for (var room in rooms) {
       _chatRoomNames[room.id] = room.name;
     }
-    print('ChatService: 已更新聊天室名稱快取，共 ${_chatRoomNames.length} 個聊天室');
   }
 
   // === 監聽器註冊方法 ===
 
   void registerMessageListener(String id, Function(chat_msg.Message) callback) {
     _messageReceivedCallbacks[id] = callback;
-    print('ChatService: 註冊消息監聽器 $id，當前總數: ${_messageReceivedCallbacks.length}');
   }
 
   void unregisterMessageListener(String id) {
     _messageReceivedCallbacks.remove(id);
-    print('ChatService: 移除消息監聽器 $id，當前總數: ${_messageReceivedCallbacks.length}');
   }
 
   void registerConnectionListener(String id, Function(bool) callback) {
     _connectionChangedCallbacks[id] = callback;
-    print(
-        'ChatService: 註冊連接監聽器 $id，當前總數: ${_connectionChangedCallbacks.length}');
   }
 
   void unregisterConnectionListener(String id) {
     _connectionChangedCallbacks.remove(id);
-    print(
-        'ChatService: 移除連接監聽器 $id，當前總數: ${_connectionChangedCallbacks.length}');
   }
 
   void registerRoomUpdateListener(String id, Function(ChatRoom) callback) {
@@ -534,21 +510,16 @@ class ChatService {
       Function(String messageId, Map<String, List<String>> reactions)
           callback) {
     _reactionUpdateCallbacks[id] = callback;
-    print(
-        'ChatService: 註冊 Reaction 監聽器 $id，當前總數: ${_reactionUpdateCallbacks.length}');
   }
 
   void unregisterReactionUpdateListener(String id) {
     _reactionUpdateCallbacks.remove(id);
-    print(
-        'ChatService: 移除 Reaction 監聽器 $id，當前總數: ${_reactionUpdateCallbacks.length}');
   }
 
   // 🔥 新增：註冊消息已讀監聽器
   void registerMessageReadListener(
       String id, Function(String roomId, String userId) callback) {
     _messageReadCallbacks[id] = callback;
-    print('ChatService: 註冊消息已讀監聽器 $id');
   }
 
   void unregisterMessageReadListener(String id) {
@@ -559,7 +530,6 @@ class ChatService {
   void registerTypingListener(String id,
       Function(String roomId, String username, bool isTyping) callback) {
     _typingCallbacks[id] = callback;
-    print('ChatService: 註冊 Typing 監聽器 $id');
   }
 
   void unregisterTypingListener(String id) {
@@ -571,7 +541,6 @@ class ChatService {
   Future<void> initialize() async {
     if (_socketClient.isConnecting || _socketClient.isConnected) return;
     if (!_socketClient.allowReconnect) {
-      print('ChatService: initialize() skipped because reconnect is disabled');
       return;
     }
 
@@ -586,7 +555,6 @@ class ChatService {
 
       final isValidToken = await TokenStorage.isTokenValid();
       if (!isValidToken) {
-        print('ChatService: Token 無效或過期，停止初始化');
         throw Exception('Token expired or invalid');
       }
 
@@ -600,7 +568,6 @@ class ChatService {
         registerHandlers: _setupMessageEventListeners,
       );
     } catch (e) {
-      print('Socket initialization error: $e');
       _handleAuthenticationError(e);
       throw e;
     }
@@ -641,9 +608,7 @@ class ChatService {
       if (_connectionManager.isOnline) {
         _uploadAndSendVoiceMessage(tempMessage);
       }
-    } catch (e) {
-      print('ChatService: 發送語音消息失敗: $e');
-    }
+    } catch (e) {}
   }
 
   // 🔥 新增：同步鎖
@@ -651,16 +616,11 @@ class ChatService {
 
   Future<void> _uploadAndSendVoiceMessage(chat_msg.Message message) async {
     try {
-      print('ChatService: Uploading voice message ${message.id}...');
-
       // 1. Upload using ApiClientService (Generic upload)
       final voiceUrl =
           await ApiClientService().uploadVoice(File(message.fileUrl!));
 
       if (voiceUrl == null) throw Exception('Voice upload failed');
-
-      print(
-          'ChatService: Voice uploaded, emitting socket event (Temp ID: ${message.id})');
 
       // 2. Broadcast via Socket
       if (_socketClient.isConnected) {
@@ -709,13 +669,10 @@ class ChatService {
                 message.copyWith(status: chat_msg.MessageStatus.failed));
           }
         });
-
-        print('ChatService: Voice message emitted to socket');
       } else {
         throw Exception('Socket not connected during voice send');
       }
     } catch (e) {
-      print('ChatService: Voice upload/send failed: $e');
       // 🔥 任務 2：更新狀態為 failed 並通知 UI
       await _dbHelper.updateMessageStatus(
           message.id, chat_msg.MessageStatus.failed);
@@ -726,15 +683,10 @@ class ChatService {
 
   Future<void> _uploadAndSendImageMessage(chat_msg.Message message) async {
     try {
-      print('ChatService: Uploading image message ${message.id}...');
-
       // 1. Upload Image
       final imageUrl =
           await api_service.ChatApiService.uploadImage(File(message.fileUrl!));
       if (imageUrl == null) throw Exception('Image upload failed');
-
-      print(
-          'ChatService: Image uploaded, emitting socket event (Temp ID: ${message.id})');
 
       // 2. Broadcast via Socket
       if (_socketClient.isConnected) {
@@ -782,13 +734,10 @@ class ChatService {
                 message.copyWith(status: chat_msg.MessageStatus.failed));
           }
         });
-
-        print('ChatService: Image message emitted to socket');
       } else {
         throw Exception('Socket not connected during image send');
       }
     } catch (e) {
-      print('ChatService: Image upload failed: $e');
       // 🔥 任務 2：更新狀態為 failed 並通知 UI
       await _dbHelper.updateMessageStatus(
           message.id, chat_msg.MessageStatus.failed);
@@ -799,15 +748,10 @@ class ChatService {
 
   Future<void> _uploadAndSendVideoMessage(chat_msg.Message message) async {
     try {
-      print('ChatService: Uploading video message ${message.id}...');
-
       // 1. Upload Video
       final videoUrl =
           await api_service.ChatApiService.uploadVideo(File(message.fileUrl!));
       if (videoUrl == null) throw Exception('Video upload failed');
-
-      print(
-          'ChatService: Video uploaded, emitting socket event (Temp ID: ${message.id})');
 
       // 2. Broadcast via Socket
       if (_socketClient.isConnected) {
@@ -855,13 +799,10 @@ class ChatService {
                 message.copyWith(status: chat_msg.MessageStatus.failed));
           }
         });
-
-        print('ChatService: Video message emitted to socket');
       } else {
         throw Exception('Socket not connected during video send');
       }
     } catch (e) {
-      print('ChatService: Video upload failed: $e');
       // 🔥 任務 2：更新狀態為 failed 並通知 UI
       await _dbHelper.updateMessageStatus(
           message.id, chat_msg.MessageStatus.failed);
@@ -873,7 +814,6 @@ class ChatService {
   // 🔥 新增：發送已讀標記
   void markAsRead(String roomId) {
     if (_socketClient.socket != null && _socketClient.isConnected) {
-      print('ChatService: 發送 mark_read 事件 (room: $roomId)');
       _socketClient.socket!.emit('mark_read', {'room': roomId});
     }
   }
@@ -898,8 +838,6 @@ class ChatService {
     // 🔥 图片消息监听
     socket.on('image_message', (data) {
       try {
-        print('Received image message data: $data');
-
         Map<String, dynamic> messageData;
         if (data is String) {
           messageData = jsonDecode(data);
@@ -921,15 +859,12 @@ class ChatService {
         );
 
         _notifyMessageReceived(message);
-      } catch (e) {
-        print('Error parsing image message: $e');
-      }
+      } catch (e) {}
     });
 
     // 🔥 消息已读监听
     socket.on('message_read', (data) {
       try {
-        print('Received message_read event: $data');
         String? roomId;
         String? userId;
 
@@ -943,9 +878,7 @@ class ChatService {
           // For now, we notify UI.
           _notifyMessageRead(roomId, userId);
         }
-      } catch (e) {
-        print('Error handling message_read: $e');
-      }
+      } catch (e) {}
     });
 
     // 🔥 Typing 事件监听
@@ -965,9 +898,7 @@ class ChatService {
             _notifyTyping(roomId, username, true);
           }
         }
-      } catch (e) {
-        print('Error handling typing_start: $e');
-      }
+      } catch (e) {}
     });
 
     socket.on('typing_end', (data) async {
@@ -986,15 +917,11 @@ class ChatService {
             _notifyTyping(roomId, username, false);
           }
         }
-      } catch (e) {
-        print('Error handling typing_end: $e');
-      }
+      } catch (e) {}
     });
 
     socket.on('voice_message', (data) {
       try {
-        print('Received voice message data: $data');
-
         Map<String, dynamic> messageData;
         if (data is String) {
           messageData = jsonDecode(data);
@@ -1018,15 +945,11 @@ class ChatService {
         );
 
         _notifyMessageReceived(message);
-      } catch (e) {
-        print('Error parsing voice message: $e');
-      }
+      } catch (e) {}
     });
 
     socket.on('chat_message', (data) async {
       try {
-        print('Received message data: $data');
-
         Map<String, dynamic> messageData;
         if (data is String) {
           messageData = jsonDecode(data);
@@ -1049,15 +972,11 @@ class ChatService {
         }
 
         _notifyMessageReceived(message);
-      } catch (e) {
-        print('Error parsing message: $e');
-      }
+      } catch (e) {}
     });
 
     socket.on('video_message', (data) {
       try {
-        print('Received video message data: $data');
-
         Map<String, dynamic> messageData;
         if (data is String) {
           messageData = jsonDecode(data);
@@ -1079,13 +998,10 @@ class ChatService {
         );
 
         _notifyMessageReceived(message);
-      } catch (e) {
-        print('Error parsing video message: $e');
-      }
+      } catch (e) {}
     });
 
     socket.on('reaction_update', (data) async {
-      print('ChatService: 收到 reaction 更新: $data');
       try {
         Map<String, dynamic> reactionData;
         if (data is String) {
@@ -1106,17 +1022,12 @@ class ChatService {
             }
           });
 
-          print(
-              'ChatService: 解析 reaction - messageId: $messageId, reactions: $reactions');
-
           // 🔥 Sync to DB
           await _dbHelper.updateMessageReaction(messageId, reactions);
 
           _notifyReactionUpdate(messageId, reactions);
         }
-      } catch (e) {
-        print('ChatService: 處理 reaction 更新時出錯: $e');
-      }
+      } catch (e) {}
     });
 
     socket.on('room_updated', (data) {
@@ -1130,9 +1041,7 @@ class ChatService {
 
         final room = ChatRoom.fromJson(roomData);
         _notifyRoomUpdated(room);
-      } catch (e) {
-        print('Error parsing room update: $e');
-      }
+      } catch (e) {}
     });
 
     socket.on('user_status', (data) {
@@ -1147,24 +1056,19 @@ class ChatService {
         final userId = statusData['user_id'] as String;
         final isOnline = statusData['is_online'] as bool;
         _notifyUserStatusChanged(userId, isOnline);
-      } catch (e) {
-        print('Error parsing user status: $e');
-      }
+      } catch (e) {}
     });
   }
 
   // === 通知方法 ===
 
   void _notifyMessageReceived(chat_msg.Message message) {
-    print('ChatService: 準備通知 ${_messageReceivedCallbacks.length} 個消息監聽器');
     _messageCache.addMessageToCache(message.roomId, message);
 
     _messageReceivedCallbacks.forEach((id, callback) {
       try {
         callback(message);
-      } catch (e) {
-        print('ChatService: 監聽器 $id 調用失敗: $e');
-      }
+      } catch (e) {}
     });
 
     _handleNotificationForMessage(message);
@@ -1172,13 +1076,10 @@ class ChatService {
 
   // 🔥 新增：通知消息已读
   void _notifyMessageRead(String roomId, String userId) {
-    print('ChatService: 通知 ${_messageReadCallbacks.length} 個消息已讀監聽器');
     _messageReadCallbacks.forEach((id, callback) {
       try {
         callback(roomId, userId);
-      } catch (e) {
-        print('ChatService: 消息已讀監聽器 $id 調用失敗: $e');
-      }
+      } catch (e) {}
     });
   }
 
@@ -1187,23 +1088,17 @@ class ChatService {
     _typingCallbacks.forEach((id, callback) {
       try {
         callback(roomId, username, isTyping);
-      } catch (e) {
-        print('ChatService: Typing 監聽器 $id 調用失敗: $e');
-      }
+      } catch (e) {}
     });
   }
 
   // 🔥 新增：通知 Reaction 更新
   void _notifyReactionUpdate(
       String messageId, Map<String, List<String>> reactions) {
-    print('ChatService: 通知 ${_reactionUpdateCallbacks.length} 個 Reaction 監聽器');
-
     _reactionUpdateCallbacks.forEach((id, callback) {
       try {
         callback(messageId, reactions);
-      } catch (e) {
-        print('ChatService: Reaction 監聽器 $id 調用失敗: $e');
-      }
+      } catch (e) {}
     });
   }
 
@@ -1226,18 +1121,14 @@ class ChatService {
         message: message,
         chatRoomName: chatRoomName,
       );
-    } catch (e) {
-      print('ChatService: 處理通知時發生錯誤: $e');
-    }
+    } catch (e) {}
   }
 
   void _notifyConnectionChanged(bool isConnected) {
     _connectionChangedCallbacks.forEach((id, callback) {
       try {
         callback(isConnected);
-      } catch (e) {
-        print('Error in connection callback $id: $e');
-      }
+      } catch (e) {}
     });
 
     // 🔥 Online: Sync pending messages
@@ -1250,7 +1141,6 @@ class ChatService {
   Future<void> syncPendingMessages() async {
     // 🔥 任務 6：同步鎖機制
     if (_isSyncing) {
-      print('ChatService: 同步正在進行中，跳過此次請求');
       return;
     }
     _isSyncing = true;
@@ -1260,8 +1150,6 @@ class ChatService {
       while (true) {
         final pendingMessages = await _dbHelper.getPendingMessages();
         if (pendingMessages.isEmpty) break;
-
-        print('ChatService: 發現 ${pendingMessages.length} 條待發送消息，開始同步...');
 
         for (final msg in pendingMessages) {
           if (msg.status != chat_msg.MessageStatus.sending) {
@@ -1279,7 +1167,6 @@ class ChatService {
         }
       }
     } catch (e) {
-      print('ChatService: 同步待發送消息失敗: $e');
     } finally {
       _isSyncing = false; // 釋放鎖
     }
@@ -1309,8 +1196,6 @@ class ChatService {
           status: chat_msg.MessageStatus.sent,
         );
 
-        print('ChatService: 消息同步成功 (Temp: ${message.id} -> Server: $serverId)');
-
         // 更新本地數據庫：刪除臨時消息，插入真實消息
         await _dbHelper.deleteMessage(message.id);
         await _dbHelper.insertMessages([sentMessage]);
@@ -1325,9 +1210,7 @@ class ChatService {
     _roomUpdatedCallbacks.forEach((id, callback) {
       try {
         callback(room);
-      } catch (e) {
-        print('Error in room update callback $id: $e');
-      }
+      } catch (e) {}
     });
   }
 
@@ -1335,9 +1218,7 @@ class ChatService {
     _userStatusChangedCallbacks.forEach((id, callback) {
       try {
         callback(userId, isOnline);
-      } catch (e) {
-        print('Error in user status callback $id: $e');
-      }
+      } catch (e) {}
     });
   }
 
@@ -1361,9 +1242,7 @@ class ChatService {
   // === 公開方法 ===
 
   void joinRoom(String roomId) {
-    if (_socketClient.emit('join_room', roomId)) {
-      print('ChatService: 加入房間成功: $roomId');
-    }
+    _socketClient.emit('join_room', roomId);
   }
 
   void leaveRoom(String roomId) {
@@ -1436,9 +1315,7 @@ class ChatService {
       if (_connectionManager.isOnline) {
         _uploadAndSendImageMessage(tempMessage);
       }
-    } catch (e) {
-      print('ChatService: 發送圖片消息失敗: $e');
-    }
+    } catch (e) {}
   }
 
   Future<void> sendVideoMessage(String roomId, String filePath) async {
@@ -1468,15 +1345,12 @@ class ChatService {
       if (_connectionManager.isOnline) {
         _uploadAndSendVideoMessage(tempMessage);
       }
-    } catch (e) {
-      print('ChatService: 發送視頻消息失敗: $e');
-    }
+    } catch (e) {}
   }
 
   // 🔥 發送 Reaction
   void sendReaction(String messageId, String emoji) {
     if (!_socketClient.isConnected) {
-      print('ChatService: Socket 未連接，無法發送 reaction');
       return;
     }
 
@@ -1486,10 +1360,7 @@ class ChatService {
         'emoji': emoji,
         'timestamp': DateTime.now().toIso8601String(),
       });
-      print('ChatService: 已發送 reaction: $emoji 給消息 $messageId');
-    } catch (e) {
-      print('ChatService: 發送 reaction 時出錯: $e');
-    }
+    } catch (e) {}
   }
 
   Future<bool> checkNetworkConnection() async {
@@ -1562,19 +1433,7 @@ class ChatService {
     _reactionUpdateCallbacks.clear();
   }
 
-  void printListenerStats() {
-    print('ChatService 監聽器統計:');
-    print('- 消息監聽器: ${_messageReceivedCallbacks.keys.toList()}');
-    print('- 連接監聽器: ${_connectionChangedCallbacks.keys.toList()}');
-    print('- Reaction 監聽器: ${_reactionUpdateCallbacks.keys.toList()}');
-  }
+  void printListenerStats() {}
 
-  void debugNotificationFlow() {
-    print('=== ChatService 通知流程調試 ===');
-    print('消息監聽器數量: ${_messageReceivedCallbacks.length}');
-    print('Reaction 監聽器數量: ${_reactionUpdateCallbacks.length}');
-    print('聊天室名稱映射: $_chatRoomNames');
-    print('Socket 連接狀態: ${_socketClient.isConnected}');
-    print('================================');
-  }
+  void debugNotificationFlow() {}
 }

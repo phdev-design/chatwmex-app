@@ -18,7 +18,7 @@ class ConnectionStatusBar extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.orange.withOpacity(0.1),
+      color: Colors.orange.withValues(alpha: 0.1),
       child: Row(
         children: [
           Icon(Icons.wifi_off, size: 16, color: Colors.orange[700]),
