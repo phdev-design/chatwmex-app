@@ -84,25 +84,6 @@ func main() {
 	// Set a default timeout for usecase operations
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
-	messageUsecase := usecase.NewMessageUsecase(messageRepo, roomRepo, onlineRepo, timeout)
-	roomUsecase := usecase.NewRoomUsecase(roomRepo, messageRepo, timeout)
-	deviceUsecase := usecase.NewDeviceUsecase(deviceRepo, timeout)
-
-	// 5. Initialize HTTP Server
-	if cfg.AppEnv == "release" {
-		gin.SetMode(gin.ReleaseMode)
-	}
-	r := gin.Default()
-
-	// 6. Initialize Handlers & Routes
-	// Setup Auth Middleware
-	// Ensure JWT Secret is set
-	if cfg.JWTSecret == "" {
-		log.Println("Warning: JWT_SECRET is not set, using a default (unsafe) secret for dev only")
-		cfg.JWTSecret = "default-dev-secret-do-not-use-in-prod"
-	}
-	authMiddleware := middleware.AuthMiddleware(cfg.JWTSecret)
-
 	// Initialize Notification Service
 	// If OneSignal config is missing, use a mock or nil.
 	// We require it for "Push Notification" feature.
@@ -113,6 +94,40 @@ func main() {
 		log.Println("Warning: OneSignal config missing, push notifications will be disabled")
 		// Ideally use a no-op mock
 	}
+
+	var pushService domain.PushNotificationService
+	if notificationService != nil {
+		if ps, ok := notificationService.(domain.PushNotificationService); ok {
+			pushService = ps
+		}
+	}
+	messageUsecase := usecase.NewMessageUsecase(
+		messageRepo,
+		roomRepo,
+		onlineRepo,
+		userRepo,
+		deviceRepo,
+		pushService,
+		timeout,
+	)
+	roomUsecase := usecase.NewRoomUsecase(roomRepo, messageRepo, timeout)
+	deviceUsecase := usecase.NewDeviceUsecase(deviceRepo, timeout)
+
+	// 5. Initialize HTTP Server
+	if cfg.AppEnv == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	r := gin.Default()
+	r.Static("/uploads", "./uploads")
+
+	// 6. Initialize Handlers & Routes
+	// Setup Auth Middleware
+	// Ensure JWT Secret is set
+	if cfg.JWTSecret == "" {
+		log.Println("Warning: JWT_SECRET is not set, using a default (unsafe) secret for dev only")
+		cfg.JWTSecret = "default-dev-secret-do-not-use-in-prod"
+	}
+	authMiddleware := middleware.AuthMiddleware(cfg.JWTSecret)
 
 	// Initialize WebSocket Hub
 	rabbitIn := make(chan *domain.Message)
@@ -160,6 +175,7 @@ func main() {
 	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret)
 	delivery.NewMessageHandler(r, messageUsecase, hub, authMiddleware)
 	delivery.NewRoomHandler(r, roomUsecase, authMiddleware)
+	delivery.NewMediaHandler(r, authMiddleware)
 	delivery.NewOnlineHandler(r, onlineRepo, authMiddleware)
 	delivery.NewFriendHandler(r, friendUsecase, cfg.JWTSecret)
 	delivery.NewDeviceHandler(r, deviceUsecase, authMiddleware)

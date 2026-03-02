@@ -8,18 +8,14 @@ import 'package:app/features/friend/ui/add_friend_page.dart';
 import 'package:app/features/friend/ui/friend_requests_page.dart';
 import 'package:app/features/friend/ui/new_chat_page.dart';
 import 'package:app/features/profile/ui/profile_page.dart';
-import 'package:app/core/notification/notification_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/theme/theme.dart';
+import 'package:app/core/notification/notification_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
-    ),
-  );
+
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -31,21 +27,12 @@ class MyApp extends ConsumerStatefulWidget {
 
 class _MyAppState extends ConsumerState<MyApp> {
   @override
-  void initState() {
-    super.initState();
-    // Initialize OneSignal
-    ref.read(notificationServiceProvider).init();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final router = GoRouter(
+      navigatorKey: NotificationService.navigatorKey,
       initialLocation: '/login',
       routes: [
-        GoRoute(
-          path: '/login',
-          builder: (context, state) => const LoginPage(),
-        ),
+        GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
         GoRoute(
           path: '/chat-list',
           builder: (context, state) => const RoomListPage(),
@@ -70,7 +57,11 @@ class _MyAppState extends ConsumerState<MyApp> {
           path: '/chat',
           builder: (context, state) {
             final extra = state.extra as Map<String, dynamic>?;
-            if (extra == null) return const Scaffold(body: Center(child: Text('Error: No params')));
+            if (extra == null) {
+              return const Scaffold(
+                body: Center(child: Text('Error: No params')),
+              );
+            }
             return ChatDetailPage(
               roomId: extra['roomId'],
               title: extra['title'],
@@ -85,12 +76,16 @@ class _MyAppState extends ConsumerState<MyApp> {
         // Simple auth check
         final storage = ref.read(storageServiceProvider);
         final token = await storage.read('jwt_token');
-        
+
         final isLoggingIn = state.uri.toString() == '/login';
-        
-        if (token == null && !isLoggingIn) return '/login';
-        if (token != null && isLoggingIn) return '/chat-list';
-        
+
+        if (token == null && !isLoggingIn) {
+          return '/login';
+        }
+        if (token != null && isLoggingIn) {
+          return '/chat-list';
+        }
+
         return null;
       },
     );

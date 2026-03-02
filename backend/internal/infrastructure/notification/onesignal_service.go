@@ -3,6 +3,7 @@ package notification
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -87,4 +88,40 @@ func (s *OneSignalService) SendNotification(userID, event string, data interface
 			log.Printf("OneSignal Error: %s", resp.Status)
 		}
 	}()
+}
+
+func (s *OneSignalService) SendNotificationToDevices(playerIDs []string, title string, content string, data map[string]interface{}) error {
+	if len(playerIDs) == 0 {
+		return nil
+	}
+
+	payload := map[string]interface{}{
+		"app_id":            s.AppID,
+		"include_player_ids": playerIDs,
+		"headings":          map[string]string{"en": title},
+		"contents":          map[string]string{"en": content},
+		"data":              data,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", "https://onesignal.com/api/v1/notifications", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Basic "+s.APIKey)
+
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("onesignal error: %s", resp.Status)
+	}
+	return nil
 }

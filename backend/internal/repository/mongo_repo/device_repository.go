@@ -69,3 +69,24 @@ func (r *DeviceRepository) GetByID(ctx context.Context, deviceID string) (*domai
 	}
 	return &d, nil
 }
+
+func (r *DeviceRepository) GetByUserID(ctx context.Context, userID string) ([]*domain.Device, error) {
+	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var devices []*domain.Device
+	for cursor.Next(ctx) {
+		var d domain.Device
+		if err := cursor.Decode(&d); err != nil {
+			return nil, err
+		}
+		devices = append(devices, &d)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return devices, nil
+}

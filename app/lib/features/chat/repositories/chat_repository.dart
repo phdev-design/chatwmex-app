@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/storage/local_db_service.dart';
 import 'package:app/features/chat/models/room.dart';
@@ -49,6 +50,22 @@ class ChatRepository {
     }
   }
 
+  Future<String> uploadImage(File imageFile) async {
+    final fileName = imageFile.path.split('/').last;
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(imageFile.path, filename: fileName),
+    });
+    try {
+      final response = await _networkService.client.post(
+        '/media/upload',
+        data: formData,
+      );
+      return response.data['data']['url'] ?? response.data['url'];
+    } catch (e) {
+      throw e;
+    }
+  }
+
   Future<List<Message>> getMessages(
     String roomId, {
     int limit = 50,
@@ -59,6 +76,10 @@ class ChatRepository {
       limit: limit,
       offset: offset,
     );
+
+    if (cached.length >= limit) {
+      return cached;
+    }
 
     if (offset == 0) {
       Future(() async {
@@ -78,10 +99,6 @@ class ChatRepository {
       });
     }
 
-    if (cached.isNotEmpty) {
-      return cached;
-    }
-
     try {
       final response = await _networkService.client.get(
         '/messages/history',
@@ -94,8 +111,14 @@ class ChatRepository {
       final List<dynamic> list = response.data['data'] ?? [];
       final latest = list.map((e) => Message.fromJson(e)).toList();
       await _localDb.insertMessages(latest);
-      return latest;
+      if (latest.isNotEmpty) {
+        return latest;
+      }
+      return cached;
     } catch (e) {
+      if (cached.isNotEmpty) {
+        return cached;
+      }
       throw e;
     }
   }

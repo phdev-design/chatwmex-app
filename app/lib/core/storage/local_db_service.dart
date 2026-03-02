@@ -21,7 +21,7 @@ class LocalDbService {
     final dbPath = join(directory.path, 'chat_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute(
           'CREATE TABLE messages('
@@ -29,12 +29,20 @@ class LocalDbService {
           'room_id TEXT, '
           'sender_id TEXT, '
           'receiver_id TEXT, '
+          'reply_to_message_id TEXT, '
           'content TEXT, '
           'type TEXT, '
           'created_at INTEGER, '
           'read_by TEXT'
           ')',
         );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            'ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT',
+          );
+        }
       },
     );
     return _db!;

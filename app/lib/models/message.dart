@@ -12,6 +12,8 @@ class Message extends Equatable {
   final String senderId;
   final String? receiverId;
   final String? roomId;
+  final String? replyToMessageId;
+  final Message? replyToMessage;
   final MessageType type;
   final DateTime createdAt;
   final bool isRead;
@@ -26,6 +28,8 @@ class Message extends Equatable {
     required this.senderId,
     this.receiverId,
     this.roomId,
+    this.replyToMessageId,
+    this.replyToMessage,
     this.type = MessageType.text,
     required this.createdAt,
     this.isRead = false,
@@ -42,6 +46,7 @@ class Message extends Equatable {
       senderId: json['sender_id'] ?? '',
       receiverId: json['receiver_id'],
       roomId: json['room_id'],
+      replyToMessageId: json['reply_to_message_id'],
       type: _parseType(json['type']),
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       isRead: json['is_read'] ?? false,
@@ -67,6 +72,7 @@ class Message extends Equatable {
       'sender_id': senderId,
       'receiver_id': receiverId,
       'room_id': roomId,
+      'reply_to_message_id': replyToMessageId,
       'type': type.name,
       'created_at': createdAt.toIso8601String(),
       'is_read': isRead,
@@ -83,6 +89,7 @@ class Message extends Equatable {
       'sender_id': senderId,
       'receiver_id': receiverId,
       'room_id': roomId,
+      'reply_to_message_id': replyToMessageId,
       'type': type.name,
       'created_at': createdAt.millisecondsSinceEpoch,
       'is_read': isRead ? 1 : 0,
@@ -95,8 +102,8 @@ class Message extends Equatable {
     final readByRaw = map['read_by'];
     final readByList = readByRaw is String && readByRaw.isNotEmpty
         ? (jsonDecode(readByRaw) as List<dynamic>)
-            .map((e) => e.toString())
-            .toList()
+              .map((e) => e.toString())
+              .toList()
         : const <String>[];
 
     return Message(
@@ -106,6 +113,7 @@ class Message extends Equatable {
       senderId: map['sender_id'] ?? '',
       receiverId: map['receiver_id'],
       roomId: map['room_id'],
+      replyToMessageId: map['reply_to_message_id'],
       type: _parseType(map['type']),
       createdAt: map['created_at'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int)
@@ -144,6 +152,7 @@ class Message extends Equatable {
     senderId,
     receiverId,
     roomId,
+    replyToMessageId,
     type,
     createdAt,
     isRead,
@@ -151,4 +160,38 @@ class Message extends Equatable {
     readAt,
     readBy,
   ];
+
+  Message copyWith({
+    String? id,
+    String? clientMsgId,
+    String? content,
+    String? senderId,
+    String? receiverId,
+    String? roomId,
+    String? replyToMessageId,
+    Message? replyToMessage,
+    MessageType? type,
+    DateTime? createdAt,
+    bool? isRead,
+    MessageStatus? status,
+    DateTime? readAt,
+    List<String>? readBy,
+  }) {
+    return Message(
+      id: id ?? this.id,
+      clientMsgId: clientMsgId ?? this.clientMsgId,
+      content: content ?? this.content,
+      senderId: senderId ?? this.senderId,
+      receiverId: receiverId ?? this.receiverId,
+      roomId: roomId ?? this.roomId,
+      replyToMessageId: replyToMessageId ?? this.replyToMessageId,
+      replyToMessage: replyToMessage ?? this.replyToMessage,
+      type: type ?? this.type,
+      createdAt: createdAt ?? this.createdAt,
+      isRead: isRead ?? this.isRead,
+      status: status ?? this.status,
+      readAt: readAt ?? this.readAt,
+      readBy: readBy ?? this.readBy,
+    );
+  }
 }

@@ -9,6 +9,7 @@ import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/core/storage/local_db_service.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:equatable/equatable.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 // State for the Chat Room
@@ -19,6 +20,10 @@ class ChatRoomState {
   final String? error;
   final List<String> typingUsers;
   final bool isConnected;
+  final bool isLoadingMore;
+  final bool hasMore;
+  final int offset;
+  final Message? replyingToMessage;
 
   const ChatRoomState({
     this.messages = const [],
@@ -27,6 +32,10 @@ class ChatRoomState {
     this.error,
     this.typingUsers = const [],
     this.isConnected = false,
+    this.isLoadingMore = false,
+    this.hasMore = true,
+    this.offset = 50,
+    this.replyingToMessage,
   });
 
   ChatRoomState copyWith({
@@ -36,6 +45,10 @@ class ChatRoomState {
     String? error,
     List<String>? typingUsers,
     bool? isConnected,
+    bool? isLoadingMore,
+    bool? hasMore,
+    int? offset,
+    Message? replyingToMessage,
   }) {
     return ChatRoomState(
       messages: messages ?? this.messages,
@@ -44,6 +57,10 @@ class ChatRoomState {
       error: error ?? this.error,
       typingUsers: typingUsers ?? this.typingUsers,
       isConnected: isConnected ?? this.isConnected,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      hasMore: hasMore ?? this.hasMore,
+      offset: offset ?? this.offset,
+      replyingToMessage: replyingToMessage ?? this.replyingToMessage,
     );
   }
 }
@@ -212,19 +229,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   }
 
   void _addMessage(Message msg) {
+    final hydrated = _attachReplyMessage(msg);
     final existingIndex = state.messages.indexWhere((m) {
-      if (msg.clientMsgId != null && msg.clientMsgId!.isNotEmpty) {
-        return m.clientMsgId == msg.clientMsgId || m.id == msg.clientMsgId;
+      if (hydrated.clientMsgId != null && hydrated.clientMsgId!.isNotEmpty) {
+        return m.clientMsgId == hydrated.clientMsgId ||
+            m.id == hydrated.clientMsgId;
       }
-      return m.id == msg.id;
+      return m.id == hydrated.id;
     });
     if (existingIndex != -1) {
       final updated = [...state.messages];
-      updated[existingIndex] = msg;
+      updated[existingIndex] = hydrated;
       state = state.copyWith(messages: updated);
       return;
     }
-    state = state.copyWith(messages: [...state.messages, msg]);
+    state = state.copyWith(messages: [hydrated, ...state.messages]);
   }
 
   void _replaceMessageId(String clientMsgId, String messageId) {
@@ -240,6 +259,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       senderId: existing.senderId,
       receiverId: existing.receiverId,
       roomId: existing.roomId,
+      replyToMessageId: existing.replyToMessageId,
+      replyToMessage: existing.replyToMessage,
       type: existing.type,
       createdAt: existing.createdAt,
       isRead: existing.isRead,
@@ -265,6 +286,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       senderId: existing.senderId,
       receiverId: existing.receiverId,
       roomId: existing.roomId,
+      replyToMessageId: existing.replyToMessageId,
+      replyToMessage: existing.replyToMessage,
       type: existing.type,
       createdAt: existing.createdAt,
       isRead: existing.isRead,
@@ -290,6 +313,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           senderId: m.senderId,
           receiverId: m.receiverId,
           roomId: m.roomId,
+          replyToMessageId: m.replyToMessageId,
+          replyToMessage: m.replyToMessage,
           type: m.type,
           createdAt: m.createdAt,
           isRead: true,
@@ -315,6 +340,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           senderId: m.senderId,
           receiverId: m.receiverId,
           roomId: m.roomId,
+          replyToMessageId: m.replyToMessageId,
+          replyToMessage: m.replyToMessage,
           type: m.type,
           createdAt: m.createdAt,
           isRead: m.isRead,
@@ -336,24 +363,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   // --- API Logic ---
 
   Future<void> loadHistory({int limit = 50, int offset = 0}) async {
-    if (offset == 0) state = state.copyWith(isLoading: true);
+    if (offset == 0) {
+      state = state.copyWith(isLoading: true);
+    }
     try {
-      final response = await _network.client.get(
-        '/messages/history',
-        queryParameters: {
-          'contact_id': arg.roomId,
-          'limit': limit,
-          'offset': offset,
-        },
+      final history = await _chatRepository.getMessages(
+        arg.roomId,
+        limit: limit,
+        offset: offset,
       );
-
-      final List<dynamic> list = response.data['data'];
-      final history = list.map((e) => Message.fromJson(e)).toList();
-
-      final ordered = history.reversed.toList();
+      final ordered = history.map(_attachReplyMessage).toList();
       state = state.copyWith(
-        messages: offset == 0 ? ordered : [...ordered, ...state.messages],
+        messages: offset == 0 ? ordered : [...state.messages, ...ordered],
         isLoading: false,
+        offset: offset == 0 ? ordered.length : state.offset + ordered.length,
+        hasMore: ordered.length >= limit,
       );
       if (offset == 0) {
         if (arg.isRoom) {
@@ -378,11 +402,36 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  Future<void> loadMoreMessages() async {
+    if (state.isLoadingMore || !state.hasMore) {
+      return;
+    }
+    state = state.copyWith(isLoadingMore: true);
+    try {
+      final olderMessages = await _chatRepository.getMessages(
+        arg.roomId,
+        limit: 50,
+        offset: state.offset,
+      );
+      final hydrated = olderMessages.map(_attachReplyMessage).toList();
+      final hasMore = olderMessages.length >= 50;
+      state = state.copyWith(
+        messages: [...state.messages, ...hydrated],
+        isLoadingMore: false,
+        hasMore: hasMore,
+        offset: state.offset + 50,
+      );
+    } catch (e) {
+      state = state.copyWith(isLoadingMore: false, error: e.toString());
+    }
+  }
+
   Future<void> sendMessage(
     String content, {
     MessageType type = MessageType.text,
   }) async {
     final clientMsgId = const Uuid().v4();
+    final replyToId = state.replyingToMessage?.id;
     final tempMessage = Message(
       id: clientMsgId,
       clientMsgId: clientMsgId,
@@ -390,6 +439,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       senderId: arg.currentUserId,
       receiverId: arg.isRoom ? null : arg.roomId,
       roomId: arg.isRoom ? arg.roomId : null,
+      replyToMessageId: replyToId,
+      replyToMessage: state.replyingToMessage,
       type: type,
       createdAt: DateTime.now(),
       isRead: true,
@@ -401,6 +452,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final payload = {
       'receiver_id': arg.isRoom ? null : arg.roomId,
       'room_id': arg.isRoom ? arg.roomId : null,
+      'reply_to_message_id': replyToId,
       'content': content,
       'type': type.toString().split('.').last,
       'client_msg_id': clientMsgId,
@@ -410,6 +462,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
       Future(() => LocalDbService().insertMessages([tempMessage]));
+      state = state.copyWith(replyingToMessage: null);
     } catch (e) {
       _updateMessageStatus(clientMsgId, MessageStatus.failed);
     }
@@ -424,6 +477,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final payload = {
       'receiver_id': message.receiverId,
       'room_id': message.roomId,
+      'reply_to_message_id': message.replyToMessageId,
       'content': message.content,
       'type': message.type.toString().split('.').last,
       'client_msg_id': clientMsgId,
@@ -448,6 +502,43 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     } catch (e) {
       state = state.copyWith(isSending: false, error: e.toString());
     }
+  }
+
+  Future<void> sendImageMessage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    state = state.copyWith(isSending: true);
+    try {
+      final url = await _chatRepository.uploadImage(File(picked.path));
+      await sendMessage(url, type: MessageType.image);
+      state = state.copyWith(isSending: false);
+    } catch (e) {
+      state = state.copyWith(isSending: false, error: e.toString());
+    }
+  }
+
+  void setReplyingTo(Message? message) {
+    state = state.copyWith(replyingToMessage: message);
+  }
+
+  Message _attachReplyMessage(Message message) {
+    final replyId = message.replyToMessageId;
+    if (replyId == null || replyId.isEmpty) {
+      return message;
+    }
+    if (message.replyToMessage != null) {
+      return message;
+    }
+    final found = state.messages
+        .where((m) => m.id == replyId)
+        .cast<Message?>()
+        .firstWhere((m) => m != null, orElse: () => null);
+    if (found == null) {
+      return message;
+    }
+    return message.copyWith(replyToMessage: found);
   }
 
   Future<void> markConversationAsRead() async {

@@ -225,18 +225,6 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 				bytes, _ := json.Marshal(resp)
 				sourceClient.send <- bytes
 			}
-		} else {
-			// User offline locally.
-			// Check global status if needed, or just store.
-			isOnline, _ := h.onlineRepo.IsUserOnline(context.Background(), msg.ReceiverID)
-			if !isOnline {
-				go h.messageUsecase.SaveOfflineMessage(context.Background(), msg.ReceiverID, msg)
-				
-				// Send Push Notification
-				if h.notificationService != nil {
-					h.notificationService.SendNotification(msg.ReceiverID, "chat_message", msg)
-				}
-			}
 		}
 	}
 }

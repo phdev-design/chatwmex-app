@@ -17,6 +17,7 @@ type DeviceRepository interface {
 	Delete(ctx context.Context, deviceID string) error
 	DeleteByUserID(ctx context.Context, userID string) error
 	GetByID(ctx context.Context, deviceID string) (*Device, error)
+	GetByUserID(ctx context.Context, userID string) ([]*Device, error)
 }
 
 type DeviceUsecase interface {

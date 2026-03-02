@@ -21,15 +21,16 @@ const offlineCollectionName = "offline_messages"
 // mongoMessage is the DTO for storing messages in MongoDB.
 // It is internal to this package and should not be exposed.
 type mongoMessage struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"`
-	SenderID   string             `bson:"sender_id"`
-	ReceiverID string             `bson:"receiver_id,omitempty"`
-	RoomID     string             `bson:"room_id,omitempty"`
-	Content    string             `bson:"content"` // Encrypted content
-	Type       string             `bson:"type"`
-	IsRead     bool               `bson:"is_read"`
-	ReadBy     []string           `bson:"read_by"`
-	CreatedAt  time.Time          `bson:"created_at"`
+	ID               primitive.ObjectID `bson:"_id,omitempty"`
+	SenderID         string             `bson:"sender_id"`
+	ReceiverID       string             `bson:"receiver_id,omitempty"`
+	RoomID           string             `bson:"room_id,omitempty"`
+	ReplyToMessageID string             `bson:"reply_to_message_id,omitempty"`
+	Content          string             `bson:"content"` // Encrypted content
+	Type             string             `bson:"type"`
+	IsRead           bool               `bson:"is_read"`
+	ReadBy           []string           `bson:"read_by"`
+	CreatedAt        time.Time          `bson:"created_at"`
 }
 
 type offlineMessage struct {
@@ -54,61 +55,63 @@ func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.
 	}
 }
 
-	// toDomain converts a mongoMessage to a domain.Message.
-	// It decrypts the content during the conversion.
-	func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
-		decryptedContent, err := r.cryptor.Decrypt(m.Content)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt message content: %w", err)
-		}
-	
-		return &domain.Message{
-		ID:         m.ID.Hex(),
-		SenderID:   m.SenderID,
-		ReceiverID: m.ReceiverID,
-		RoomID:     m.RoomID,
-		Content:    decryptedContent,
-		Type:       m.Type,
-		IsRead:     m.IsRead,
-		ReadBy:     m.ReadBy,
-		CreatedAt:  m.CreatedAt,
-	}, nil
+// toDomain converts a mongoMessage to a domain.Message.
+// It decrypts the content during the conversion.
+func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
+	decryptedContent, err := r.cryptor.Decrypt(m.Content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt message content: %w", err)
 	}
-	
-	// fromDomain converts a domain.Message to a mongoMessage.
-	// It encrypts the content during the conversion.
-	func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error) {
-		encryptedContent, err := r.cryptor.Encrypt(m.Content)
+
+	return &domain.Message{
+		ID:               m.ID.Hex(),
+		SenderID:         m.SenderID,
+		ReceiverID:       m.ReceiverID,
+		RoomID:           m.RoomID,
+		ReplyToMessageID: m.ReplyToMessageID,
+		Content:          decryptedContent,
+		Type:             m.Type,
+		IsRead:           m.IsRead,
+		ReadBy:           m.ReadBy,
+		CreatedAt:        m.CreatedAt,
+	}, nil
+}
+
+// fromDomain converts a domain.Message to a mongoMessage.
+// It encrypts the content during the conversion.
+func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error) {
+	encryptedContent, err := r.cryptor.Encrypt(m.Content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt message content: %w", err)
+	}
+
+	id := primitive.NilObjectID
+	if m.ID != "" {
+		var err error
+		id, err = primitive.ObjectIDFromHex(m.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt message content: %w", err)
+			return nil, fmt.Errorf("invalid object ID: %w", err)
 		}
-	
-		id := primitive.NilObjectID
-		if m.ID != "" {
-			var err error
-			id, err = primitive.ObjectIDFromHex(m.ID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid object ID: %w", err)
-			}
-		}
-	
+	}
+
 	readBy := m.ReadBy
 	if readBy == nil {
 		readBy = []string{}
 	}
 
 	return &mongoMessage{
-		ID:         id,
-		SenderID:   m.SenderID,
-		ReceiverID: m.ReceiverID,
-		RoomID:     m.RoomID,
-		Content:    encryptedContent,
-		Type:       m.Type,
-		IsRead:     m.IsRead,
-		ReadBy:     readBy,
-		CreatedAt:  m.CreatedAt,
+		ID:               id,
+		SenderID:         m.SenderID,
+		ReceiverID:       m.ReceiverID,
+		RoomID:           m.RoomID,
+		ReplyToMessageID: m.ReplyToMessageID,
+		Content:          encryptedContent,
+		Type:             m.Type,
+		IsRead:           m.IsRead,
+		ReadBy:           readBy,
+		CreatedAt:        m.CreatedAt,
 	}, nil
-	}
+}
 
 // StoreMessage saves a message to the repository.
 // It encrypts the message content before storing it in MongoDB.
@@ -157,7 +160,7 @@ func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID st
 	// For simplicity, let's just use an $or query that covers both scenarios:
 	// (sender=me AND receiver=contact) OR (sender=contact AND receiver=me) OR (room_id=contact)
 	// Note: This assumes contactID is the roomID for group chats.
-	
+
 	filter := bson.M{
 		"$or": []bson.M{
 			{"sender_id": userID, "receiver_id": contactID},
@@ -165,7 +168,7 @@ func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID st
 			{"room_id": contactID},
 		},
 	}
-	
+
 	findOptions := options.Find()
 	findOptions.SetSort(bson.D{{Key: "created_at", Value: -1}}) // Newest first
 	findOptions.SetLimit(int64(limit))
@@ -183,12 +186,12 @@ func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID st
 		if err := cursor.Decode(&m); err != nil {
 			return nil, fmt.Errorf("failed to decode message: %w", err)
 		}
-		
+
 		domainMsg, err := r.toDomain(&m)
 		if err != nil {
 			// Skip malformed/decryption error messages? or return error?
 			// Let's log and skip for robustness
-			continue 
+			continue
 		}
 		messages = append(messages, domainMsg)
 	}
@@ -219,7 +222,7 @@ func (r *MessageRepository) StoreOfflineMessage(ctx context.Context, userID stri
 // GetOfflineMessages retrieves and deletes offline messages for a user.
 func (r *MessageRepository) GetOfflineMessages(ctx context.Context, userID string) ([]*domain.Message, error) {
 	filter := bson.M{"user_id": userID}
-	
+
 	cursor, err := r.offlineCollection.Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find offline messages: %w", err)
@@ -498,12 +501,12 @@ func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversation
 		// For DM: Mark messages SENT BY the other person (conversationID) as read.
 		// SenderID = conversationID, ReceiverID = userID
 		filter = bson.M{
-			"sender_id": conversationID,
+			"sender_id":   conversationID,
 			"receiver_id": userID,
-			"is_read": false,
+			"is_read":     false,
 		}
 		update = bson.M{
-			"$set": bson.M{"is_read": true},
+			"$set":      bson.M{"is_read": true},
 			"$addToSet": bson.M{"read_by": userID},
 		}
 	}

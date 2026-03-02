@@ -13,6 +13,9 @@ type messageUsecase struct {
 	messageRepo    domain.MessageRepository
 	roomRepo       domain.RoomRepository
 	onlineRepo     domain.OnlineRepository
+	userRepo       domain.UserRepository
+	deviceRepo     domain.DeviceRepository
+	pushService    domain.PushNotificationService
 	contextTimeout time.Duration
 }
 
@@ -21,12 +24,18 @@ func NewMessageUsecase(
 	repo domain.MessageRepository,
 	roomRepo domain.RoomRepository,
 	onlineRepo domain.OnlineRepository,
+	userRepo domain.UserRepository,
+	deviceRepo domain.DeviceRepository,
+	pushService domain.PushNotificationService,
 	timeout time.Duration,
 ) domain.MessageUsecase {
 	return &messageUsecase{
 		messageRepo:    repo,
 		roomRepo:       roomRepo,
 		onlineRepo:     onlineRepo,
+		userRepo:       userRepo,
+		deviceRepo:     deviceRepo,
+		pushService:    pushService,
 		contextTimeout: timeout,
 	}
 }
@@ -48,6 +57,8 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	if strings.TrimSpace(msg.ReceiverID) == "" && strings.TrimSpace(msg.RoomID) == "" {
 		return errors.New("receiver ID or room ID must be provided")
 	}
+
+	offlineUserIDs := make([]string, 0)
 
 	// 3) Group message routing rules:
 	//    - When RoomID is set, we verify the sender is a member of the room.
@@ -82,7 +93,16 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 				if err := u.messageRepo.StoreOfflineMessage(ctx, memberID, msg); err != nil {
 					return err
 				}
+				offlineUserIDs = append(offlineUserIDs, memberID)
 			}
+		}
+	} else if strings.TrimSpace(msg.ReceiverID) != "" {
+		isOnline, err := u.onlineRepo.IsUserOnline(ctx, msg.ReceiverID)
+		if err == nil && !isOnline {
+			if err := u.messageRepo.StoreOfflineMessage(ctx, msg.ReceiverID, msg); err != nil {
+				return err
+			}
+			offlineUserIDs = append(offlineUserIDs, msg.ReceiverID)
 		}
 	}
 
@@ -90,7 +110,68 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	msg.CreatedAt = time.Now()
 
 	// 5) Persist the message for history (encryption handled by repository).
-	return u.messageRepo.StoreMessage(ctx, msg)
+	if err := u.messageRepo.StoreMessage(ctx, msg); err != nil {
+		return err
+	}
+
+	if u.pushService != nil && len(offlineUserIDs) > 0 {
+		offlineUsers := append([]string(nil), offlineUserIDs...)
+		messageCopy := *msg
+		go u.pushToOfflineUsers(offlineUsers, &messageCopy)
+	}
+	return nil
+}
+
+func (u *messageUsecase) pushToOfflineUsers(userIDs []string, msg *domain.Message) {
+	ctx, cancel := context.WithTimeout(context.Background(), u.contextTimeout)
+	defer cancel()
+
+	title, content := u.buildPushContent(ctx, msg)
+	roomID := msg.RoomID
+	if roomID == "" {
+		roomID = msg.SenderID
+	}
+	data := map[string]interface{}{
+		"room_id":   roomID,
+		"is_room":   msg.RoomID != "",
+		"room_name": title,
+	}
+
+	for _, userID := range userIDs {
+		devices, err := u.deviceRepo.GetByUserID(ctx, userID)
+		if err != nil || len(devices) == 0 {
+			continue
+		}
+		playerIDs := make([]string, 0, len(devices))
+		for _, device := range devices {
+			if device != nil && device.ID != "" {
+				playerIDs = append(playerIDs, device.ID)
+			}
+		}
+		if len(playerIDs) == 0 {
+			continue
+		}
+		_ = u.pushService.SendNotificationToDevices(playerIDs, title, content, data)
+	}
+}
+
+func (u *messageUsecase) buildPushContent(ctx context.Context, msg *domain.Message) (string, string) {
+	title := "新訊息"
+	if msg.RoomID != "" {
+		if room, err := u.roomRepo.GetByID(ctx, msg.RoomID); err == nil && room != nil && room.Name != "" {
+			title = room.Name
+		}
+	} else if msg.SenderID != "" {
+		if user, err := u.userRepo.GetByID(ctx, msg.SenderID); err == nil && user != nil && user.Username != "" {
+			title = user.Username
+		}
+	}
+
+	content := msg.Content
+	if msg.Type == "image" {
+		content = "傳送了一張圖片"
+	}
+	return title, content
 }
 
 // GetChatHistory retrieves the chat history for a user.

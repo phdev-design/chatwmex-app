@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:app/features/chat/providers/chat_room_provider.dart';
+import 'package:app/core/network/network_service.dart';
 import 'package:app/models/message.dart';
 import 'package:app/core/media/media_service.dart';
 
@@ -239,47 +240,83 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                 Positioned.fill(
                   child: state.messages.isEmpty && state.isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : ListView.builder(
-                          controller: _scrollController,
-                          reverse: false,
-                          itemCount:
-                              state.messages.length + (state.isLoading ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index == state.messages.length) {
-                              return const Center(
-                                child: CircularProgressIndicator(),
-                              );
+                      : NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (notification.metrics.pixels >=
+                                notification.metrics.maxScrollExtent - 200) {
+                              ref
+                                  .read(chatRoomProvider(_params).notifier)
+                                  .loadMoreMessages();
                             }
-                            final msg = state.messages[index];
-                            final isMe = msg.senderId == widget.currentUserId;
-                            final previous = index > 0
-                                ? state.messages[index - 1]
-                                : null;
-                            final showDivider =
-                                previous == null ||
-                                !_isSameDay(msg.createdAt, previous.createdAt);
-                            return Column(
-                              children: [
-                                if (showDivider)
-                                  _buildDateDivider(msg.createdAt),
-                                VisibilityDetector(
-                                  key: ValueKey('msg_${msg.id}_$index'),
-                                  onVisibilityChanged: (info) {
-                                    if (!isMe &&
-                                        info.visibleFraction > 0.5 &&
-                                        !msg.readBy.contains(
-                                          widget.currentUserId,
-                                        )) {
-                                      ref
-                                          .read(chatRoomProvider(_params).notifier)
-                                          .markAsRead(msg.id);
-                                    }
-                                  },
-                                  child: _buildMessageBubble(msg, isMe),
-                                ),
-                              ],
-                            );
+                            return false;
                           },
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            reverse: true,
+                            itemCount:
+                                state.messages.length + (state.hasMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index == state.messages.length) {
+                                if (state.hasMore) {
+                                  return const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 12),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  );
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  child: Text(
+                                    '已經沒有更多訊息了',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: colorScheme.outline,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                );
+                              }
+                              final msg = state.messages[index];
+                              final isMe = msg.senderId == widget.currentUserId;
+                              final previous = index > 0
+                                  ? state.messages[index - 1]
+                                  : null;
+                              final showDivider =
+                                  previous == null ||
+                                  !_isSameDay(
+                                    msg.createdAt,
+                                    previous.createdAt,
+                                  );
+                              return Column(
+                                children: [
+                                  if (showDivider)
+                                    _buildDateDivider(msg.createdAt),
+                                  VisibilityDetector(
+                                    key: ValueKey('msg_${msg.id}_$index'),
+                                    onVisibilityChanged: (info) {
+                                      if (!isMe &&
+                                          info.visibleFraction > 0.5 &&
+                                          !msg.readBy.contains(
+                                            widget.currentUserId,
+                                          )) {
+                                        ref
+                                            .read(
+                                              chatRoomProvider(
+                                                _params,
+                                              ).notifier,
+                                            )
+                                            .markAsRead(msg.id);
+                                      }
+                                    },
+                                    child: _buildMessageBubble(msg, isMe),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                         ),
                 ),
                 if (_showNewMessageBanner)
@@ -371,6 +408,72 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                       ),
                     ),
                   ),
+                if (state.replyingToMessage != null)
+                  Container(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.6,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                state.replyingToMessage!.senderId.isNotEmpty
+                                    ? state.replyingToMessage!.senderId
+                                    : '回覆訊息',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onSurface,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                state.replyingToMessage!.type ==
+                                        MessageType.image
+                                    ? '[圖片]'
+                                    : state.replyingToMessage!.content,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.outline,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => ref
+                              .read(chatRoomProvider(_params).notifier)
+                              .setReplyingTo(null),
+                        ),
+                      ],
+                    ),
+                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8.0,
@@ -390,6 +493,12 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                         icon: Icon(_isRecording ? Icons.stop : Icons.mic),
                         color: _isRecording ? colorScheme.error : null,
                         onPressed: _toggleRecording,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.image),
+                        onPressed: () => ref
+                            .read(chatRoomProvider(_params).notifier)
+                            .sendImageMessage(),
                       ),
                       Expanded(
                         child: TextField(
@@ -424,7 +533,43 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     final colorScheme = Theme.of(context).colorScheme;
     Widget content;
     if (msg.type == MessageType.image) {
-      content = Image.network(msg.content);
+      final imageUrl = NetworkService.resolveUrl(msg.content);
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.6,
+          ),
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+              return SizedBox(
+                width: 120,
+                height: 120,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    value: progress.expectedTotalBytes != null
+                        ? progress.cumulativeBytesLoaded /
+                              progress.expectedTotalBytes!
+                        : null,
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return SizedBox(
+                width: 120,
+                height: 120,
+                child: Center(
+                  child: Icon(Icons.broken_image, color: colorScheme.outline),
+                ),
+              );
+            },
+          ),
+        ),
+      );
     } else if (msg.type == MessageType.voice) {
       content = Row(
         mainAxisSize: MainAxisSize.min,
@@ -439,63 +584,110 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
       );
     }
 
+    final replyMessage = msg.replyToMessage;
+    Widget? replyContent;
+    if (replyMessage != null) {
+      final replyText = replyMessage.type == MessageType.image
+          ? '[圖片]'
+          : replyMessage.content;
+      replyContent = Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 32,
+              decoration: BoxDecoration(
+                color: colorScheme.primary,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                replyText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final statusWidget = isMe ? _buildStatusIcon(msg) : const SizedBox();
     final statusText = isMe ? _buildStatusText(msg) : const SizedBox();
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: EdgeInsets.only(
-          top: 4,
-          bottom: 4,
-          left: isMe ? 50 : 16,
-          right: isMe ? 16 : 50,
-        ),
-        padding: const EdgeInsets.all(12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: isMe
-              ? colorScheme.primary
-              : colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: isMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
-          children: [
-            content,
-            const SizedBox(height: 2),
-            Align(
-              alignment: isMe ? Alignment.bottomRight : Alignment.bottomLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  statusWidget,
-                  statusText,
-                  if (isMe && widget.isRoom) ...[
+      child: InkWell(
+        onLongPress: () =>
+            ref.read(chatRoomProvider(_params).notifier).setReplyingTo(msg),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          margin: EdgeInsets.only(
+            top: 4,
+            bottom: 4,
+            left: isMe ? 50 : 16,
+            right: isMe ? 16 : 50,
+          ),
+          padding: const EdgeInsets.all(12),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          decoration: BoxDecoration(
+            color: isMe
+                ? colorScheme.primary
+                : colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              if (replyContent != null) ...[
+                replyContent,
+                const SizedBox(height: 6),
+              ],
+              content,
+              const SizedBox(height: 2),
+              Align(
+                alignment: isMe ? Alignment.bottomRight : Alignment.bottomLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    statusWidget,
+                    statusText,
+                    if (isMe && widget.isRoom) ...[
+                      Text(
+                        '已讀 ${msg.readBy.length} 人',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: colorScheme.onPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     Text(
-                      '已讀 ${msg.readBy.length} 人',
+                      DateFormat('HH:mm').format(msg.createdAt),
                       style: TextStyle(
                         fontSize: 9,
-                        color: colorScheme.onPrimary,
+                        color: isMe
+                            ? colorScheme.onPrimary
+                            : colorScheme.outline,
                       ),
                     ),
-                    const SizedBox(width: 6),
                   ],
-                  Text(
-                    DateFormat('HH:mm').format(msg.createdAt),
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: isMe ? colorScheme.onPrimary : colorScheme.outline,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
