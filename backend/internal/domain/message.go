@@ -31,6 +31,10 @@ type MessageRepository interface {
 	StoreOfflineMessage(ctx context.Context, userID string, msg *Message) error
 	GetOfflineMessages(ctx context.Context, userID string) ([]*Message, error)
 	
+	CountUnreadInRoom(ctx context.Context, roomID, userID string) (int, error)
+	GetRoomLastReadAt(ctx context.Context, roomID, userID string) (time.Time, error)
+	CountUnreadInRoomAfter(ctx context.Context, roomID, userID string, lastReadAt time.Time) (int, error)
+	
 	// GetConversations retrieves DM conversations for a user.
 	GetConversations(ctx context.Context, userID string) ([]*Conversation, error)
 
@@ -45,6 +49,7 @@ type Conversation struct {
 	LastMessage     string    `json:"last_message"`
 	LastMessageTime time.Time `json:"last_message_time"`
 	UnreadCount     int       `json:"unread_count"`
+	LastReadAt      time.Time `json:"last_read_at,omitempty"`
 }
 
 // MessageUsecase defines the interface for message business logic.

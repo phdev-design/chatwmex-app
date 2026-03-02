@@ -8,6 +8,7 @@ class Room extends Equatable {
   final String? lastMessage;
   final DateTime? lastMessageTime;
   final int unreadCount;
+  final DateTime? lastReadAt;
 
   const Room({
     required this.id,
@@ -17,6 +18,7 @@ class Room extends Equatable {
     this.lastMessage,
     this.lastMessageTime,
     this.unreadCount = 0,
+    this.lastReadAt,
   });
 
   factory Room.fromJson(Map<String, dynamic> json) {
@@ -30,11 +32,45 @@ class Room extends Equatable {
           ? DateTime.tryParse(json['last_message_time']) 
           : null,
       unreadCount: json['unread_count'] ?? 0,
+      lastReadAt: json['last_read_at'] != null
+          ? DateTime.tryParse(json['last_read_at'])
+          : null,
+    );
+  }
+
+  Room copyWith({
+    String? id,
+    String? name,
+    String? type,
+    DateTime? createdAt,
+    String? lastMessage,
+    DateTime? lastMessageTime,
+    int? unreadCount,
+    DateTime? lastReadAt,
+  }) {
+    return Room(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      createdAt: createdAt ?? this.createdAt,
+      lastMessage: lastMessage ?? this.lastMessage,
+      lastMessageTime: lastMessageTime ?? this.lastMessageTime,
+      unreadCount: unreadCount ?? this.unreadCount,
+      lastReadAt: lastReadAt ?? this.lastReadAt,
     );
   }
 
   @override
-  List<Object?> get props => [id, name, type, createdAt, lastMessage, lastMessageTime, unreadCount];
+  List<Object?> get props => [
+    id,
+    name,
+    type,
+    createdAt,
+    lastMessage,
+    lastMessageTime,
+    unreadCount,
+    lastReadAt,
+  ];
 }
 
 class User extends Equatable {

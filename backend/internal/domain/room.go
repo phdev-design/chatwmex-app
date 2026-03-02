@@ -15,6 +15,7 @@ type Room struct {
 	LastMessage     string    `json:"last_message,omitempty"`
 	LastMessageTime time.Time `json:"last_message_time,omitempty"`
 	UnreadCount     int       `json:"unread_count"`
+	LastReadAt      time.Time `json:"last_read_at,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

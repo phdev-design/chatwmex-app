@@ -33,6 +33,7 @@ class RoomListState {
 
 class RoomListViewModel extends Notifier<RoomListState> {
   late final ChatRepository _repository;
+  final Map<String, int> _unreadOverrides = {};
 
   @override
   RoomListState build() {
@@ -46,7 +47,13 @@ class RoomListViewModel extends Notifier<RoomListState> {
     final subscription = wsService.events.listen((data) {
       if (data is Map) {
         final event = data['event'];
-        if (event == 'chat_message' || event == 'read_receipt') {
+        if (event == 'chat_message') {
+          fetchRooms();
+        } else if (event == 'read_receipt') {
+          final payload = data['data'];
+          if (payload is Map && payload['conversation_id'] != null) {
+            markRoomRead(payload['conversation_id']);
+          }
           fetchRooms();
         }
       }
@@ -66,10 +73,33 @@ class RoomListViewModel extends Notifier<RoomListState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final rooms = await _repository.getMyRooms();
-      state = state.copyWith(isLoading: false, rooms: rooms);
+      final updated = rooms.map((room) {
+        final override = _unreadOverrides[room.id];
+        if (override != null) {
+          return room.copyWith(unreadCount: override);
+        }
+        return room;
+      }).toList();
+      for (final room in rooms) {
+        if (room.unreadCount == 0) {
+          _unreadOverrides.remove(room.id);
+        }
+      }
+      state = state.copyWith(isLoading: false, rooms: updated);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  void markRoomRead(String roomId) {
+    _unreadOverrides[roomId] = 0;
+    final updated = state.rooms.map((room) {
+      if (room.id == roomId && room.unreadCount != 0) {
+        return room.copyWith(unreadCount: 0);
+      }
+      return room;
+    }).toList();
+    state = state.copyWith(rooms: updated);
   }
 
   Future<void> searchUsers(String query) async {

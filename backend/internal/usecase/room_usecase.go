@@ -65,7 +65,14 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.
 
 	for _, room := range rooms {
 		room.Type = "group"
-		// If needed, fetch last message for group rooms here
+		lastReadAt, err := u.messageRepo.GetRoomLastReadAt(ctx, room.ID, userID)
+		if err == nil {
+			room.LastReadAt = lastReadAt
+		}
+		count, err := u.messageRepo.CountUnreadInRoomAfter(ctx, room.ID, userID, room.LastReadAt)
+		if err == nil {
+			room.UnreadCount = count
+		}
 	}
 
 	// 2. Get DM Conversations
@@ -82,6 +89,7 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.
 			LastMessage:     conv.LastMessage,
 			LastMessageTime: conv.LastMessageTime,
 			UnreadCount:     conv.UnreadCount,
+			LastReadAt:      conv.LastReadAt,
 			UpdatedAt:       conv.LastMessageTime,
 		})
 	}

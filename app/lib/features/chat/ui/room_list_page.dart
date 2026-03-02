@@ -107,31 +107,46 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
             : '';
 
         final isRoom = room.type == 'group';
+        final hasUnread = room.unreadCount > 0;
         return ListTile(
           leading: Stack(
             children: [
               const CircleAvatar(child: Icon(Icons.group)),
-              if (room.unreadCount > 0)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      '${room.unreadCount}',
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+              Positioned(
+                right: 0,
+                top: 0,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) {
+                    return ScaleTransition(
+                      scale: animation,
+                      child: FadeTransition(opacity: animation, child: child),
+                    );
+                  },
+                  child: hasUnread
+                      ? Container(
+                          key: const ValueKey('unread'),
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            '${room.unreadCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : const SizedBox(key: ValueKey('no_unread')),
                 ),
+              ),
             ],
           ),
           title: Row(
@@ -173,6 +188,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
   ) async {
     final token = await ref.read(storageServiceProvider).read('jwt_token');
     if (mounted && token != null) {
+      ref.read(roomListViewModelProvider.notifier).markRoomRead(roomId);
       context.push(
         '/chat',
         extra: {

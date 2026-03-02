@@ -145,7 +145,11 @@ func (h *Hub) Run() {
 
 // routeMessage handles the delivery of a message to connected clients.
 func (h *Hub) routeMessage(msg *domain.Message) {
-	messageBytes, err := json.Marshal(msg)
+	payload := map[string]interface{}{
+		"event": "chat_message",
+		"data":  msg,
+	}
+	messageBytes, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("Error encoding message for broadcast: %v", err)
 		return
@@ -249,6 +253,17 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 				delete(h.clients, destClient)
 				delete(h.userClients, destClient.userID)
 			}
+			if sourceClient, ok := h.userClients[msg.SenderID]; ok {
+				resp := map[string]interface{}{
+					"event": "message_delivered",
+					"data": map[string]interface{}{
+						"message_id":    msg.ID,
+						"client_msg_id": msg.ClientMsgID,
+					},
+				}
+				bytes, _ := json.Marshal(resp)
+				sourceClient.send <- bytes
+			}
 		} else {
 			// User offline locally.
 			// Check global status if needed, or just store.
@@ -283,5 +298,61 @@ func (h *Hub) SendNotification(userID, event string, data interface{}) {
 	// For "Friend Request", we usually want Push regardless of Online status (so they see banner).
 	if h.notificationService != nil {
 		h.notificationService.SendNotification(userID, event, data)
+	}
+}
+
+func (h *Hub) SendReadReceiptToUser(senderID, readerID string) {
+	if client, ok := h.userClients[senderID]; ok {
+		resp := map[string]interface{}{
+			"event": "read_receipt",
+			"data": map[string]interface{}{
+				"conversation_id": senderID,
+				"reader_id":       readerID,
+				"is_room":         false,
+				"read_at":         time.Now().Format(time.RFC3339),
+			},
+		}
+		bytes, _ := json.Marshal(resp)
+		client.send <- bytes
+	}
+}
+
+func (h *Hub) SendTypingToUser(senderID, receiverID, event string) {
+	if client, ok := h.userClients[receiverID]; ok {
+		resp := map[string]interface{}{
+			"event": event,
+			"data": map[string]interface{}{
+				"room_id": senderID,
+				"user_id": senderID,
+			},
+		}
+		bytes, _ := json.Marshal(resp)
+		client.send <- bytes
+	}
+}
+
+func (h *Hub) SendTypingToRoom(senderID, roomID, event string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	members, err := h.roomUsecase.GetRoomMembers(ctx, roomID)
+	cancel()
+	if err != nil {
+		log.Printf("Error fetching room members for typing: %v", err)
+		return
+	}
+	for _, memberID := range members {
+		if memberID == senderID {
+			continue
+		}
+		if client, ok := h.userClients[memberID]; ok {
+			resp := map[string]interface{}{
+				"event": event,
+				"data": map[string]interface{}{
+					"room_id": roomID,
+					"user_id": senderID,
+				},
+			}
+			bytes, _ := json.Marshal(resp)
+			client.send <- bytes
+		}
 	}
 }

@@ -3,6 +3,7 @@ package mongo_repo
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"chatwmex_backend/internal/domain"
@@ -91,7 +92,12 @@ func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.
 			}
 		}
 	
-		return &mongoMessage{
+	readBy := m.ReadBy
+	if readBy == nil {
+		readBy = []string{}
+	}
+
+	return &mongoMessage{
 		ID:         id,
 		SenderID:   m.SenderID,
 		ReceiverID: m.ReceiverID,
@@ -99,7 +105,7 @@ func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.
 		Content:    encryptedContent,
 		Type:       m.Type,
 		IsRead:     m.IsRead,
-		ReadBy:     m.ReadBy,
+		ReadBy:     readBy,
 		CreatedAt:  m.CreatedAt,
 	}, nil
 	}
@@ -277,12 +283,11 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		}}},
 		// 4. Group by other_id
 		{{Key: "$group", Value: bson.M{
-			"_id":               "$other_id",
-			"last_message_doc":  bson.M{"$first": "$$ROOT"},
+			"_id":              "$other_id",
+			"last_message_doc": bson.M{"$first": "$$ROOT"},
 			"unread_count": bson.M{
 				"$sum": bson.M{
 					"$cond": bson.M{
-						// Unread if receiver is ME and is_read is false
 						"if": bson.M{
 							"$and": []interface{}{
 								bson.M{"$eq": []interface{}{"$receiver_id", userID}},
@@ -291,6 +296,20 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 						},
 						"then": 1,
 						"else": 0,
+					},
+				},
+			},
+			"last_read_at": bson.M{
+				"$max": bson.M{
+					"$cond": bson.M{
+						"if": bson.M{
+							"$and": []interface{}{
+								bson.M{"$eq": []interface{}{"$receiver_id", userID}},
+								bson.M{"$eq": []interface{}{"$is_read", true}},
+							},
+						},
+						"then": "$created_at",
+						"else": nil,
 					},
 				},
 			},
@@ -322,6 +341,7 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		OtherUserID    string       `bson:"_id"`
 		LastMessageDoc mongoMessage `bson:"last_message_doc"`
 		UnreadCount    int          `bson:"unread_count"`
+		LastReadAt     time.Time    `bson:"last_read_at"`
 		UserInfo       struct {
 			Username string `bson:"username"`
 		} `bson:"user_info"`
@@ -345,15 +365,67 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 			LastMessage:     content,
 			LastMessageTime: res.LastMessageDoc.CreatedAt,
 			UnreadCount:     res.UnreadCount,
+			LastReadAt:      res.LastReadAt,
 		})
 	}
 
 	return conversations, nil
 }
 
+func (r *MessageRepository) CountUnreadInRoom(ctx context.Context, roomID, userID string) (int, error) {
+	filter := bson.M{
+		"room_id":   roomID,
+		"sender_id": bson.M{"$ne": userID},
+		"read_by":   bson.M{"$ne": userID},
+	}
+	count, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count unread messages: %w", err)
+	}
+	return int(count), nil
+}
+
+func (r *MessageRepository) GetRoomLastReadAt(ctx context.Context, roomID, userID string) (time.Time, error) {
+	filter := bson.M{
+		"room_id": roomID,
+		"read_by": userID,
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	var msg mongoMessage
+	err := r.collection.FindOne(ctx, filter, opts).Decode(&msg)
+	if err == mongo.ErrNoDocuments {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get last read message: %w", err)
+	}
+	return msg.CreatedAt, nil
+}
+
+func (r *MessageRepository) CountUnreadInRoomAfter(ctx context.Context, roomID, userID string, lastReadAt time.Time) (int, error) {
+	filter := bson.M{
+		"room_id":   roomID,
+		"sender_id": bson.M{"$ne": userID},
+	}
+	if !lastReadAt.IsZero() {
+		filter["created_at"] = bson.M{"$gt": lastReadAt}
+	}
+	count, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count unread messages: %w", err)
+	}
+	return int(count), nil
+}
+
 func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
 	var filter bson.M
 	var update bson.M
+
+	_, _ = r.collection.UpdateMany(
+		ctx,
+		bson.M{"read_by": bson.M{"$type": 10}},
+		bson.M{"$set": bson.M{"read_by": []string{}}},
+	)
 
 	if isRoom {
 		// For rooms: Add userID to read_by array if not present, for messages in this room
@@ -377,9 +449,10 @@ func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversation
 		}
 	}
 
-	_, err := r.collection.UpdateMany(ctx, filter, update)
+	result, err := r.collection.UpdateMany(ctx, filter, update)
 	if err != nil {
 		return fmt.Errorf("failed to mark messages as read: %w", err)
 	}
+	log.Printf("mark_read user=%s conversation=%s is_room=%v matched=%d modified=%d", userID, conversationID, isRoom, result.MatchedCount, result.ModifiedCount)
 	return nil
 }

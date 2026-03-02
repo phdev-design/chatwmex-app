@@ -49,7 +49,9 @@ func (c *SocketController) HandleMessage(client *Client, message []byte) {
 	case "mark_read":
 		c.OnMarkRead(client, req.Data)
 	case "typing_start":
-		c.OnTypingStart(client, req.Data)
+		c.OnTyping(client, req.Data, "typing_start")
+	case "typing_stop":
+		c.OnTyping(client, req.Data, "typing_stop")
 	default:
 		log.Printf("Unknown event: %s", req.Event)
 		c.respondError(client, "error", "Unknown event type")
@@ -158,14 +160,33 @@ func (c *SocketController) OnMarkRead(client *Client, data []byte) {
 	c.respondSuccess(client, "read_receipt", map[string]interface{}{
 		"conversation_id": payload.ConversationID,
 		"is_room":         payload.IsRoom,
+		"reader_id":       client.userID,
+		"read_at":         time.Now().Format(time.RFC3339),
 	})
+	if !payload.IsRoom && payload.ConversationID != "" {
+		c.hub.SendReadReceiptToUser(payload.ConversationID, client.userID)
+	}
 }
 
 // OnTypingStart handles typing indicators.
-func (c *SocketController) OnTypingStart(client *Client, data []byte) {
-	// Just broadcast to relevant room/user, don't save to DB
-	// This requires a non-persistent message type or a separate channel
-	// For now, we skip implementation or use a transient message type
+func (c *SocketController) OnTyping(client *Client, data []byte, event string) {
+	type TypingPayload struct {
+		RoomID     string `json:"room_id"`
+		ReceiverID string `json:"receiver_id"`
+	}
+	var payload TypingPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		c.respondError(client, "error", "Invalid payload")
+		return
+	}
+
+	if payload.RoomID != "" {
+		c.hub.SendTypingToRoom(client.userID, payload.RoomID, event)
+		return
+	}
+	if payload.ReceiverID != "" {
+		c.hub.SendTypingToUser(client.userID, payload.ReceiverID, event)
+	}
 }
 
 // respondError sends an error message back to the client.
