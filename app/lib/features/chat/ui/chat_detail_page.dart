@@ -76,7 +76,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     final state = ref.read(chatRoomProvider(_params));
     final max = _scrollController.position.maxScrollExtent;
     final current = _scrollController.position.pixels;
-    _isAtBottom = current >= max - 20;
+    _isAtBottom = current >= max - 50;
     if (_isAtBottom && _showNewMessageBanner) {
       if (mounted) {
         setState(() {
@@ -144,6 +144,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(_params));
+    final colorScheme = Theme.of(context).colorScheme;
     if (!_hasInitialized && !state.isLoading) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -162,13 +163,24 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           state.messages.isNotEmpty &&
           state.messages.last.senderId == widget.currentUserId;
       final addedCount = state.messages.length - _lastMessageCount;
-      if (addedCount > 0 && !isLatestFromMe && !_isAtBottom) {
-        _unreadCount += addedCount;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() => _showNewMessageBanner = true);
-          }
-        });
+      if (addedCount > 0 && !isLatestFromMe) {
+        if (_isAtBottom) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _showNewMessageBanner) {
+              setState(() {
+                _showNewMessageBanner = false;
+                _unreadCount = 0;
+              });
+            }
+          });
+        } else {
+          _unreadCount += addedCount;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _showNewMessageBanner = true);
+            }
+          });
+        }
       }
       if (isLatestFromMe) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -179,7 +191,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
               curve: Curves.easeOut,
             );
           }
-          if (mounted && _showNewMessageBanner) {
+          if (mounted && (_showNewMessageBanner || _unreadCount > 0)) {
             setState(() {
               _showNewMessageBanner = false;
               _unreadCount = 0;
@@ -211,8 +223,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
               style: TextStyle(
                 fontSize: 12,
                 color: state.isConnected
-                    ? Colors.greenAccent
-                    : Colors.redAccent,
+                    ? colorScheme.tertiary
+                    : colorScheme.error,
               ),
             ),
           ],
@@ -239,7 +251,19 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                             }
                             final msg = state.messages[index];
                             final isMe = msg.senderId == widget.currentUserId;
-                            return _buildMessageBubble(msg, isMe);
+                            final previous = index > 0
+                                ? state.messages[index - 1]
+                                : null;
+                            final showDivider =
+                                previous == null ||
+                                !_isSameDay(msg.createdAt, previous.createdAt);
+                            return Column(
+                              children: [
+                                if (showDivider)
+                                  _buildDateDivider(msg.createdAt),
+                                _buildMessageBubble(msg, isMe),
+                              ],
+                            );
                           },
                         ),
                 ),
@@ -276,7 +300,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.black87,
+                              color: colorScheme.secondary,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Row(
@@ -284,16 +308,18 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                               children: [
                                 SlideTransition(
                                   position: _arrowOffset,
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.arrow_downward,
                                     size: 14,
-                                    color: Colors.white,
+                                    color: colorScheme.onSecondary,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   '新訊息 ${_unreadCount > 99 ? '99+' : _unreadCount}',
-                                  style: const TextStyle(color: Colors.white),
+                                  style: TextStyle(
+                                    color: colorScheme.onSecondary,
+                                  ),
                                 ),
                               ],
                             ),
@@ -322,7 +348,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                         child: Text(
                           '對方輸入中...',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: colorScheme.outline,
                             fontStyle: FontStyle.italic,
                             fontSize: 12,
                           ),
@@ -347,7 +373,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                       ),
                       IconButton(
                         icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-                        color: _isRecording ? Colors.red : null,
+                        color: _isRecording ? colorScheme.error : null,
                         onPressed: _toggleRecording,
                       ),
                       Expanded(
@@ -380,6 +406,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   }
 
   Widget _buildMessageBubble(Message msg, bool isMe) {
+    final colorScheme = Theme.of(context).colorScheme;
     Widget content;
     if (msg.type == MessageType.image) {
       content = Image.network(msg.content);
@@ -391,7 +418,9 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     } else {
       content = Text(
         msg.content,
-        style: TextStyle(color: isMe ? Colors.white : Colors.black),
+        style: TextStyle(
+          color: isMe ? colorScheme.onPrimary : colorScheme.onSurface,
+        ),
       );
     }
 
@@ -401,10 +430,20 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        margin: EdgeInsets.only(
+          top: 4,
+          bottom: 4,
+          left: isMe ? 50 : 16,
+          right: isMe ? 16 : 50,
+        ),
         padding: const EdgeInsets.all(12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
         decoration: BoxDecoration(
-          color: isMe ? Colors.blue : Colors.grey[200],
+          color: isMe
+              ? colorScheme.primary
+              : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -412,19 +451,22 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           children: [
             content,
             const SizedBox(height: 2),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                statusWidget,
-                statusText,
-                Text(
-                  "${msg.createdAt.hour}:${msg.createdAt.minute}",
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: isMe ? Colors.white70 : Colors.grey,
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  statusWidget,
+                  statusText,
+                  Text(
+                    DateFormat('HH:mm').format(msg.createdAt),
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: isMe ? colorScheme.onPrimary : colorScheme.outline,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -433,59 +475,61 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   }
 
   Widget _buildStatusIcon(Message msg) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (msg.status == MessageStatus.sending) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(right: 4),
-        child: Icon(Icons.access_time, size: 12, color: Colors.white70),
+        child: Icon(Icons.access_time, size: 12, color: colorScheme.onPrimary),
       );
     }
     if (msg.status == MessageStatus.failed) {
       return GestureDetector(
         onTap: () =>
             ref.read(chatRoomProvider(_params).notifier).retrySend(msg),
-        child: const Padding(
+        child: Padding(
           padding: EdgeInsets.only(right: 4),
-          child: Icon(Icons.refresh, size: 12, color: Colors.redAccent),
+          child: Icon(Icons.refresh, size: 12, color: colorScheme.error),
         ),
       );
     }
     if (msg.status == MessageStatus.sent) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(right: 4),
-        child: Icon(Icons.check, size: 12, color: Colors.white70),
+        child: Icon(Icons.check, size: 12, color: colorScheme.onPrimary),
       );
     }
     if (msg.status == MessageStatus.delivered) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(right: 4),
-        child: Icon(Icons.done_all, size: 12, color: Colors.white70),
+        child: Icon(Icons.done_all, size: 12, color: colorScheme.onPrimary),
       );
     }
     if (msg.status == MessageStatus.read) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(right: 4),
-        child: Icon(Icons.done_all, size: 12, color: Colors.lightBlueAccent),
+        child: Icon(Icons.done_all, size: 12, color: colorScheme.primary),
       );
     }
     return const SizedBox(width: 0, height: 0);
   }
 
   Widget _buildStatusText(Message msg) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (msg.status == MessageStatus.sending) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(right: 4),
         child: Text(
           'Sending',
-          style: TextStyle(fontSize: 10, color: Colors.white70),
+          style: TextStyle(fontSize: 10, color: colorScheme.onPrimary),
         ),
       );
     }
     if (msg.status == MessageStatus.failed) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(right: 4),
         child: Text(
           'Failed',
-          style: TextStyle(fontSize: 10, color: Colors.redAccent),
+          style: TextStyle(fontSize: 10, color: colorScheme.error),
         ),
       );
     }
@@ -495,7 +539,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
         padding: const EdgeInsets.only(right: 4),
         child: Text(
           '已讀 ${_formatTime(time)}',
-          style: const TextStyle(fontSize: 10, color: Colors.lightBlueAccent),
+          style: TextStyle(fontSize: 10, color: colorScheme.primary),
         ),
       );
     }
@@ -503,6 +547,34 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   }
 
   String _formatTime(DateTime time) {
-    return DateFormat('yyyy/MM/dd HH:mm').format(time);
+    return DateFormat('HH:mm').format(time);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return DateUtils.isSameDay(a, b);
+  }
+
+  Widget _buildDateDivider(DateTime date) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final label = _isSameDay(date, now)
+        ? '今天'
+        : DateFormat('yyyy/MM/dd').format(date);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ),
+    );
   }
 }
