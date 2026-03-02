@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:app/features/chat/providers/chat_room_provider.dart';
 import 'package:app/models/message.dart';
 import 'package:app/core/media/media_service.dart';
@@ -261,7 +262,21 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                               children: [
                                 if (showDivider)
                                   _buildDateDivider(msg.createdAt),
-                                _buildMessageBubble(msg, isMe),
+                                VisibilityDetector(
+                                  key: ValueKey('msg_${msg.id}_$index'),
+                                  onVisibilityChanged: (info) {
+                                    if (!isMe &&
+                                        info.visibleFraction > 0.5 &&
+                                        !msg.readBy.contains(
+                                          widget.currentUserId,
+                                        )) {
+                                      ref
+                                          .read(chatRoomProvider(_params).notifier)
+                                          .markAsRead(msg.id);
+                                    }
+                                  },
+                                  child: _buildMessageBubble(msg, isMe),
+                                ),
                               ],
                             );
                           },
@@ -453,12 +468,23 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           children: [
             content,
             const SizedBox(height: 2),
-
-               Row(
+            Align(
+              alignment: isMe ? Alignment.bottomRight : Alignment.bottomLeft,
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   statusWidget,
                   statusText,
+                  if (isMe && widget.isRoom) ...[
+                    Text(
+                      '已讀 ${msg.readBy.length} 人',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: colorScheme.onPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   Text(
                     DateFormat('HH:mm').format(msg.createdAt),
                     style: TextStyle(
@@ -468,7 +494,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                   ),
                 ],
               ),
-            
+            ),
           ],
         ),
       ),

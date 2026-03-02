@@ -12,20 +12,22 @@ import (
 )
 
 const (
-	ExchangeName = "chat_fanout"
-	QueueName    = "" // Empty for exclusive queue (auto-delete)
+	ExchangeName       = "chat_fanout"
+	EventsExchangeName = "chat_events_exchange"
+	QueueName          = "" // Empty for exclusive queue (auto-delete)
 )
 
 type RabbitMQClient struct {
-	conn      *amqp.Connection
-	channel   *amqp.Channel
-	queueName string
-	// Channel to deliver messages back to the Hub
-	msgChan chan<- *domain.Message
+	conn           *amqp.Connection
+	channel        *amqp.Channel
+	queueName      string
+	eventQueueName string
+	msgChan        chan<- *domain.Message
+	eventChan      chan<- []byte
 }
 
 // NewRabbitMQClient initializes RabbitMQ connection and sets up exchange/queue.
-func NewRabbitMQClient(cfg *config.Config, msgChan chan<- *domain.Message) (*RabbitMQClient, error) {
+func NewRabbitMQClient(cfg *config.Config, msgChan chan<- *domain.Message, eventChan chan<- []byte) (*RabbitMQClient, error) {
 	conn, err := amqp.Dial(cfg.RabbitMQURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
@@ -53,6 +55,21 @@ func NewRabbitMQClient(cfg *config.Config, msgChan chan<- *domain.Message) (*Rab
 		return nil, fmt.Errorf("failed to declare exchange: %w", err)
 	}
 
+	err = ch.ExchangeDeclare(
+		EventsExchangeName,
+		"fanout",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		ch.Close()
+		conn.Close()
+		return nil, fmt.Errorf("failed to declare events exchange: %w", err)
+	}
+
 	// 2. Declare Exclusive Queue (Unique for this server instance)
 	q, err := ch.QueueDeclare(
 		QueueName, // name (empty = server generated)
@@ -66,6 +83,20 @@ func NewRabbitMQClient(cfg *config.Config, msgChan chan<- *domain.Message) (*Rab
 		ch.Close()
 		conn.Close()
 		return nil, fmt.Errorf("failed to declare queue: %w", err)
+	}
+
+	eventQ, err := ch.QueueDeclare(
+		QueueName,
+		false,
+		true,
+		true,
+		false,
+		nil,
+	)
+	if err != nil {
+		ch.Close()
+		conn.Close()
+		return nil, fmt.Errorf("failed to declare event queue: %w", err)
 	}
 
 	// 3. Bind Queue to Exchange
@@ -82,15 +113,33 @@ func NewRabbitMQClient(cfg *config.Config, msgChan chan<- *domain.Message) (*Rab
 		return nil, fmt.Errorf("failed to bind queue: %w", err)
 	}
 
+	err = ch.QueueBind(
+		eventQ.Name,
+		"",
+		EventsExchangeName,
+		false,
+		nil,
+	)
+	if err != nil {
+		ch.Close()
+		conn.Close()
+		return nil, fmt.Errorf("failed to bind event queue: %w", err)
+	}
+
 	client := &RabbitMQClient{
-		conn:      conn,
-		channel:   ch,
-		queueName: q.Name,
-		msgChan:   msgChan,
+		conn:           conn,
+		channel:        ch,
+		queueName:      q.Name,
+		eventQueueName: eventQ.Name,
+		msgChan:        msgChan,
+		eventChan:      eventChan,
 	}
 
 	// Start consuming in a goroutine
 	go client.consume()
+	if eventChan != nil {
+		go client.consumeEvents()
+	}
 
 	return client, nil
 }
@@ -112,6 +161,24 @@ func (c *RabbitMQClient) Publish(msg *domain.Message) error {
 			Body:        body,
 		})
 	return err
+}
+
+func (c *RabbitMQClient) PublishEvent(event interface{}) error {
+	body, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	return c.channel.Publish(
+		EventsExchangeName,
+		"",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		},
+	)
 }
 
 // consume reads messages from the queue and sends them to the msgChan.
@@ -138,6 +205,28 @@ func (c *RabbitMQClient) consume() {
 		}
 		// Send to Hub for local broadcast
 		c.msgChan <- &msg
+	}
+}
+
+func (c *RabbitMQClient) consumeEvents() {
+	msgs, err := c.channel.Consume(
+		c.eventQueueName,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Printf("Failed to register event consumer: %v", err)
+		return
+	}
+
+	for d := range msgs {
+		if c.eventChan != nil {
+			c.eventChan <- d.Body
+		}
 	}
 }
 

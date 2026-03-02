@@ -138,3 +138,10 @@ func (u *messageUsecase) MarkMessagesAsReadBy(ctx context.Context, userID string
 	}
 	return nil
 }
+
+func (u *messageUsecase) GetRoomMessageMap(ctx context.Context, messageIDs []string) (map[string][]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
+
+	return u.messageRepo.GetRoomMessageMap(ctx, messageIDs)
+}

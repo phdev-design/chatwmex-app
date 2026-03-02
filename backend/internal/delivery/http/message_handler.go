@@ -7,6 +7,7 @@ import (
 
 	"chatwmex_backend/internal/delivery/http/middleware"
 	"chatwmex_backend/internal/domain"
+	ws "chatwmex_backend/internal/delivery/websocket"
 	"chatwmex_backend/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -14,12 +15,14 @@ import (
 
 type MessageHandler struct {
 	MessageUsecase domain.MessageUsecase
+	Hub            *ws.Hub
 }
 
 // NewMessageHandler initializes the message handler and registers routes.
-func NewMessageHandler(r *gin.Engine, mu domain.MessageUsecase, authMiddleware gin.HandlerFunc) {
+func NewMessageHandler(r *gin.Engine, mu domain.MessageUsecase, hub *ws.Hub, authMiddleware gin.HandlerFunc) {
 	handler := &MessageHandler{
 		MessageUsecase: mu,
+		Hub:            hub,
 	}
 
 	api := r.Group("/api/v1/messages")
@@ -27,6 +30,7 @@ func NewMessageHandler(r *gin.Engine, mu domain.MessageUsecase, authMiddleware g
 	{
 		api.POST("/send", handler.SendMessage)
 		api.GET("/history", handler.GetHistory)
+		api.POST("/read/batch", handler.MarkMessagesRead)
 		api.POST("/read", handler.MarkAsRead)
 	}
 }
@@ -136,6 +140,52 @@ func (h *MessageHandler) GetHistory(c *gin.Context) {
 type MarkReadRequest struct {
 	ConversationID string `json:"conversation_id" binding:"required"` // UserID (for DM) or RoomID
 	IsRoom         bool   `json:"is_room"`
+}
+
+type MarkMessagesReadRequest struct {
+	MessageIDs []string `json:"message_ids" binding:"required"`
+}
+
+func (h *MessageHandler) MarkMessagesRead(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	var req MarkMessagesReadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(req.MessageIDs) == 0 {
+		response.Error(c, http.StatusBadRequest, "message_ids is required")
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+
+	ctx := c.Request.Context()
+	if err := h.MessageUsecase.MarkMessagesAsReadBy(ctx, userIDStr, req.MessageIDs); err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	roomMap, err := h.MessageUsecase.GetRoomMessageMap(ctx, req.MessageIDs)
+	if err == nil && h.Hub != nil {
+		for roomID, messageIDs := range roomMap {
+			if roomID == "" || len(messageIDs) == 0 {
+				continue
+			}
+			h.Hub.BroadcastRoomReadReceipt(roomID, messageIDs, userIDStr)
+		}
+	}
+
+	response.Success(c, "Messages marked as read")
 }
 
 func (h *MessageHandler) MarkAsRead(c *gin.Context) {

@@ -1,9 +1,13 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/models/message.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/websocket/websocket_service.dart';
+import 'package:app/features/chat/repositories/chat_repository.dart';
+import 'package:app/core/storage/local_db_service.dart';
+import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:equatable/equatable.dart';
 import 'package:uuid/uuid.dart';
 
@@ -66,13 +70,18 @@ class ChatRoomParams extends Equatable {
 class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   late final NetworkService _network;
   late final WebSocketService _wsService;
+  late final ChatRepository _chatRepository;
   Timer? _typingTimer;
   bool _typingSent = false;
+  Timer? _readBatchTimer;
+  final Set<String> _pendingReadMessageIds = {};
+  final LinkedHashSet<String> _alreadyReportedMessageIds = LinkedHashSet();
 
   @override
   ChatRoomState build(ChatRoomParams arg) {
     _network = ref.watch(networkServiceProvider);
     _wsService = ref.watch(webSocketServiceProvider);
+    _chatRepository = ref.watch(chatRepositoryProvider);
 
     // Connect WebSocket
     _wsService.connect();
@@ -91,8 +100,13 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                     (message.senderId == arg.roomId ||
                         message.receiverId == arg.roomId))) {
               _addMessage(message);
+              Future(() => LocalDbService().insertMessages([message]));
               if (message.senderId != arg.currentUserId) {
-                markAsRead();
+                if (arg.isRoom) {
+                  markAsRead(message.id);
+                } else {
+                  markConversationAsRead();
+                }
               }
             }
           } catch (e) {
@@ -167,6 +181,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               _markConversationRead(readAt);
             }
           }
+        } else if (event == 'messages_read_receipt') {
+          if (payload is Map) {
+            final roomId = payload['room_id'];
+            final readBy = payload['read_by_user_id'];
+            final messageIds = payload['message_ids'];
+            if (roomId is String &&
+                readBy is String &&
+                messageIds is List &&
+                roomId == arg.roomId) {
+              _applyReadReceipt(
+                messageIds.map((e) => e.toString()).toList(),
+                readBy,
+              );
+            }
+          }
         }
       }
     });
@@ -174,6 +203,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     ref.onDispose(() {
       subscription.cancel();
       _typingTimer?.cancel();
+      _readBatchTimer?.cancel();
     });
 
     Future.microtask(() => loadHistory());
@@ -215,6 +245,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       isRead: existing.isRead,
       status: MessageStatus.sent,
       readAt: existing.readAt,
+      readBy: existing.readBy,
     );
     final messages = [...state.messages];
     messages[index] = updated;
@@ -239,6 +270,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       isRead: existing.isRead,
       status: status,
       readAt: existing.readAt,
+      readBy: existing.readBy,
     );
     final messages = [...state.messages];
     messages[index] = updated;
@@ -250,6 +282,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       if (m.senderId == arg.currentUserId &&
           m.receiverId == arg.roomId &&
           m.status != MessageStatus.read) {
+        final readBy = {...m.readBy, arg.currentUserId}.toList();
         return Message(
           id: m.id,
           clientMsgId: m.clientMsgId,
@@ -262,11 +295,42 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           isRead: true,
           status: MessageStatus.read,
           readAt: readAt ?? DateTime.now(),
+          readBy: readBy,
         );
       }
       return m;
     }).toList();
     state = state.copyWith(messages: updated);
+  }
+
+  void _applyReadReceipt(List<String> messageIds, String readByUserId) {
+    final idSet = messageIds.toSet();
+    final List<Message> updatedMessages = [];
+    final updated = state.messages.map((m) {
+      if (idSet.contains(m.id) && !m.readBy.contains(readByUserId)) {
+        final newMessage = Message(
+          id: m.id,
+          clientMsgId: m.clientMsgId,
+          content: m.content,
+          senderId: m.senderId,
+          receiverId: m.receiverId,
+          roomId: m.roomId,
+          type: m.type,
+          createdAt: m.createdAt,
+          isRead: m.isRead,
+          status: m.status,
+          readAt: m.readAt,
+          readBy: [...m.readBy, readByUserId],
+        );
+        updatedMessages.add(newMessage);
+        return newMessage;
+      }
+      return m;
+    }).toList();
+    state = state.copyWith(messages: updated);
+    if (updatedMessages.isNotEmpty) {
+      Future(() => LocalDbService().insertMessages(updatedMessages));
+    }
   }
 
   // --- API Logic ---
@@ -292,7 +356,22 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         isLoading: false,
       );
       if (offset == 0) {
-        markAsRead();
+        if (arg.isRoom) {
+          final ids = ordered
+              .where(
+                (m) =>
+                    m.senderId != arg.currentUserId &&
+                    !m.readBy.contains(arg.currentUserId),
+              )
+              .map((m) => m.id)
+              .where((id) => id.isNotEmpty)
+              .toList();
+          for (final id in ids) {
+            markAsRead(id);
+          }
+        } else {
+          markConversationAsRead();
+        }
       }
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -315,6 +394,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       createdAt: DateTime.now(),
       isRead: true,
       status: MessageStatus.sending,
+      readBy: [arg.currentUserId],
     );
     _addMessage(tempMessage);
 
@@ -329,6 +409,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     try {
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
+      Future(() => LocalDbService().insertMessages([tempMessage]));
     } catch (e) {
       _updateMessageStatus(clientMsgId, MessageStatus.failed);
     }
@@ -369,14 +450,44 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
-  Future<void> markAsRead() async {
+  Future<void> markConversationAsRead() async {
     final payload = {'conversation_id': arg.roomId, 'is_room': arg.isRoom};
     _wsService.send('mark_read', payload);
     try {
       await _network.client.post('/messages/read', data: payload);
+      ref.read(roomListViewModelProvider.notifier).clearUnreadCount(arg.roomId);
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
+  }
+
+  void markAsRead(String messageId) {
+    if (messageId.isEmpty) return;
+    if (_alreadyReportedMessageIds.contains(messageId)) {
+      return;
+    }
+    _pendingReadMessageIds.add(messageId);
+    _readBatchTimer?.cancel();
+    _readBatchTimer = Timer(const Duration(milliseconds: 800), () async {
+      if (_pendingReadMessageIds.isEmpty) return;
+      final ids = _pendingReadMessageIds.toList();
+      _pendingReadMessageIds.clear();
+      _alreadyReportedMessageIds.addAll(ids);
+      if (_alreadyReportedMessageIds.length > 1000) {
+        final toRemove = _alreadyReportedMessageIds.take(200).toList();
+        _alreadyReportedMessageIds.removeAll(toRemove);
+      }
+      try {
+        await _chatRepository.markMessagesAsRead(ids);
+        _applyReadReceipt(ids, arg.currentUserId);
+        ref
+            .read(roomListViewModelProvider.notifier)
+            .clearUnreadCount(arg.roomId);
+      } catch (e) {
+        _alreadyReportedMessageIds.removeAll(ids);
+        state = state.copyWith(error: e.toString());
+      }
+    });
   }
 
   void startTyping() {

@@ -42,6 +42,7 @@ type Hub struct {
 	
 	// RabbitMQ Ingress Channel
 	rabbitIngress <-chan *domain.Message
+	rabbitEventIngress <-chan []byte
 	
 	// Notification Service for Push Notifications
 	notificationService domain.NotificationService
@@ -53,7 +54,7 @@ func (h *Hub) GetActiveConnectionCount() int {
 }
 
 // NewHub creates a new Hub instance.
-func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, ns domain.NotificationService) *Hub {
+func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService) *Hub {
 	return &Hub{
 		broadcast:           make(chan *domain.Message),
 		register:            make(chan *Client),
@@ -65,6 +66,7 @@ func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRep
 		onlineRepo:          or,
 		rabbitMQ:            rabbit,
 		rabbitIngress:       rabbitIngress,
+		rabbitEventIngress:  rabbitEventIngress,
 		notificationService: ns,
 	}
 }
@@ -138,6 +140,10 @@ func (h *Hub) Run() {
 				// It has already been saved to DB by the original sender server.
 				// We just need to route it to local connected clients.
 				h.routeMessage(msg)
+			}
+		case eventBytes := <-h.rabbitEventIngress:
+			if h.rabbitEventIngress != nil {
+				h.handleChatEvent(eventBytes)
 			}
 		}
 	}
@@ -269,6 +275,75 @@ func (h *Hub) SendReadReceiptToUser(senderID, readerID string) {
 		}
 		bytes, _ := json.Marshal(resp)
 		client.send <- bytes
+	}
+}
+
+type chatEvent struct {
+	Type          string   `json:"type"`
+	RoomID        string   `json:"room_id"`
+	MessageIDs    []string `json:"message_ids"`
+	ReadByUserID  string   `json:"read_by_user_id"`
+}
+
+func (h *Hub) BroadcastRoomReadReceipt(roomID string, messageIDs []string, readerID string) {
+	event := chatEvent{
+		Type:         "messages_read_receipt",
+		RoomID:       roomID,
+		MessageIDs:   messageIDs,
+		ReadByUserID: readerID,
+	}
+	if h.rabbitMQ != nil {
+		if err := h.rabbitMQ.PublishEvent(event); err == nil {
+			return
+		}
+	}
+	h.broadcastRoomReadReceiptLocal(event)
+}
+
+func (h *Hub) handleChatEvent(eventBytes []byte) {
+	var event chatEvent
+	if err := json.Unmarshal(eventBytes, &event); err != nil {
+		return
+	}
+	if event.Type == "messages_read_receipt" {
+		h.broadcastRoomReadReceiptLocal(event)
+	}
+}
+
+func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
+	cancel()
+	if err != nil {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event": "messages_read_receipt",
+		"data": map[string]interface{}{
+			"room_id":         event.RoomID,
+			"message_ids":     event.MessageIDs,
+			"read_by_user_id": event.ReadByUserID,
+		},
+	}
+	messageBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	for _, memberID := range members {
+		if memberID == event.ReadByUserID {
+			continue
+		}
+		if destClient, ok := h.userClients[memberID]; ok {
+			select {
+			case destClient.send <- messageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
+		}
 	}
 }
 

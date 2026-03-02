@@ -116,11 +116,12 @@ func main() {
 
 	// Initialize WebSocket Hub
 	rabbitIn := make(chan *domain.Message)
+	rabbitEvents := make(chan []byte)
 	
 	var rabbitClient *rabbitmq.RabbitMQClient
 	if cfg.RabbitMQURL != "" {
 		var err error
-		rabbitClient, err = rabbitmq.NewRabbitMQClient(cfg, rabbitIn)
+		rabbitClient, err = rabbitmq.NewRabbitMQClient(cfg, rabbitIn, rabbitEvents)
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RabbitMQ: %v", err)
 		} else {
@@ -129,7 +130,7 @@ func main() {
 	}
 	
 	// Hub needs NotificationService to send push when user offline
-	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, notificationService)
+	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService)
 	
 	// Create SocketController
 	socketController := websocket.NewSocketController(hub, messageUsecase)
@@ -157,7 +158,7 @@ func main() {
 
 	// Register Handlers
 	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret)
-	delivery.NewMessageHandler(r, messageUsecase, authMiddleware)
+	delivery.NewMessageHandler(r, messageUsecase, hub, authMiddleware)
 	delivery.NewRoomHandler(r, roomUsecase, authMiddleware)
 	delivery.NewOnlineHandler(r, onlineRepo, authMiddleware)
 	delivery.NewFriendHandler(r, friendUsecase, cfg.JWTSecret)

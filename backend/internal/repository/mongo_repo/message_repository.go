@@ -433,6 +433,49 @@ func (r *MessageRepository) MarkMessageAsReadBy(ctx context.Context, messageID s
 	return nil
 }
 
+func (r *MessageRepository) GetRoomMessageMap(ctx context.Context, messageIDs []string) (map[string][]string, error) {
+	if len(messageIDs) == 0 {
+		return map[string][]string{}, nil
+	}
+
+	objectIDs := make([]primitive.ObjectID, 0, len(messageIDs))
+	for _, id := range messageIDs {
+		if id == "" {
+			continue
+		}
+		oid, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return nil, fmt.Errorf("invalid object ID: %w", err)
+		}
+		objectIDs = append(objectIDs, oid)
+	}
+	if len(objectIDs) == 0 {
+		return map[string][]string{}, nil
+	}
+
+	cursor, err := r.collection.Find(ctx, bson.M{"_id": bson.M{"$in": objectIDs}})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query messages: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	roomMap := map[string][]string{}
+	for cursor.Next(ctx) {
+		var msg mongoMessage
+		if err := cursor.Decode(&msg); err != nil {
+			return nil, err
+		}
+		if msg.RoomID == "" {
+			continue
+		}
+		roomMap[msg.RoomID] = append(roomMap[msg.RoomID], msg.ID.Hex())
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return roomMap, nil
+}
+
 func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
 	var filter bson.M
 	var update bson.M

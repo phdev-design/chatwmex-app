@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/core/websocket/websocket_service.dart';
+import 'package:app/core/storage/storage_service.dart';
 
 class RoomListState {
   final List<Room> rooms;
@@ -34,11 +35,19 @@ class RoomListState {
 class RoomListViewModel extends Notifier<RoomListState> {
   late final ChatRepository _repository;
   final Map<String, int> _unreadOverrides = {};
+  String? _currentUserId;
 
   @override
   RoomListState build() {
     _repository = ref.watch(chatRepositoryProvider);
     final wsService = ref.watch(webSocketServiceProvider);
+    final storage = ref.watch(storageServiceProvider);
+
+    if (_currentUserId == null) {
+      Future.microtask(() async {
+        _currentUserId = await storage.read('user_id');
+      });
+    }
 
     // Connect WebSocket
     wsService.connect();
@@ -55,6 +64,18 @@ class RoomListViewModel extends Notifier<RoomListState> {
             markRoomRead(payload['conversation_id']);
           }
           fetchRooms();
+        } else if (event == 'messages_read_receipt') {
+          final payload = data['data'];
+          if (payload is Map) {
+            final roomId = payload['room_id'];
+            final readBy = payload['read_by_user_id'];
+            if (roomId is String &&
+                readBy is String &&
+                _currentUserId != null &&
+                readBy == _currentUserId) {
+              clearUnreadCount(roomId);
+            }
+          }
         }
       }
     });
@@ -92,6 +113,17 @@ class RoomListViewModel extends Notifier<RoomListState> {
   }
 
   void markRoomRead(String roomId) {
+    _unreadOverrides[roomId] = 0;
+    final updated = state.rooms.map((room) {
+      if (room.id == roomId && room.unreadCount != 0) {
+        return room.copyWith(unreadCount: 0);
+      }
+      return room;
+    }).toList();
+    state = state.copyWith(rooms: updated);
+  }
+
+  void clearUnreadCount(String roomId) {
     _unreadOverrides[roomId] = 0;
     final updated = state.rooms.map((room) {
       if (room.id == roomId && room.unreadCount != 0) {

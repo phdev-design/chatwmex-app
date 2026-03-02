@@ -53,7 +53,9 @@ class WebSocketService {
           try {
             final decoded = jsonDecode(message);
 
-            if (decoded['event'] == 'message_ack') {
+            if (decoded['event'] == 'messages_read_receipt') {
+              _streamController.add(decoded);
+            } else if (decoded['event'] == 'message_ack') {
               final clientMsgId = decoded['data']['client_msg_id'];
               if (clientMsgId != null &&
                   _pendingAcks.containsKey(clientMsgId)) {
