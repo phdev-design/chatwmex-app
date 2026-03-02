@@ -11,23 +11,31 @@ import (
 
 type messageUsecase struct {
 	messageRepo    domain.MessageRepository
+	roomRepo       domain.RoomRepository
+	onlineRepo     domain.OnlineRepository
 	contextTimeout time.Duration
 }
 
 // NewMessageUsecase creates a new instance of MessageUsecase.
-func NewMessageUsecase(repo domain.MessageRepository, timeout time.Duration) domain.MessageUsecase {
+func NewMessageUsecase(
+	repo domain.MessageRepository,
+	roomRepo domain.RoomRepository,
+	onlineRepo domain.OnlineRepository,
+	timeout time.Duration,
+) domain.MessageUsecase {
 	return &messageUsecase{
 		messageRepo:    repo,
+		roomRepo:       roomRepo,
+		onlineRepo:     onlineRepo,
 		contextTimeout: timeout,
 	}
 }
 
-// SendMessage handles the business logic of sending a message.
 func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) error {
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
 
-	// 1. Basic Validation
+	// 1) Basic Validation
 	if strings.TrimSpace(msg.SenderID) == "" {
 		return errors.New("sender ID cannot be empty")
 	}
@@ -36,19 +44,52 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 		return errors.New("message content cannot be empty")
 	}
 
-	// Ensure either ReceiverID or RoomID is present, but validation logic depends on business rules.
-	// The prompt says: "ReceiverID and RoomID cannot be BOTH empty".
-	// It's usually XOR, but let's stick to the prompt: "cannot be empty simultaneously".
+	// 2) Ensure either ReceiverID or RoomID is present.
 	if strings.TrimSpace(msg.ReceiverID) == "" && strings.TrimSpace(msg.RoomID) == "" {
 		return errors.New("receiver ID or room ID must be provided")
 	}
 
-	// 2. Set Server Timestamp
-	// Force the creation time to be now, controlled by the server.
+	// 3) Group message routing rules:
+	//    - When RoomID is set, we verify the sender is a member of the room.
+	//    - For each other member, if they are offline, we store the message in their offline queue.
+	if strings.TrimSpace(msg.RoomID) != "" {
+		members, err := u.roomRepo.GetMembers(ctx, msg.RoomID)
+		if err != nil {
+			return err
+		}
+		isMember := false
+		for _, memberID := range members {
+			if memberID == msg.SenderID {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			return errors.New("unauthorized")
+		}
+
+		onlineMap, err := u.onlineRepo.GetOnlineUsers(ctx, members)
+		if err != nil {
+			return err
+		}
+
+		// Store offline copies for members who are not online (exclude sender).
+		for _, memberID := range members {
+			if memberID == msg.SenderID {
+				continue
+			}
+			if !onlineMap[memberID] {
+				if err := u.messageRepo.StoreOfflineMessage(ctx, memberID, msg); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// 4) Set server timestamp to ensure canonical ordering.
 	msg.CreatedAt = time.Now()
 
-	// 3. Persistence
-	// The repository handles encryption internally.
+	// 5) Persist the message for history (encryption handled by repository).
 	return u.messageRepo.StoreMessage(ctx, msg)
 }
 
@@ -81,4 +122,19 @@ func (u *messageUsecase) MarkAsRead(ctx context.Context, userID, conversationID 
 	defer cancel()
 
 	return u.messageRepo.MarkAsRead(ctx, userID, conversationID, isRoom)
+}
+
+func (u *messageUsecase) MarkMessagesAsReadBy(ctx context.Context, userID string, messageIDs []string) error {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
+
+	for _, messageID := range messageIDs {
+		if messageID == "" {
+			continue
+		}
+		if err := u.messageRepo.MarkMessageAsReadBy(ctx, messageID, userID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -34,6 +34,7 @@ type MessageRepository interface {
 	CountUnreadInRoom(ctx context.Context, roomID, userID string) (int, error)
 	GetRoomLastReadAt(ctx context.Context, roomID, userID string) (time.Time, error)
 	CountUnreadInRoomAfter(ctx context.Context, roomID, userID string, lastReadAt time.Time) (int, error)
+	MarkMessageAsReadBy(ctx context.Context, messageID string, userID string) error
 	
 	// GetConversations retrieves DM conversations for a user.
 	GetConversations(ctx context.Context, userID string) ([]*Conversation, error)
@@ -65,4 +66,5 @@ type MessageUsecase interface {
 	FetchOfflineMessages(ctx context.Context, userID string) ([]*Message, error)
 	
 	MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error
+	MarkMessagesAsReadBy(ctx context.Context, userID string, messageIDs []string) error
 }

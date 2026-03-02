@@ -26,6 +26,7 @@ type RoomRepository interface {
 	GetByID(ctx context.Context, id string) (*Room, error)
 	AddMember(ctx context.Context, roomID string, userID string) error
 	RemoveMember(ctx context.Context, roomID string, userID string) error
+	DeleteRoom(ctx context.Context, roomID string) error
 	GetMembers(ctx context.Context, roomID string) ([]string, error)
 	// GetUserRooms retrieves all rooms a user is a member of.
 	GetUserRooms(ctx context.Context, userID string) ([]*Room, error)
@@ -33,9 +34,11 @@ type RoomRepository interface {
 
 // RoomUsecase defines the interface for room business logic.
 type RoomUsecase interface {
-	CreateRoom(ctx context.Context, name string, ownerID string) (*Room, error)
+	CreateRoom(ctx context.Context, name string, ownerID string, memberIDs []string) (*Room, error)
 	JoinRoom(ctx context.Context, roomID string, userID string) error
 	LeaveRoom(ctx context.Context, roomID string, userID string) error
+	KickMember(ctx context.Context, roomID string, ownerID string, memberID string) error
+	DeleteRoom(ctx context.Context, roomID string, ownerID string) error
 	GetRoomMembers(ctx context.Context, roomID string) ([]string, error)
 	GetUserRooms(ctx context.Context, userID string) ([]*Room, error)
 }

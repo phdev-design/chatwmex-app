@@ -196,51 +196,6 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 					delete(h.clients, destClient)
 					delete(h.userClients, destClient.userID)
 				}
-			} else {
-				// Member not connected locally.
-				// If we are Single Server, they are offline.
-				// If Multi-Server, we rely on RabbitMQ ingress on other servers.
-				// But who stores offline?
-				// For this exercise, assume Single Server or "Store if not local" strategy for simplicity,
-				// avoiding complexity of distributed offline detection.
-				// But wait, if we use RabbitMQ, this `routeMessage` runs on ALL servers.
-				// If User is on Server B, Server B will deliver.
-				// If User is offline, ALL servers will fail to find client.
-				// If we store offline on ALL servers, we duplicate.
-				// We need a check: "Am I the authoritative server?" or "Is user offline globally?"
-				// Using Redis `onlineRepo`:
-				isOnline, _ := h.onlineRepo.IsUserOnline(context.Background(), memberID)
-				if !isOnline {
-					// User is offline globally. Store message.
-					// But if 3 servers run this, 3 will store.
-					// We need to ensure only one stores.
-					// Maybe only the server handling the *original* request (Controller) stores?
-					// But Controller doesn't know group members (Hub does).
-					// Let's just Store if not local, and assume Single Server for now as per "setup".
-					// Or use `SetNX` lock? Overkill.
-					// Let's implement: If !isOnline -> Store.
-					// But wrap in a check to avoid duplication if msg came from RabbitIngress?
-					// If msg came from RabbitIngress, we are just a relay. We shouldn't store offline.
-					// Only the "Origin" server should store offline?
-					// This `routeMessage` doesn't know if it's origin.
-					// Actually `rabbitIngress` calls `routeMessage`.
-					
-					// Let's simplify:
-					// 1. Controller saves History (Global).
-					// 2. Controller checks if 1-on-1 receiver is offline -> Store Offline.
-					// 3. Hub handles Group fan-out.
-					// For Group, if we want offline delivery, we need to iterate members.
-					// Let's do it in Hub, but only if `msg` is "local" (not from Rabbit)?
-					// But `routeMessage` unifies both.
-					
-					// Revert to Single Server Assumption for Offline Queue logic to satisfy requirement 5 without distributed complexity.
-					go h.messageUsecase.SaveOfflineMessage(context.Background(), memberID, msg)
-					
-					// Send Push Notification
-					if h.notificationService != nil {
-						h.notificationService.SendNotification(memberID, "chat_message", msg)
-					}
-				}
 			}
 		}
 	} else if msg.ReceiverID != "" {

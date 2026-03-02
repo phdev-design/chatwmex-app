@@ -417,6 +417,22 @@ func (r *MessageRepository) CountUnreadInRoomAfter(ctx context.Context, roomID, 
 	return int(count), nil
 }
 
+func (r *MessageRepository) MarkMessageAsReadBy(ctx context.Context, messageID string, userID string) error {
+	oid, err := primitive.ObjectIDFromHex(messageID)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+	update := bson.M{"$addToSet": bson.M{"read_by": userID}}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": oid}, update)
+	if err != nil {
+		return fmt.Errorf("failed to mark message as read: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("message not found")
+	}
+	return nil
+}
+
 func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
 	var filter bson.M
 	var update bson.M

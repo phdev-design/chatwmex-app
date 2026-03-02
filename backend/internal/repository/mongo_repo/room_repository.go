@@ -20,6 +20,7 @@ type mongoRoom struct {
 	Name      string             `bson:"name"`
 	OwnerID   string             `bson:"owner_id"`
 	Members   []string           `bson:"members"`
+	Type      string             `bson:"type"`
 	CreatedAt time.Time          `bson:"created_at"`
 	UpdatedAt time.Time          `bson:"updated_at"`
 }
@@ -40,6 +41,7 @@ func (r *RoomRepository) toDomain(mr *mongoRoom) *domain.Room {
 		Name:      mr.Name,
 		OwnerID:   mr.OwnerID,
 		Members:   mr.Members,
+		Type:      mr.Type,
 		CreatedAt: mr.CreatedAt,
 		UpdatedAt: mr.UpdatedAt,
 	}
@@ -59,6 +61,7 @@ func (r *RoomRepository) fromDomain(dr *domain.Room) (*mongoRoom, error) {
 		Name:      dr.Name,
 		OwnerID:   dr.OwnerID,
 		Members:   dr.Members,
+		Type:      dr.Type,
 		CreatedAt: dr.CreatedAt,
 		UpdatedAt: dr.UpdatedAt,
 	}, nil
@@ -130,6 +133,22 @@ func (r *RoomRepository) RemoveMember(ctx context.Context, roomID string, userID
 	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": oid}, update)
 	if err != nil {
 		return fmt.Errorf("failed to remove member: %w", err)
+	}
+	return nil
+}
+
+func (r *RoomRepository) DeleteRoom(ctx context.Context, roomID string) error {
+	oid, err := primitive.ObjectIDFromHex(roomID)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": oid})
+	if err != nil {
+		return fmt.Errorf("failed to delete room: %w", err)
+	}
+	if result.DeletedCount == 0 {
+		return errors.New("room not found")
 	}
 	return nil
 }

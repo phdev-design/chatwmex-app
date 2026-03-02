@@ -84,7 +84,7 @@ func main() {
 	// Set a default timeout for usecase operations
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
-	messageUsecase := usecase.NewMessageUsecase(messageRepo, timeout)
+	messageUsecase := usecase.NewMessageUsecase(messageRepo, roomRepo, onlineRepo, timeout)
 	roomUsecase := usecase.NewRoomUsecase(roomRepo, messageRepo, timeout)
 	deviceUsecase := usecase.NewDeviceUsecase(deviceRepo, timeout)
 

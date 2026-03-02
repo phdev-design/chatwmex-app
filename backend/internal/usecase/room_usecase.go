@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -22,14 +23,29 @@ func NewRoomUsecase(roomRepo domain.RoomRepository, messageRepo domain.MessageRe
 	}
 }
 
-func (u *roomUsecase) CreateRoom(c context.Context, name string, ownerID string) (*domain.Room, error) {
+func (u *roomUsecase) CreateRoom(c context.Context, name string, ownerID string, memberIDs []string) (*domain.Room, error) {
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
+
+	membersMap := map[string]struct{}{}
+	if ownerID != "" {
+		membersMap[ownerID] = struct{}{}
+	}
+	for _, memberID := range memberIDs {
+		if memberID != "" {
+			membersMap[memberID] = struct{}{}
+		}
+	}
+	uniqueMembers := make([]string, 0, len(membersMap))
+	for memberID := range membersMap {
+		uniqueMembers = append(uniqueMembers, memberID)
+	}
 
 	room := &domain.Room{
 		Name:    name,
 		OwnerID: ownerID,
-		Members: []string{ownerID}, // Owner is the first member
+		Members: uniqueMembers,
+		Type:    "group",
 	}
 	err := u.roomRepo.Create(ctx, room)
 	return room, err
@@ -45,6 +61,37 @@ func (u *roomUsecase) LeaveRoom(c context.Context, roomID string, userID string)
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
 	return u.roomRepo.RemoveMember(ctx, roomID, userID)
+}
+
+func (u *roomUsecase) KickMember(c context.Context, roomID string, ownerID string, memberID string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	room, err := u.roomRepo.GetByID(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if room.OwnerID != ownerID {
+		return errors.New("forbidden")
+	}
+	if memberID == ownerID {
+		return errors.New("cannot_remove_owner")
+	}
+	return u.roomRepo.RemoveMember(ctx, roomID, memberID)
+}
+
+func (u *roomUsecase) DeleteRoom(c context.Context, roomID string, ownerID string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	room, err := u.roomRepo.GetByID(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if room.OwnerID != ownerID {
+		return errors.New("forbidden")
+	}
+	return u.roomRepo.DeleteRoom(ctx, roomID)
 }
 
 func (u *roomUsecase) GetRoomMembers(c context.Context, roomID string) ([]string, error) {
