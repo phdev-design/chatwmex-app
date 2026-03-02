@@ -447,13 +447,14 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: isMe
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             content,
             const SizedBox(height: 2),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Row(
+
+               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   statusWidget,
@@ -467,7 +468,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                   ),
                 ],
               ),
-            ),
+            
           ],
         ),
       ),
@@ -507,7 +508,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     if (msg.status == MessageStatus.read) {
       return Padding(
         padding: EdgeInsets.only(right: 4),
-        child: Icon(Icons.done_all, size: 12, color: colorScheme.primary),
+        child: Icon(Icons.done_all, size: 12, color: colorScheme.onPrimary),
       );
     }
     return const SizedBox(width: 0, height: 0);
@@ -539,7 +540,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
         padding: const EdgeInsets.only(right: 4),
         child: Text(
           '已讀 ${_formatTime(time)}',
-          style: TextStyle(fontSize: 10, color: colorScheme.primary),
+          style: TextStyle(fontSize: 10, color: colorScheme.onPrimary),
         ),
       );
     }
