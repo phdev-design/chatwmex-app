@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/models/message.dart';
 import 'package:app/core/network/network_service.dart';
+import 'package:app/core/media/media_service.dart';
 import 'package:app/core/websocket/websocket_service.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/core/storage/local_db_service.dart';
@@ -24,6 +25,7 @@ class ChatRoomState {
   final bool hasMore;
   final int offset;
   final Message? replyingToMessage;
+  final bool isRecording;
 
   const ChatRoomState({
     this.messages = const [],
@@ -36,6 +38,7 @@ class ChatRoomState {
     this.hasMore = true,
     this.offset = 50,
     this.replyingToMessage,
+    this.isRecording = false,
   });
 
   ChatRoomState copyWith({
@@ -49,6 +52,8 @@ class ChatRoomState {
     bool? hasMore,
     int? offset,
     Message? replyingToMessage,
+    bool? isRecording,
+    bool clearReplyingTo = false,
   }) {
     return ChatRoomState(
       messages: messages ?? this.messages,
@@ -60,7 +65,10 @@ class ChatRoomState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
       offset: offset ?? this.offset,
-      replyingToMessage: replyingToMessage ?? this.replyingToMessage,
+      replyingToMessage: clearReplyingTo
+          ? null
+          : (replyingToMessage ?? this.replyingToMessage),
+      isRecording: isRecording ?? this.isRecording,
     );
   }
 }
@@ -213,6 +221,28 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               );
             }
           }
+        } else if (event == 'message_reaction') {
+          if (payload is Map) {
+            final roomId = payload['room_id'];
+            final messageId = payload['message_id'];
+            final reactionsRaw = payload['reactions'];
+            if (roomId is String &&
+                messageId is String &&
+                roomId == arg.roomId) {
+              final reactions = _parseReactionsMap(reactionsRaw);
+              _applyReactionUpdate(messageId, reactions);
+            }
+          }
+        } else if (event == 'message_unsent') {
+          if (payload is Map) {
+            final roomId = payload['room_id'];
+            final messageId = payload['message_id'];
+            if (roomId is String &&
+                messageId is String &&
+                roomId == arg.roomId) {
+              _applyUnsentUpdate(messageId);
+            }
+          }
         }
       }
     });
@@ -261,6 +291,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       roomId: existing.roomId,
       replyToMessageId: existing.replyToMessageId,
       replyToMessage: existing.replyToMessage,
+      reactions: existing.reactions,
+      isUnsent: existing.isUnsent,
       type: existing.type,
       createdAt: existing.createdAt,
       isRead: existing.isRead,
@@ -288,6 +320,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       roomId: existing.roomId,
       replyToMessageId: existing.replyToMessageId,
       replyToMessage: existing.replyToMessage,
+      reactions: existing.reactions,
+      isUnsent: existing.isUnsent,
       type: existing.type,
       createdAt: existing.createdAt,
       isRead: existing.isRead,
@@ -315,6 +349,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           roomId: m.roomId,
           replyToMessageId: m.replyToMessageId,
           replyToMessage: m.replyToMessage,
+          reactions: m.reactions,
+          isUnsent: m.isUnsent,
           type: m.type,
           createdAt: m.createdAt,
           isRead: true,
@@ -342,6 +378,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           roomId: m.roomId,
           replyToMessageId: m.replyToMessageId,
           replyToMessage: m.replyToMessage,
+          reactions: m.reactions,
+          isUnsent: m.isUnsent,
           type: m.type,
           createdAt: m.createdAt,
           isRead: m.isRead,
@@ -441,6 +479,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       roomId: arg.isRoom ? arg.roomId : null,
       replyToMessageId: replyToId,
       replyToMessage: state.replyingToMessage,
+      reactions: null,
+      isUnsent: false,
       type: type,
       createdAt: DateTime.now(),
       isRead: true,
@@ -462,7 +502,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
       Future(() => LocalDbService().insertMessages([tempMessage]));
-      state = state.copyWith(replyingToMessage: null);
+      state = state.copyWith(clearReplyingTo: true);
     } catch (e) {
       _updateMessageStatus(clientMsgId, MessageStatus.failed);
     }
@@ -485,8 +525,11 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     try {
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
+      Future(() => LocalDbService().insertMessages([message]));
+      state = state.copyWith(isSending: false, clearReplyingTo: true);
     } catch (e) {
       _updateMessageStatus(clientMsgId, MessageStatus.failed);
+      state = state.copyWith(isSending: false, error: e.toString());
     }
   }
 
@@ -500,6 +543,66 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       await sendMessage(url, type: type);
       state = state.copyWith(isSending: false);
     } catch (e) {
+      state = state.copyWith(isSending: false, error: e.toString());
+    }
+  }
+
+  Future<void> startRecording() async {
+    final mediaService = ref.read(mediaServiceProvider);
+    try {
+      final path = await mediaService.getTemporaryAudioPath();
+      await mediaService.startRecording(path);
+      state = state.copyWith(isRecording: true);
+    } catch (e) {
+      state = state.copyWith(isRecording: false, error: e.toString());
+    }
+  }
+
+  Future<void> stopRecordingAndSend() async {
+    final mediaService = ref.read(mediaServiceProvider);
+    state = state.copyWith(isRecording: false);
+    final path = await mediaService.stopRecording();
+    if (path == null || path.isEmpty) return;
+
+    final clientMsgId = const Uuid().v4();
+    final replyToId = state.replyingToMessage?.id;
+    state = state.copyWith(isSending: true);
+    try {
+      final url = await _chatRepository.uploadMedia(File(path), 'audio');
+      final tempMessage = Message(
+        id: clientMsgId,
+        clientMsgId: clientMsgId,
+        content: url,
+        senderId: arg.currentUserId,
+        receiverId: arg.isRoom ? null : arg.roomId,
+        roomId: arg.isRoom ? arg.roomId : null,
+        replyToMessageId: replyToId,
+        replyToMessage: state.replyingToMessage,
+        reactions: null,
+        isUnsent: false,
+        type: MessageType.voice,
+        createdAt: DateTime.now(),
+        isRead: true,
+        status: MessageStatus.sending,
+        readBy: [arg.currentUserId],
+      );
+      _addMessage(tempMessage);
+
+      final payload = {
+        'receiver_id': arg.isRoom ? null : arg.roomId,
+        'room_id': arg.isRoom ? arg.roomId : null,
+        'reply_to_message_id': replyToId,
+        'content': url,
+        'type': 'audio',
+        'client_msg_id': clientMsgId,
+      };
+
+      await _wsService.send('chat_message', payload);
+      _updateMessageStatus(clientMsgId, MessageStatus.sent);
+      Future(() => LocalDbService().insertMessages([tempMessage]));
+      state = state.copyWith(isSending: false, replyingToMessage: null);
+    } catch (e) {
+      _updateMessageStatus(clientMsgId, MessageStatus.failed);
       state = state.copyWith(isSending: false, error: e.toString());
     }
   }
@@ -519,8 +622,198 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  Future<void> sendDocument(File file) async {
+    state = state.copyWith(isSending: true);
+    try {
+      final url = await _chatRepository.uploadImage(file);
+      await sendMessage(url, type: MessageType.file);
+      state = state.copyWith(isSending: false);
+    } catch (e) {
+      state = state.copyWith(isSending: false, error: e.toString());
+    }
+  }
+
+  Future<void> toggleReaction(String messageId, String emoji) async {
+    if (messageId.isEmpty || emoji.isEmpty) return;
+    final index = state.messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+    final existing = state.messages[index];
+    final previousReactions = existing.reactions;
+    final updatedReactions = _toggleReactions(
+      existing.reactions,
+      emoji,
+      arg.currentUserId,
+    );
+    final updated = existing.copyWith(reactions: updatedReactions);
+    final messages = [...state.messages];
+    messages[index] = updated;
+    state = state.copyWith(messages: messages);
+    Future(() => LocalDbService().insertMessages([updated]));
+    try {
+      await _chatRepository.toggleReaction(messageId, emoji);
+    } catch (e) {
+      final rollback = existing.copyWith(reactions: previousReactions);
+      final rollbackMessages = [...state.messages];
+      final rollbackIndex = rollbackMessages.indexWhere(
+        (m) => m.id == messageId,
+      );
+      if (rollbackIndex != -1) {
+        rollbackMessages[rollbackIndex] = rollback;
+        state = state.copyWith(messages: rollbackMessages, error: e.toString());
+        Future(() => LocalDbService().insertMessages([rollback]));
+      }
+    }
+  }
+
+  Future<void> unsendMessage(Message msg) async {
+    if (msg.id.isEmpty) return;
+    final index = state.messages.indexWhere((m) => m.id == msg.id);
+    if (index == -1) return;
+
+    final existing = state.messages[index];
+    final updated = existing.copyWith(isUnsent: true, content: '');
+    final messages = [...state.messages];
+    messages[index] = updated;
+    state = state.copyWith(messages: messages);
+    Future(() => LocalDbService().insertMessages([updated]));
+
+    // 👇 新增：如果收回的是最新一則訊息（index == 0），同步更新 RoomList
+    if (index == 0) {
+      ref
+          .read(roomListViewModelProvider.notifier)
+          .updateRoomLastMessage(
+            arg.roomId,
+            '此訊息已收回',
+            lastMessageTime: updated.createdAt,
+          );
+    }
+
+    try {
+      await _chatRepository.unsendMessage(msg.id);
+    } catch (e) {
+      final rollbackMessages = [...state.messages];
+      final rollbackIndex = rollbackMessages.indexWhere((m) => m.id == msg.id);
+      if (rollbackIndex != -1) {
+        rollbackMessages[rollbackIndex] = existing;
+        state = state.copyWith(messages: rollbackMessages, error: e.toString());
+        Future(() => LocalDbService().insertMessages([existing]));
+      }
+    }
+  }
+
+  Future<void> deleteMessage(String messageId) async {
+    if (messageId.isEmpty) return;
+    try {
+      await _chatRepository.deleteMessage(messageId);
+      _removeMessageFromState(messageId);
+      Future(() => LocalDbService().deleteMessageLocal(messageId));
+      Future(() => ref.read(roomListViewModelProvider.notifier).fetchRooms());
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
+  void deleteMessageLocal(Message msg) {
+    if (msg.id.isEmpty) return;
+    _removeMessageFromState(msg.id);
+    Future(() => LocalDbService().deleteMessageLocal(msg.id));
+  }
+
+  void _removeMessageFromState(String messageId) {
+    final messages = state.messages.where((m) => m.id != messageId).toList();
+    state = state.copyWith(messages: messages);
+
+    String newLastMessage = '';
+    DateTime? newLastTime;
+
+    if (messages.isNotEmpty) {
+      final latest = messages.first;
+      if (latest.isUnsent) {
+        newLastMessage = '此訊息已收回';
+      } else if (latest.type == MessageType.image) {
+        newLastMessage = '[圖片]';
+      } else if (latest.type == MessageType.voice) {
+        newLastMessage = '[語音訊息]';
+      } else if (latest.type == MessageType.file) {
+        newLastMessage = '[檔案]';
+      } else {
+        newLastMessage = latest.content;
+      }
+      newLastTime = latest.createdAt;
+    }
+
+    ref
+        .read(roomListViewModelProvider.notifier)
+        .updateRoomLastMessage(
+          arg.roomId,
+          newLastMessage,
+          lastMessageTime: newLastTime,
+        );
+  }
+
   void setReplyingTo(Message? message) {
-    state = state.copyWith(replyingToMessage: message);
+    if (message == null) {
+      state = state.copyWith(clearReplyingTo: true);
+    } else {
+      state = state.copyWith(replyingToMessage: message);
+    }
+  }
+
+  Map<String, List<String>> _toggleReactions(
+    Map<String, List<String>>? current,
+    String emoji,
+    String userId,
+  ) {
+    final reactions = Map<String, List<String>>.from(current ?? {});
+    final users = List<String>.from(reactions[emoji] ?? []);
+    if (users.contains(userId)) {
+      users.remove(userId);
+    } else {
+      users.add(userId);
+    }
+    if (users.isEmpty) {
+      reactions.remove(emoji);
+    } else {
+      reactions[emoji] = users;
+    }
+    return reactions;
+  }
+
+  Map<String, List<String>> _parseReactionsMap(dynamic raw) {
+    if (raw is Map) {
+      return raw.map(
+        (key, value) => MapEntry(
+          key.toString(),
+          (value as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+        ),
+      );
+    }
+    return {};
+  }
+
+  void _applyReactionUpdate(
+    String messageId,
+    Map<String, List<String>> reactions,
+  ) {
+    final index = state.messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+    final existing = state.messages[index];
+    final updated = existing.copyWith(reactions: reactions);
+    final messages = [...state.messages];
+    messages[index] = updated;
+    state = state.copyWith(messages: messages);
+    Future(() => LocalDbService().insertMessages([updated]));
+  }
+
+  void _applyUnsentUpdate(String messageId) {
+    final index = state.messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+    final existing = state.messages[index];
+    final updated = existing.copyWith(isUnsent: true, content: '');
+    final messages = [...state.messages];
+    messages[index] = updated;
+    state = state.copyWith(messages: messages);
+    Future(() => LocalDbService().insertMessages([updated]));
   }
 
   Message _attachReplyMessage(Message message) {

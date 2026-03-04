@@ -226,3 +226,29 @@ func (u *messageUsecase) GetRoomMessageMap(ctx context.Context, messageIDs []str
 
 	return u.messageRepo.GetRoomMessageMap(ctx, messageIDs)
 }
+
+func (u *messageUsecase) ToggleReaction(ctx context.Context, messageID string, userID string, emoji string) (*domain.Message, error) {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
+
+	return u.messageRepo.ToggleReaction(ctx, messageID, userID, emoji)
+}
+
+func (u *messageUsecase) UnsendMessage(ctx context.Context, messageID string, userID string) (*domain.Message, error) {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
+
+	return u.messageRepo.UnsendMessage(ctx, messageID, userID)
+}
+
+func (u *messageUsecase) DeleteMessage(ctx context.Context, messageID string, userID string) error {
+	if strings.TrimSpace(messageID) == "" {
+		return errors.New("message ID cannot be empty")
+	}
+	if strings.TrimSpace(userID) == "" {
+		return errors.New("user ID cannot be empty")
+	}
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
+	return u.messageRepo.SoftDeleteMessage(ctx, messageID, userID)
+}

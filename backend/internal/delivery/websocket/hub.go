@@ -39,11 +39,11 @@ type Hub struct {
 
 	// RabbitMQ Client for cross-server broadcast
 	rabbitMQ *rabbitmq.RabbitMQClient
-	
+
 	// RabbitMQ Ingress Channel
-	rabbitIngress <-chan *domain.Message
+	rabbitIngress      <-chan *domain.Message
 	rabbitEventIngress <-chan []byte
-	
+
 	// Notification Service for Push Notifications
 	notificationService domain.NotificationService
 }
@@ -85,7 +85,7 @@ func (h *Hub) Run() {
 				if err := h.onlineRepo.SetUserOnline(ctx, uid); err != nil {
 					log.Printf("Error setting user %s online: %v", uid, err)
 				}
-				
+
 				// Fetch and deliver offline messages
 				msgs, err := h.messageUsecase.FetchOfflineMessages(ctx, uid)
 				if err != nil {
@@ -114,7 +114,7 @@ func (h *Hub) Run() {
 				// Only remove from userClients if it matches (handle potential race/overwrite)
 				if h.userClients[client.userID] == client {
 					delete(h.userClients, client.userID)
-					
+
 					// Mark user as offline in Redis ONLY if no other connections exist (simplified for now: just remove)
 					// In a multi-device scenario, we should check if other clients exist or use ref counting.
 					// But since h.userClients only stores one, we assume removing it means offline.
@@ -162,7 +162,7 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 	}
 
 	// 1. Send back to Sender (Confirmation)
-	// Even if it came from RabbitMQ (another server), if the sender is somehow connected here 
+	// Even if it came from RabbitMQ (another server), if the sender is somehow connected here
 	// (e.g. multi-device), they get it.
 	if sourceClient, ok := h.userClients[msg.SenderID]; ok {
 		select {
@@ -181,7 +181,7 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		members, err := h.roomUsecase.GetRoomMembers(ctx, msg.RoomID)
 		cancel()
-		
+
 		if err != nil {
 			log.Printf("Error fetching room members for broadcast: %v", err)
 			return
@@ -239,7 +239,7 @@ func (h *Hub) SendNotification(userID, event string, data interface{}) {
 		bytes, _ := json.Marshal(resp)
 		client.send <- bytes
 	}
-	
+
 	// Also send Push Notification if it's a critical event (like Friend Request)
 	// Or maybe only if client is NOT found?
 	// The requirement "User B must immediately... receive" implies WS if online.
@@ -267,10 +267,14 @@ func (h *Hub) SendReadReceiptToUser(senderID, readerID string) {
 }
 
 type chatEvent struct {
-	Type          string   `json:"type"`
-	RoomID        string   `json:"room_id"`
-	MessageIDs    []string `json:"message_ids"`
-	ReadByUserID  string   `json:"read_by_user_id"`
+	Type         string              `json:"type"`
+	RoomID       string              `json:"room_id"`
+	MessageIDs   []string            `json:"message_ids"`
+	ReadByUserID string              `json:"read_by_user_id"`
+	MessageID    string              `json:"message_id"`
+	Reactions    map[string][]string `json:"reactions"`
+	SenderID     string              `json:"sender_id"`
+	ReceiverID   string              `json:"receiver_id"`
 }
 
 func (h *Hub) BroadcastRoomReadReceipt(roomID string, messageIDs []string, readerID string) {
@@ -295,6 +299,14 @@ func (h *Hub) handleChatEvent(eventBytes []byte) {
 	}
 	if event.Type == "messages_read_receipt" {
 		h.broadcastRoomReadReceiptLocal(event)
+		return
+	}
+	if event.Type == "message_reaction" {
+		h.broadcastMessageReactionLocal(event)
+		return
+	}
+	if event.Type == "message_unsent" {
+		h.broadcastMessageUnsentLocal(event)
 	}
 }
 
@@ -331,6 +343,126 @@ func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
 				delete(h.clients, destClient)
 				delete(h.userClients, destClient.userID)
 			}
+		}
+	}
+}
+
+func (h *Hub) BroadcastMessageReaction(msg *domain.Message) {
+	if msg == nil {
+		return
+	}
+	event := chatEvent{
+		Type:      "message_reaction",
+		RoomID:    msg.RoomID,
+		MessageID: msg.ID,
+		Reactions: msg.Reactions,
+	}
+	if h.rabbitMQ != nil {
+		if err := h.rabbitMQ.PublishEvent(event); err == nil {
+			return
+		}
+	}
+	h.broadcastMessageReactionLocal(event)
+}
+
+func (h *Hub) broadcastMessageReactionLocal(event chatEvent) {
+	if event.RoomID == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
+	cancel()
+	if err != nil {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event": "message_reaction",
+		"data": map[string]interface{}{
+			"room_id":    event.RoomID,
+			"message_id": event.MessageID,
+			"reactions":  event.Reactions,
+		},
+	}
+	messageBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	for _, memberID := range members {
+		if destClient, ok := h.userClients[memberID]; ok {
+			select {
+			case destClient.send <- messageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
+		}
+	}
+}
+
+func (h *Hub) BroadcastMessageUnsent(msg *domain.Message) {
+	if msg == nil {
+		return
+	}
+	event := chatEvent{
+		Type:       "message_unsent",
+		RoomID:     msg.RoomID,
+		MessageID:  msg.ID,
+		SenderID:   msg.SenderID,
+		ReceiverID: msg.ReceiverID,
+	}
+	if h.rabbitMQ != nil {
+		if err := h.rabbitMQ.PublishEvent(event); err == nil {
+			return
+		}
+	}
+	h.broadcastMessageUnsentLocal(event)
+}
+
+func (h *Hub) broadcastMessageUnsentLocal(event chatEvent) {
+	payload := map[string]interface{}{
+		"event": "message_unsent",
+		"data": map[string]interface{}{
+			"room_id":    event.RoomID,
+			"message_id": event.MessageID,
+		},
+	}
+	messageBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	if event.RoomID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
+		cancel()
+		if err != nil {
+			return
+		}
+		for _, memberID := range members {
+			if destClient, ok := h.userClients[memberID]; ok {
+				select {
+				case destClient.send <- messageBytes:
+				default:
+					close(destClient.send)
+					delete(h.clients, destClient)
+					delete(h.userClients, destClient.userID)
+				}
+			}
+		}
+		return
+	}
+
+	if event.SenderID != "" {
+		if client, ok := h.userClients[event.SenderID]; ok {
+			client.send <- messageBytes
+		}
+	}
+	if event.ReceiverID != "" {
+		if client, ok := h.userClients[event.ReceiverID]; ok {
+			client.send <- messageBytes
 		}
 	}
 }

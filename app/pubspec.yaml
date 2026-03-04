@@ -47,6 +47,7 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.0
   sqflite: ^2.4.2
+  scroll_to_index: ^3.0.1
   onesignal_flutter: ^5.4.1
   image_picker: ^1.2.1
   record: ^6.2.0
@@ -54,10 +55,12 @@ dependencies:
   permission_handler: ^12.0.1
   mime: ^2.0.0
   visibility_detector: ^0.4.0+2
+  file_picker: ^8.0.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  sqflite_common_ffi: ^2.3.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -32,7 +32,7 @@ class WebSocketService {
     // Use proper IP for emulator/device
     // Android Emulator: 10.0.2.2
     // iOS Simulator / Real Device on LAN: Needs LAN IP or localhost (if Simulator)
-    String baseUrl = 'ws://localhost:8080/ws';
+    String baseUrl = 'ws://192.168.100.114:8080/ws';
     if (Platform.isAndroid) {
       baseUrl = 'ws://10.0.2.2:8080/ws';
     }
@@ -40,7 +40,9 @@ class WebSocketService {
     final uri = Uri.parse('$baseUrl?token=$token');
 
     try {
-      _channel = WebSocketChannel.connect(uri);
+      final channel = WebSocketChannel.connect(uri);
+      await channel.ready;
+      _channel = channel;
       _isConnected = true;
       _retryAttempts = 0;
       print('WebSocket connected');

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"chatwmex_backend/internal/delivery/http/middleware"
-	"chatwmex_backend/internal/domain"
 	ws "chatwmex_backend/internal/delivery/websocket"
+	"chatwmex_backend/internal/domain"
 	"chatwmex_backend/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +32,9 @@ func NewMessageHandler(r *gin.Engine, mu domain.MessageUsecase, hub *ws.Hub, aut
 		api.GET("/history", handler.GetHistory)
 		api.POST("/read/batch", handler.MarkMessagesRead)
 		api.POST("/read", handler.MarkAsRead)
+		api.POST("/:id/reactions", handler.ToggleReaction)
+		api.PATCH("/:id/unsend", handler.UnsendMessage)
+		api.DELETE("/:id", handler.DeleteMessage)
 	}
 }
 
@@ -215,4 +218,101 @@ func (h *MessageHandler) MarkAsRead(c *gin.Context) {
 	}
 
 	response.Success(c, "Messages marked as read")
+}
+
+type ToggleReactionRequest struct {
+	Emoji string `json:"emoji" binding:"required"`
+}
+
+func (h *MessageHandler) ToggleReaction(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+	messageID := c.Param("id")
+	if messageID == "" {
+		response.Error(c, http.StatusBadRequest, "Message ID is required")
+		return
+	}
+
+	var req ToggleReactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Emoji == "" {
+		response.Error(c, http.StatusBadRequest, "emoji is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	updated, err := h.MessageUsecase.ToggleReaction(ctx, messageID, userIDStr, req.Emoji)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if h.Hub != nil {
+		h.Hub.BroadcastMessageReaction(updated)
+	}
+	response.Success(c, updated)
+}
+
+func (h *MessageHandler) UnsendMessage(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+	messageID := c.Param("id")
+	if messageID == "" {
+		response.Error(c, http.StatusBadRequest, "Message ID is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	updated, err := h.MessageUsecase.UnsendMessage(ctx, messageID, userIDStr)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if h.Hub != nil {
+		h.Hub.BroadcastMessageUnsent(updated)
+	}
+	response.Success(c, updated)
+}
+
+func (h *MessageHandler) DeleteMessage(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+	messageID := c.Param("id")
+	if messageID == "" {
+		response.Error(c, http.StatusBadRequest, "Message ID is required")
+		return
+	}
+	ctx := c.Request.Context()
+	if err := h.MessageUsecase.DeleteMessage(ctx, messageID, userIDStr); err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, "Message deleted successfully")
 }

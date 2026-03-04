@@ -14,6 +14,8 @@ class Message extends Equatable {
   final String? roomId;
   final String? replyToMessageId;
   final Message? replyToMessage;
+  final Map<String, List<String>>? reactions;
+  final bool isUnsent;
   final MessageType type;
   final DateTime createdAt;
   final bool isRead;
@@ -30,6 +32,8 @@ class Message extends Equatable {
     this.roomId,
     this.replyToMessageId,
     this.replyToMessage,
+    this.reactions,
+    this.isUnsent = false,
     this.type = MessageType.text,
     required this.createdAt,
     this.isRead = false,
@@ -39,6 +43,16 @@ class Message extends Equatable {
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    Map<String, List<String>>? reactions;
+    final reactionsRaw = json['reactions'];
+    if (reactionsRaw is Map) {
+      reactions = reactionsRaw.map(
+        (key, value) => MapEntry(
+          key.toString(),
+          (value as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+        ),
+      );
+    }
     return Message(
       id: json['id'] ?? '',
       clientMsgId: json['client_msg_id'],
@@ -47,6 +61,8 @@ class Message extends Equatable {
       receiverId: json['receiver_id'],
       roomId: json['room_id'],
       replyToMessageId: json['reply_to_message_id'],
+      reactions: reactions,
+      isUnsent: json['is_unsent'] ?? false,
       type: _parseType(json['type']),
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       isRead: json['is_read'] ?? false,
@@ -73,6 +89,8 @@ class Message extends Equatable {
       'receiver_id': receiverId,
       'room_id': roomId,
       'reply_to_message_id': replyToMessageId,
+      'reactions': reactions,
+      'is_unsent': isUnsent,
       'type': type.name,
       'created_at': createdAt.toIso8601String(),
       'is_read': isRead,
@@ -90,6 +108,8 @@ class Message extends Equatable {
       'receiver_id': receiverId,
       'room_id': roomId,
       'reply_to_message_id': replyToMessageId,
+      'reactions': reactions != null ? jsonEncode(reactions) : null,
+      'is_unsent': isUnsent ? 1 : 0,
       'type': type.name,
       'created_at': createdAt.millisecondsSinceEpoch,
       'is_read': isRead ? 1 : 0,
@@ -105,6 +125,19 @@ class Message extends Equatable {
               .map((e) => e.toString())
               .toList()
         : const <String>[];
+    final reactionsRaw = map['reactions'];
+    Map<String, List<String>>? reactions;
+    if (reactionsRaw is String && reactionsRaw.isNotEmpty) {
+      final decoded = jsonDecode(reactionsRaw);
+      if (decoded is Map) {
+        reactions = decoded.map(
+          (key, value) => MapEntry(
+            key.toString(),
+            (value as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+          ),
+        );
+      }
+    }
 
     return Message(
       id: map['id'] ?? '',
@@ -114,6 +147,8 @@ class Message extends Equatable {
       receiverId: map['receiver_id'],
       roomId: map['room_id'],
       replyToMessageId: map['reply_to_message_id'],
+      reactions: reactions,
+      isUnsent: (map['is_unsent'] ?? 0) == 1,
       type: _parseType(map['type']),
       createdAt: map['created_at'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int)
@@ -131,6 +166,8 @@ class Message extends Equatable {
 
   static MessageType _parseType(String? type) {
     switch (type) {
+      case 'audio':
+        return MessageType.voice;
       case 'image':
         return MessageType.image;
       case 'voice':
@@ -153,6 +190,8 @@ class Message extends Equatable {
     receiverId,
     roomId,
     replyToMessageId,
+    reactions,
+    isUnsent,
     type,
     createdAt,
     isRead,
@@ -170,6 +209,8 @@ class Message extends Equatable {
     String? roomId,
     String? replyToMessageId,
     Message? replyToMessage,
+    Map<String, List<String>>? reactions,
+    bool? isUnsent,
     MessageType? type,
     DateTime? createdAt,
     bool? isRead,
@@ -186,6 +227,8 @@ class Message extends Equatable {
       roomId: roomId ?? this.roomId,
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       replyToMessage: replyToMessage ?? this.replyToMessage,
+      reactions: reactions ?? this.reactions,
+      isUnsent: isUnsent ?? this.isUnsent,
       type: type ?? this.type,
       createdAt: createdAt ?? this.createdAt,
       isRead: isRead ?? this.isRead,

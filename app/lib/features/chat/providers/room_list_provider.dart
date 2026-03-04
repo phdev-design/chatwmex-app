@@ -146,6 +146,20 @@ class RoomListViewModel extends Notifier<RoomListState> {
       print('Search failed: $e');
     }
   }
+
+  // 新增的方法：用於手動更新列表上的最後一則訊息
+  void updateRoomLastMessage(String roomId, String lastMessage, {DateTime? lastMessageTime}) {
+    final updated = state.rooms.map((room) {
+      if (room.id == roomId) {
+        return room.copyWith(
+          lastMessage: lastMessage,
+          lastMessageTime: lastMessageTime ?? room.lastMessageTime,
+        );
+      }
+      return room;
+    }).toList();
+    state = state.copyWith(rooms: updated);
+  }
 }
 
 final roomListViewModelProvider =

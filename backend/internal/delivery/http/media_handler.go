@@ -48,8 +48,10 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 	buffer := make([]byte, 512)
 	n, _ := src.Read(buffer)
 	contentType := http.DetectContentType(buffer[:n])
-	if !isImageContentType(contentType) {
-		response.Error(c, http.StatusBadRequest, "invalid image type")
+	isImage := isImageContentType(contentType)
+	isAudio := isAudioContentType(contentType)
+	if !isImage && !isAudio {
+		response.Error(c, http.StatusBadRequest, "invalid media type")
 		return
 	}
 
@@ -58,7 +60,11 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 		ext = contentTypeToExt(contentType)
 	}
 	if ext == "" {
-		response.Error(c, http.StatusBadRequest, "invalid image extension")
+		response.Error(c, http.StatusBadRequest, "invalid media extension")
+		return
+	}
+	if !isAllowedMediaExt(ext) {
+		response.Error(c, http.StatusBadRequest, "unsupported media extension")
 		return
 	}
 
@@ -68,7 +74,11 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 		return
 	}
 
-	dir := filepath.Join(".", "uploads", "images")
+	dirType := "images"
+	if isAudio {
+		dirType = "audio"
+	}
+	dir := filepath.Join(".", "uploads", dirType)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed to create upload directory")
 		return
@@ -81,7 +91,7 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"url": "/uploads/images/" + fileName,
+		"url": "/uploads/" + dirType + "/" + fileName,
 	})
 }
 
@@ -102,6 +112,24 @@ func isImageContentType(contentType string) bool {
 	}
 }
 
+func isAudioContentType(contentType string) bool {
+	switch contentType {
+	case "audio/mp4", "audio/aac", "audio/mpeg", "audio/x-m4a":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedMediaExt(ext string) bool {
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".m4a", ".mp3", ".aac":
+		return true
+	default:
+		return false
+	}
+}
+
 func contentTypeToExt(contentType string) string {
 	switch contentType {
 	case "image/jpeg":
@@ -112,6 +140,12 @@ func contentTypeToExt(contentType string) string {
 		return ".gif"
 	case "image/webp":
 		return ".webp"
+	case "audio/mp4", "audio/x-m4a":
+		return ".m4a"
+	case "audio/aac":
+		return ".aac"
+	case "audio/mpeg":
+		return ".mp3"
 	default:
 		return ""
 	}

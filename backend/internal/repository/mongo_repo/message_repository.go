@@ -21,16 +21,19 @@ const offlineCollectionName = "offline_messages"
 // mongoMessage is the DTO for storing messages in MongoDB.
 // It is internal to this package and should not be exposed.
 type mongoMessage struct {
-	ID               primitive.ObjectID `bson:"_id,omitempty"`
-	SenderID         string             `bson:"sender_id"`
-	ReceiverID       string             `bson:"receiver_id,omitempty"`
-	RoomID           string             `bson:"room_id,omitempty"`
-	ReplyToMessageID string             `bson:"reply_to_message_id,omitempty"`
-	Content          string             `bson:"content"` // Encrypted content
-	Type             string             `bson:"type"`
-	IsRead           bool               `bson:"is_read"`
-	ReadBy           []string           `bson:"read_by"`
-	CreatedAt        time.Time          `bson:"created_at"`
+	ID               primitive.ObjectID  `bson:"_id,omitempty"`
+	SenderID         string              `bson:"sender_id"`
+	ReceiverID       string              `bson:"receiver_id,omitempty"`
+	RoomID           string              `bson:"room_id,omitempty"`
+	ReplyToMessageID string              `bson:"reply_to_message_id,omitempty"`
+	Reactions        map[string][]string `bson:"reactions,omitempty"`
+	IsUnsent         bool                `bson:"is_unsent,omitempty"`
+	DeletedBy        []string            `bson:"deleted_by,omitempty"`
+	Content          string              `bson:"content"` // Encrypted content
+	Type             string              `bson:"type"`
+	IsRead           bool                `bson:"is_read"`
+	ReadBy           []string            `bson:"read_by"`
+	CreatedAt        time.Time           `bson:"created_at"`
 }
 
 type offlineMessage struct {
@@ -69,6 +72,9 @@ func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
 		ReceiverID:       m.ReceiverID,
 		RoomID:           m.RoomID,
 		ReplyToMessageID: m.ReplyToMessageID,
+		Reactions:        m.Reactions,
+		IsUnsent:         m.IsUnsent,
+		DeletedBy:        m.DeletedBy,
 		Content:          decryptedContent,
 		Type:             m.Type,
 		IsRead:           m.IsRead,
@@ -98,6 +104,14 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 	if readBy == nil {
 		readBy = []string{}
 	}
+	reactions := m.Reactions
+	if reactions == nil {
+		reactions = map[string][]string{}
+	}
+	deletedBy := m.DeletedBy
+	if deletedBy == nil {
+		deletedBy = []string{}
+	}
 
 	return &mongoMessage{
 		ID:               id,
@@ -105,6 +119,9 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 		ReceiverID:       m.ReceiverID,
 		RoomID:           m.RoomID,
 		ReplyToMessageID: m.ReplyToMessageID,
+		Reactions:        reactions,
+		IsUnsent:         m.IsUnsent,
+		DeletedBy:        deletedBy,
 		Content:          encryptedContent,
 		Type:             m.Type,
 		IsRead:           m.IsRead,
@@ -167,6 +184,7 @@ func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID st
 			{"sender_id": contactID, "receiver_id": userID},
 			{"room_id": contactID},
 		},
+		"deleted_by": bson.M{"$ne": userID},
 	}
 
 	findOptions := options.Find()
@@ -269,7 +287,8 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 				{"sender_id": userID},
 				{"receiver_id": userID},
 			},
-			"room_id": bson.M{"$in": []interface{}{"", nil}},
+			"room_id":    bson.M{"$in": []interface{}{"", nil}},
+			"deleted_by": bson.M{"$ne": userID},
 		}}},
 		// 2. Sort by created_at desc
 		{{Key: "$sort", Value: bson.M{"created_at": -1}}},
@@ -477,6 +496,104 @@ func (r *MessageRepository) GetRoomMessageMap(ctx context.Context, messageIDs []
 		return nil, err
 	}
 	return roomMap, nil
+}
+
+func (r *MessageRepository) ToggleReaction(ctx context.Context, messageID string, userID string, emoji string) (*domain.Message, error) {
+	if emoji == "" {
+		return nil, fmt.Errorf("emoji is required")
+	}
+	oid, err := primitive.ObjectIDFromHex(messageID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	var current mongoMessage
+	if err := r.collection.FindOne(ctx, bson.M{"_id": oid}).Decode(&current); err != nil {
+		return nil, fmt.Errorf("failed to find message: %w", err)
+	}
+
+	reactions := current.Reactions
+	if reactions == nil {
+		reactions = map[string][]string{}
+	}
+	users := reactions[emoji]
+	found := false
+	for i, id := range users {
+		if id == userID {
+			users = append(users[:i], users[i+1:]...)
+			found = true
+			break
+		}
+	}
+	if !found {
+		users = append(users, userID)
+	}
+	if len(users) == 0 {
+		delete(reactions, emoji)
+	} else {
+		reactions[emoji] = users
+	}
+
+	_, err = r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{"reactions": reactions}},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update reactions: %w", err)
+	}
+
+	var updated mongoMessage
+	if err := r.collection.FindOne(ctx, bson.M{"_id": oid}).Decode(&updated); err != nil {
+		return nil, fmt.Errorf("failed to fetch updated message: %w", err)
+	}
+	return r.toDomain(&updated)
+}
+
+func (r *MessageRepository) UnsendMessage(ctx context.Context, messageID string, userID string) (*domain.Message, error) {
+	oid, err := primitive.ObjectIDFromHex(messageID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid object ID: %w", err)
+	}
+	encryptedEmpty, err := r.cryptor.Encrypt("")
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt empty content: %w", err)
+	}
+	filter := bson.M{"_id": oid, "sender_id": userID}
+	update := bson.M{
+		"$set": bson.M{
+			"is_unsent": true,
+			"content":   encryptedEmpty,
+		},
+	}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	var updated mongoMessage
+	if err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("message not found or unauthorized")
+		}
+		return nil, fmt.Errorf("failed to unsend message: %w", err)
+	}
+	return r.toDomain(&updated)
+}
+
+func (r *MessageRepository) SoftDeleteMessage(ctx context.Context, messageID string, userID string) error {
+	oid, err := primitive.ObjectIDFromHex(messageID)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+	filter := bson.M{"_id": oid}
+	update := bson.M{
+		"$addToSet": bson.M{"deleted_by": userID},
+	}
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to soft delete message: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("message not found")
+	}
+	return nil
 }
 
 func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error {
