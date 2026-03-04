@@ -1,4 +1,4 @@
-import 'package:app/features/chat/ui/chat_detail_page.dart';
+import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

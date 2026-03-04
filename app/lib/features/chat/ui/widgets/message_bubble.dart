@@ -1,0 +1,658 @@
+import 'package:app/features/chat/providers/chat_room_provider.dart';
+import 'package:app/features/chat/ui/audio_message_bubble.dart';
+import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
+import 'package:app/features/chat/utils/chat_url_utils.dart';
+import 'package:app/models/message.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+class MessageBubble extends ConsumerStatefulWidget {
+  final Message msg;
+  final bool isMe;
+  final ChatRoomState state;
+  final ChatRoomParams params;
+  final bool isRoom;
+  final String currentUserId;
+  final String title;
+  final Future<void> Function(String messageId) onScrollToMessage;
+
+  const MessageBubble({
+    super.key,
+    required this.msg,
+    required this.isMe,
+    required this.state,
+    required this.params,
+    required this.isRoom,
+    required this.currentUserId,
+    required this.title,
+    required this.onScrollToMessage,
+  });
+
+  @override
+  ConsumerState<MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends ConsumerState<MessageBubble> {
+  bool _isDeleting = false;
+  bool _isCollapsing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final msg = widget.msg;
+    final isMe = widget.isMe;
+    final colorScheme = Theme.of(context).colorScheme;
+    Widget content;
+    if (msg.type == MessageType.image) {
+      final imageUrl = resolveFullUrl(msg.content);
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.6,
+          ),
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+              return SizedBox(
+                width: 120,
+                height: 120,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    value: progress.expectedTotalBytes != null
+                        ? progress.cumulativeBytesLoaded /
+                              progress.expectedTotalBytes!
+                        : null,
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return SizedBox(
+                width: 120,
+                height: 120,
+                child: Center(
+                  child: Icon(Icons.broken_image, color: colorScheme.outline),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else if (msg.type == MessageType.voice) {
+      content = AudioMessageBubble(audioUrl: msg.content);
+    } else {
+      content = Text(msg.content, style: const TextStyle(fontSize: 15));
+    }
+
+    final replyMessage = msg.isUnsent ? null : msg.replyToMessage;
+    Widget? replyContent;
+    if (replyMessage != null) {
+      final isReplyImage = replyMessage.type == MessageType.image;
+      final replyText = isReplyImage ? '[圖片]' : replyMessage.content;
+      replyContent = InkWell(
+        onTap: () => widget.onScrollToMessage(replyMessage.id),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E2A30),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 3,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF53BDEB),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _resolveReplySenderName(replyMessage),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF53BDEB),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isReplyImage) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.network(
+                              resolveFullUrl(replyMessage.content),
+                              width: 28,
+                              height: 28,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 28,
+                                  height: 28,
+                                  color: const Color(0xFF2A3942),
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    size: 14,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Flexible(
+                          child: Text(
+                            replyText,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade400,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final timeText = DateFormat('a h:mm').format(msg.createdAt);
+    final statusColor = msg.status == MessageStatus.read
+        ? const Color(0xFF53BDEB)
+        : Colors.grey.shade400;
+    IconData statusIcon;
+    switch (msg.status) {
+      case MessageStatus.sending:
+        statusIcon = Icons.access_time;
+        break;
+      case MessageStatus.sent:
+        statusIcon = Icons.check;
+        break;
+      case MessageStatus.delivered:
+      case MessageStatus.read:
+        statusIcon = Icons.done_all;
+        break;
+      case MessageStatus.failed:
+        statusIcon = Icons.error_outline;
+        break;
+    }
+    final statusWidget = isMe
+        ? Icon(
+            statusIcon,
+            size: 14,
+            color: msg.status == MessageStatus.failed
+                ? Colors.redAccent
+                : statusColor,
+          )
+        : const SizedBox();
+    final reactions = msg.isUnsent
+        ? <String, List<String>>{}
+        : (msg.reactions ?? {});
+    final double paddingBottom = reactions.isNotEmpty ? 22.0 : 4.0;
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: isMe ? 60 : 44,
+          right: isMe ? 12 : 60,
+          bottom: paddingBottom,
+        ),
+        child: ClipRect(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _isCollapsing
+                ? const SizedBox.shrink()
+                : AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _isDeleting ? 0.0 : 1.0,
+                    child: IgnorePointer(
+                      ignoring: _isDeleting,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          if (!isMe)
+                            Positioned(
+                              left: -32,
+                              top: 0,
+                              child: _buildGroupSenderAvatar(msg),
+                            ),
+                          Builder(
+                            builder: (bubbleContext) {
+                              return GestureDetector(
+                                onLongPress: msg.isUnsent
+                                    ? null
+                                    : () {
+                                        HapticFeedback.mediumImpact();
+                                        _showMessageActions(
+                                          msg,
+                                          bubbleContext,
+                                          isMe,
+                                        );
+                                      },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  constraints: BoxConstraints(
+                                    maxWidth:
+                                        MediaQuery.of(context).size.width *
+                                        0.75,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isMe
+                                        ? const Color(0xFF005C4B)
+                                        : const Color(0xFF202C33),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: isMe
+                                        ? CrossAxisAlignment.end
+                                        : CrossAxisAlignment.start,
+                                    children: [
+                                      if (replyContent != null) ...[
+                                        replyContent,
+                                        const SizedBox(height: 6),
+                                      ],
+                                      msg.isUnsent
+                                          ? Text(
+                                              '此訊息已收回',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.grey.shade400,
+                                              ),
+                                            )
+                                          : DefaultTextStyle.merge(
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                              child: content,
+                                            ),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            timeText,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade400,
+                                            ),
+                                          ),
+                                          if (isMe) ...[
+                                            const SizedBox(width: 4),
+                                            statusWidget,
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          if (reactions.isNotEmpty)
+                            Positioned(
+                              bottom: -16,
+                              right: isMe ? 4 : null,
+                              left: isMe ? null : 4,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth:
+                                      MediaQuery.of(context).size.width * 0.75,
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: _buildReactionsBar(reactions, msg.id),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupSenderAvatar(Message msg) {
+    final avatarUrl = widget.isRoom
+        ? widget.state.userAvatarUrls[msg.senderId]
+        : (widget.state.roomAvatarUrl.isNotEmpty
+              ? widget.state.roomAvatarUrl
+              : null);
+    final fallbackText = widget.isRoom
+        ? (msg.senderId.isNotEmpty ? msg.senderId[0].toUpperCase() : '?')
+        : (widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '?');
+    return ChatAvatar(
+      radius: 14,
+      avatarUrl: avatarUrl,
+      fallbackText: fallbackText,
+      logTag: 'chat_bubble',
+    );
+  }
+
+  void _showMessageActions(Message msg, BuildContext bubbleContext, bool isMe) {
+    const emojis = ['👍', '❤️', '😂', '😮', '😢'];
+    final RenderBox renderBox = bubbleContext.findRenderObject() as RenderBox;
+    final bubbleSize = renderBox.size;
+    final bubbleOffset = renderBox.localToGlobal(Offset.zero);
+    final screenSize = MediaQuery.of(context).size;
+    const menuWidth = 240.0;
+    double menuHeight = 155.0;
+    if (msg.senderId == widget.currentUserId && !msg.isUnsent) {
+      menuHeight = 199.0;
+    }
+    bool showAbove = true;
+    double top = bubbleOffset.dy - menuHeight - 8.0;
+    final topSafeArea = MediaQuery.of(context).padding.top + kToolbarHeight;
+    if (top < topSafeArea) {
+      showAbove = false;
+      top = bubbleOffset.dy + bubbleSize.height + 8.0;
+    }
+    if (!showAbove && top + menuHeight > screenSize.height - 30) {
+      top = screenSize.height - menuHeight - 30;
+    }
+    double left;
+    if (isMe) {
+      left = (bubbleOffset.dx + bubbleSize.width) - menuWidth;
+    } else {
+      left = bubbleOffset.dx;
+    }
+    if (left < 16) left = 16;
+    if (left + menuWidth > screenSize.width - 16) {
+      left = screenSize.width - menuWidth - 16;
+    }
+    final animationAlignment = showAbove
+        ? (isMe ? Alignment.bottomRight : Alignment.bottomLeft)
+        : (isMe ? Alignment.topRight : Alignment.topLeft);
+
+    showGeneralDialog(
+      context: context,
+      barrierColor: Colors.black12,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          resizeToAvoidBottomInset: false,
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(color: Colors.transparent),
+                ),
+              ),
+              Positioned(
+                left: left,
+                top: top,
+                child: TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutBack,
+                  tween: Tween<double>(begin: 0.0, end: 1.0),
+                  builder: (context, scale, child) {
+                    return Transform.scale(
+                      scale: scale,
+                      alignment: animationAlignment,
+                      child: Opacity(
+                        opacity: scale.clamp(0.0, 1.0),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: menuWidth,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E2A30),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 10,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: emojis.map((emoji) {
+                                return InkWell(
+                                  onTap: () {
+                                    Navigator.of(context).pop();
+                                    ref
+                                        .read(
+                                          chatRoomProvider(
+                                            widget.params,
+                                          ).notifier,
+                                        )
+                                        .toggleReaction(msg.id, emoji);
+                                  },
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF2A3942),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      emoji,
+                                      style: const TextStyle(fontSize: 22),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const Divider(height: 1, color: Colors.black26),
+                          _buildMenuAction(
+                            icon: Icons.reply,
+                            label: '回覆',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              ref
+                                  .read(
+                                    chatRoomProvider(widget.params).notifier,
+                                  )
+                                  .setReplyingTo(msg);
+                            },
+                          ),
+                          _buildMenuAction(
+                            icon: Icons.delete_outline,
+                            label: '刪除 (Delete for me)',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _confirmDeleteMessage(msg);
+                            },
+                          ),
+                          if (msg.senderId == widget.currentUserId &&
+                              !msg.isUnsent)
+                            _buildMenuAction(
+                              icon: Icons.undo,
+                              label: '收回 (Unsend)',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                ref
+                                    .read(
+                                      chatRoomProvider(widget.params).notifier,
+                                    )
+                                    .unsendMessage(msg);
+                              },
+                            ),
+                          const SizedBox(height: 4),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmDeleteMessage(Message msg) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('刪除訊息'),
+          content: const Text('確定要刪除這則訊息嗎？此訊息僅會從您的設備中刪除，對方仍可看見。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('確定'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || _isDeleting) return;
+    setState(() => _isDeleting = true);
+    await Future.delayed(const Duration(milliseconds: 220));
+    if (!mounted) return;
+    setState(() => _isCollapsing = true);
+    await Future.delayed(const Duration(milliseconds: 180));
+    try {
+      await ref
+          .read(chatRoomProvider(widget.params).notifier)
+          .deleteMessage(msg.id);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+          _isCollapsing = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildMenuAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReactionsBar(
+    Map<String, List<String>> reactions,
+    String messageId,
+  ) {
+    final entries = reactions.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: entries.map((entry) {
+        final emoji = entry.key;
+        final users = entry.value;
+        final reacted = users.contains(widget.currentUserId);
+
+        return InkWell(
+          onTap: () => ref
+              .read(chatRoomProvider(widget.params).notifier)
+              .toggleReaction(messageId, emoji),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(emoji, style: const TextStyle(fontSize: 16)),
+                if (users.length > 1) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '${users.length}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: reacted
+                          ? const Color(0xFF53BDEB)
+                          : Colors.grey.shade400,
+                      fontWeight: reacted ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _resolveReplySenderName(Message replyMessage) {
+    if (replyMessage.senderId == widget.currentUserId) {
+      return '你';
+    }
+    if (!widget.isRoom && widget.title.isNotEmpty) {
+      return widget.title;
+    }
+    return '回覆訊息';
+  }
+}
