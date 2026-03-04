@@ -57,6 +57,7 @@ dependencies:
   visibility_detector: ^0.4.0+2
   file_picker: ^8.0.3
   flutter_image_compress: ^2.4.0
+  emoji_picker_flutter: ^4.4.0
 
 dev_dependencies:
   flutter_test:

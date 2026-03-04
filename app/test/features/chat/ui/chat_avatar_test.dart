@@ -57,4 +57,43 @@ void main() {
 
     expect(find.text('B'), findsOneWidget);
   });
+
+  testWidgets('light mode 下 fallback 顏色依文字 hash 穩定', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        themeMode: ThemeMode.light,
+        home: Scaffold(
+          body: Row(
+            children: const [
+              ChatAvatar(
+                avatarUrl: '',
+                radius: 18,
+                fallbackText: 'Alice',
+                logTag: 'test_avatar',
+              ),
+              ChatAvatar(
+                avatarUrl: '',
+                radius: 18,
+                fallbackText: 'Alice',
+                logTag: 'test_avatar',
+              ),
+              ChatAvatar(
+                avatarUrl: '',
+                radius: 18,
+                fallbackText: 'Bob',
+                logTag: 'test_avatar',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final avatars = tester
+        .widgetList<CircleAvatar>(find.byType(CircleAvatar))
+        .toList();
+    expect(avatars.length, 3);
+    expect(avatars[0].backgroundColor, avatars[1].backgroundColor);
+    expect(avatars[0].backgroundColor != avatars[2].backgroundColor, true);
+  });
 }

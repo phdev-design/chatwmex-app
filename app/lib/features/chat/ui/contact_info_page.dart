@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:app/core/network/network_service.dart';
+import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
+import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 
 class ContactInfoPage extends StatelessWidget {
   final String roomId;
@@ -18,11 +19,26 @@ class ContactInfoPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 取得當前主題色彩，為了符合深色模式的 WhatsApp 風格，可以寫死或沿用 Theme
-    final Color bgColor = const Color(0xFF0B141A);
-    final Color surfaceColor = const Color(0xFF111B21);
-    final Color accentColor = const Color(0xFF53BDEB);
-    final Color dangerColor = const Color(0xFFF15C6D);
+    final colorScheme = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final tokens = resolveChatSurfaceTokens(
+      colorScheme: colorScheme,
+      brightness: brightness,
+    );
+    final Color bgColor = isDark
+        ? const Color(0xFF0B141A)
+        : colorScheme.surface;
+    final Color surfaceColor = isDark
+        ? const Color(0xFF111B21)
+        : colorScheme.surfaceContainerHighest;
+    final Color accentColor = tokens.accent;
+    final Color dangerColor = colorScheme.error;
+    final Color primaryTextColor = colorScheme.onSurface;
+    final Color secondaryTextColor = colorScheme.onSurfaceVariant;
+    final Color dividerColor = colorScheme.outlineVariant.withValues(
+      alpha: 0.35,
+    );
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -33,12 +49,12 @@ class ContactInfoPage extends StatelessWidget {
             expandedHeight: 320.0,
             pinned: true,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              icon: Icon(Icons.arrow_back, color: primaryTextColor),
               onPressed: () => context.pop(),
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.more_vert, color: Colors.white),
+                icon: Icon(Icons.more_vert, color: primaryTextColor),
                 onPressed: () {},
               ),
             ],
@@ -46,8 +62,8 @@ class ContactInfoPage extends StatelessWidget {
               titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
               title: Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: primaryTextColor,
                   fontWeight: FontWeight.w500,
                   fontSize: 20,
                 ),
@@ -62,10 +78,7 @@ class ContactInfoPage extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SizedBox(height: 20),
-                        Hero(
-                          tag: 'avatar_$roomId',
-                          child: _buildAvatar(),
-                        ),
+                        Hero(tag: 'avatar_$roomId', child: _buildAvatar()),
                         const SizedBox(height: 12),
                         // 如果需要顯示電話號碼或 ID，可以放這裡
                         if (!isRoom)
@@ -73,7 +86,7 @@ class ContactInfoPage extends StatelessWidget {
                             '+886 912 345 678', // 這裡先用假資料
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey.shade400,
+                              color: secondaryTextColor,
                             ),
                           ),
                         const SizedBox(height: 40), // 預留空間給底部的 title，避免文字重疊
@@ -87,24 +100,21 @@ class ContactInfoPage extends StatelessWidget {
           SliverList(
             delegate: SliverChildListDelegate([
               const SizedBox(height: 12),
-              
+
               // === 媒體、連結與文件 ===
               Container(
                 color: surfaceColor,
                 child: ListTile(
-                  title: const Text(
+                  title: Text(
                     '媒體、連結與文件',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: primaryTextColor),
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        '0',
-                        style: TextStyle(color: Colors.grey.shade400),
-                      ),
+                      Text('0', style: TextStyle(color: secondaryTextColor)),
                       const SizedBox(width: 8),
-                      Icon(Icons.chevron_right, color: Colors.grey.shade400),
+                      Icon(Icons.chevron_right, color: secondaryTextColor),
                     ],
                   ),
                   onTap: () {},
@@ -118,24 +128,39 @@ class ContactInfoPage extends StatelessWidget {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: Icon(Icons.notifications_off, color: Colors.grey.shade400),
-                      title: const Text('將通知靜音', style: TextStyle(color: Colors.white)),
+                      leading: Icon(
+                        Icons.notifications_off,
+                        color: secondaryTextColor,
+                      ),
+                      title: Text(
+                        '將通知靜音',
+                        style: TextStyle(color: primaryTextColor),
+                      ),
                       trailing: Switch(
                         value: false,
                         onChanged: (val) {},
-                        activeColor: accentColor,
+                        activeThumbColor: accentColor,
                       ),
                     ),
-                    const Divider(height: 1, color: Colors.black26),
+                    Divider(height: 1, color: dividerColor),
                     ListTile(
-                      leading: Icon(Icons.music_note, color: Colors.grey.shade400),
-                      title: const Text('自訂通知', style: TextStyle(color: Colors.white)),
+                      leading: Icon(
+                        Icons.music_note,
+                        color: secondaryTextColor,
+                      ),
+                      title: Text(
+                        '自訂通知',
+                        style: TextStyle(color: primaryTextColor),
+                      ),
                       onTap: () {},
                     ),
-                    const Divider(height: 1, color: Colors.black26),
+                    Divider(height: 1, color: dividerColor),
                     ListTile(
-                      leading: Icon(Icons.image, color: Colors.grey.shade400),
-                      title: const Text('媒體瀏覽設定', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.image, color: secondaryTextColor),
+                      title: Text(
+                        '媒體瀏覽設定',
+                        style: TextStyle(color: primaryTextColor),
+                      ),
                       onTap: () {},
                     ),
                   ],
@@ -149,21 +174,33 @@ class ContactInfoPage extends StatelessWidget {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: Icon(Icons.lock, color: Colors.grey.shade400),
-                      title: const Text('加密', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.lock, color: secondaryTextColor),
+                      title: Text(
+                        '加密',
+                        style: TextStyle(color: primaryTextColor),
+                      ),
                       subtitle: Text(
                         '訊息和通話都受到端對端加密。點按以確認。',
-                        style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                        style: TextStyle(
+                          color: secondaryTextColor,
+                          fontSize: 13,
+                        ),
                       ),
                       onTap: () {},
                     ),
-                    const Divider(height: 1, color: Colors.black26),
+                    Divider(height: 1, color: dividerColor),
                     ListTile(
-                      leading: Icon(Icons.av_timer, color: Colors.grey.shade400),
-                      title: const Text('自動刪除的訊息', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.av_timer, color: secondaryTextColor),
+                      title: Text(
+                        '自動刪除的訊息',
+                        style: TextStyle(color: primaryTextColor),
+                      ),
                       subtitle: Text(
                         '關閉',
-                        style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                        style: TextStyle(
+                          color: secondaryTextColor,
+                          fontSize: 13,
+                        ),
                       ),
                       onTap: () {},
                     ),
@@ -179,13 +216,22 @@ class ContactInfoPage extends StatelessWidget {
                   children: [
                     ListTile(
                       leading: Icon(Icons.block, color: dangerColor),
-                      title: Text('封鎖 $title', style: TextStyle(color: dangerColor)),
+                      title: Text(
+                        '封鎖 $title',
+                        style: TextStyle(color: dangerColor),
+                      ),
                       onTap: () {},
                     ),
-                    const Divider(height: 1, color: Colors.black26),
+                    Divider(height: 1, color: dividerColor),
                     ListTile(
-                      leading: Icon(Icons.thumb_down_alt_outlined, color: dangerColor),
-                      title: Text('檢舉 $title', style: TextStyle(color: dangerColor)),
+                      leading: Icon(
+                        Icons.thumb_down_alt_outlined,
+                        color: dangerColor,
+                      ),
+                      title: Text(
+                        '檢舉 $title',
+                        style: TextStyle(color: dangerColor),
+                      ),
                       onTap: () {},
                     ),
                   ],
@@ -200,27 +246,11 @@ class ContactInfoPage extends StatelessWidget {
   }
 
   Widget _buildAvatar() {
-    final defaultAvatar = CircleAvatar(
+    return ChatAvatar(
+      avatarUrl: avatarUrl,
       radius: 60,
-      backgroundColor: const Color(0xFF2A3942),
-      child: Text(
-        title.isNotEmpty ? title[0].toUpperCase() : '?',
-        style: const TextStyle(fontSize: 48, color: Colors.white),
-      ),
-    );
-    if (avatarUrl == null || avatarUrl!.isEmpty) {
-      return defaultAvatar;
-    }
-    return ClipOval(
-      child: Image.network(
-        NetworkService.resolveUrl(avatarUrl!),
-        width: 120,
-        height: 120,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return defaultAvatar;
-        },
-      ),
+      fallbackText: title.isNotEmpty ? title[0].toUpperCase() : '?',
+      logTag: 'contact_info',
     );
   }
 }

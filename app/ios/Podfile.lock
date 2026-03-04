@@ -33,6 +33,8 @@ PODS:
   - DKPhotoGallery/Resource (0.0.19):
     - SDWebImage
     - SwiftyGif
+  - emoji_picker_flutter (0.0.1):
+    - Flutter
   - file_picker (0.0.1):
     - DKImagePickerController/PhotoGallery
     - Flutter
@@ -121,6 +123,9 @@ PODS:
   - SDWebImageWebPCoder (0.15.0):
     - libwebp (~> 1.0)
     - SDWebImage/Core (~> 5.17)
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - sqflite_darwin (0.0.4):
     - Flutter
     - FlutterMacOS
@@ -128,6 +133,7 @@ PODS:
 
 DEPENDENCIES:
   - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/darwin`)
+  - emoji_picker_flutter (from `.symlinks/plugins/emoji_picker_flutter/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - Flutter (from `Flutter`)
   - flutter_image_compress_common (from `.symlinks/plugins/flutter_image_compress_common/ios`)
@@ -136,6 +142,7 @@ DEPENDENCIES:
   - onesignal_flutter (from `.symlinks/plugins/onesignal_flutter/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - record_ios (from `.symlinks/plugins/record_ios/ios`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
 
 SPEC REPOS:
@@ -152,6 +159,8 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   audioplayers_darwin:
     :path: ".symlinks/plugins/audioplayers_darwin/darwin"
+  emoji_picker_flutter:
+    :path: ".symlinks/plugins/emoji_picker_flutter/ios"
   file_picker:
     :path: ".symlinks/plugins/file_picker/ios"
   Flutter:
@@ -168,6 +177,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
   record_ios:
     :path: ".symlinks/plugins/record_ios/ios"
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   sqflite_darwin:
     :path: ".symlinks/plugins/sqflite_darwin/darwin"
 
@@ -175,6 +186,7 @@ SPEC CHECKSUMS:
   audioplayers_darwin: 4027b33a8f471d996c13f71cb77f0b1583b5d923
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
+  emoji_picker_flutter: 8e50ec5caac456a23a78637e02c6293ea0ac8771
   file_picker: b159e0c068aef54932bb15dc9fd1571818edaf49
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_image_compress_common: ec1d45c362c9d30a3f6a0426c297f47c52007e3e
@@ -188,6 +200,7 @@ SPEC CHECKSUMS:
   record_ios: 26294aaa39e4bb7665b0fef78bdc23d723b432f2
   SDWebImage: e9c98383c7572d713c1a0d7dd2783b10599b9838
   SDWebImageWebPCoder: 0e06e365080397465cc73a7a9b472d8a3bd0f377
+  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
   sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
 

@@ -365,7 +365,8 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		UnreadCount    int          `bson:"unread_count"`
 		LastReadAt     time.Time    `bson:"last_read_at"`
 		UserInfo       struct {
-			Username string `bson:"username"`
+			Username  string `bson:"username"`
+			AvatarURL string `bson:"avatar_url"`
 		} `bson:"user_info"`
 	}
 
@@ -382,12 +383,13 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		}
 
 		conversations = append(conversations, &domain.Conversation{
-			OtherUserID:     res.OtherUserID,
-			OtherUsername:   res.UserInfo.Username,
-			LastMessage:     content,
-			LastMessageTime: res.LastMessageDoc.CreatedAt,
-			UnreadCount:     res.UnreadCount,
-			LastReadAt:      res.LastReadAt,
+			OtherUserID:        res.OtherUserID,
+			OtherUsername:      res.UserInfo.Username,
+			OtherUserAvatarURL: res.UserInfo.AvatarURL,
+			LastMessage:        content,
+			LastMessageTime:    res.LastMessageDoc.CreatedAt,
+			UnreadCount:        res.UnreadCount,
+			LastReadAt:         res.LastReadAt,
 		})
 	}
 

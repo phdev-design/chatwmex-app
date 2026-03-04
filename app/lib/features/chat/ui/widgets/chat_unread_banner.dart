@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 
 class ChatUnreadBanner extends StatelessWidget {
   final int unreadCount;
@@ -14,6 +15,10 @@ class ChatUnreadBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = resolveChatSurfaceTokens(
+      colorScheme: Theme.of(context).colorScheme,
+      brightness: Theme.of(context).brightness,
+    );
     return GestureDetector(
       onTap: onTap,
       child: SlideTransition(
@@ -21,7 +26,7 @@ class ChatUnreadBanner extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFF005C4B),
+            color: tokens.unreadBannerBackground,
             borderRadius: BorderRadius.circular(18),
             boxShadow: const [
               BoxShadow(
@@ -34,12 +39,16 @@ class ChatUnreadBanner extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 18),
+              Icon(
+                Icons.keyboard_arrow_down,
+                color: tokens.unreadBannerForeground,
+                size: 18,
+              ),
               const SizedBox(width: 4),
               Text(
                 unreadCount > 0 ? '$unreadCount 則新訊息' : '新訊息',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: tokens.unreadBannerForeground,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),

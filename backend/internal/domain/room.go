@@ -9,6 +9,7 @@ import (
 type Room struct {
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
+	AvatarURL       string    `json:"avatar_url,omitempty"`
 	OwnerID         string    `json:"owner_id,omitempty"`
 	Members         []string  `json:"members,omitempty"` // List of UserIDs
 	Type            string    `json:"type"`              // "group" or "dm"

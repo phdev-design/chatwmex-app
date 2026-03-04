@@ -17,6 +17,7 @@ class ChatAppBarTitleBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       child: Row(
@@ -39,15 +40,18 @@ class ChatAppBarTitleBlock extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
                   '點按以查看聯絡人資料',
-                  style: TextStyle(color: Colors.grey.shade300, fontSize: 11),
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),

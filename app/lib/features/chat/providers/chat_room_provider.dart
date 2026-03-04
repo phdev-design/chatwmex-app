@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:collection';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/models/message.dart';
 import 'package:app/core/network/network_service.dart';
@@ -124,6 +125,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           break;
         }
       }
+      debugPrint(
+        'chat_room init dm room_id=${arg.roomId} initial_room_avatar_url=$initialRoomAvatarUrl rooms_count=${rooms.length}',
+      );
     }
 
     // Connect WebSocket
@@ -305,13 +309,20 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     state = state.copyWith(messages: [hydrated, ...state.messages]);
   }
 
-  void _applyUserAvatarUpdated(ChatRoomParams arg, String userId, String avatarUrl) {
+  void _applyUserAvatarUpdated(
+    ChatRoomParams arg,
+    String userId,
+    String avatarUrl,
+  ) {
     final avatars = Map<String, String>.from(state.userAvatarUrls);
     avatars[userId] = avatarUrl;
     String roomAvatarUrl = state.roomAvatarUrl;
     if (!arg.isRoom && arg.roomId == userId) {
       roomAvatarUrl = avatarUrl;
     }
+    debugPrint(
+      'chat_room user_profile_updated dm=${!arg.isRoom} room_id=${arg.roomId} event_user_id=$userId room_avatar_url=$roomAvatarUrl',
+    );
     state = state.copyWith(
       userAvatarUrls: avatars,
       roomAvatarUrl: roomAvatarUrl,
@@ -895,6 +906,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   }
 
   Future<void> markConversationAsRead() async {
+    if (arg.roomId.isEmpty) {
+      return;
+    }
     final payload = {'conversation_id': arg.roomId, 'is_room': arg.isRoom};
     _wsService.send('mark_read', payload);
     try {

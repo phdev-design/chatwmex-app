@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/core/websocket/websocket_service.dart';
@@ -115,6 +116,16 @@ class RoomListViewModel extends Notifier<RoomListState> {
           _unreadOverrides.remove(room.id);
         }
       }
+      final dmWithoutAvatar = updated
+          .where(
+            (room) =>
+                room.type == 'dm' &&
+                (room.avatarUrl == null || room.avatarUrl!.isEmpty),
+          )
+          .length;
+      debugPrint(
+        'room_list fetch rooms=${updated.length} dm_without_avatar=$dmWithoutAvatar',
+      );
       state = state.copyWith(isLoading: false, rooms: updated);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -157,7 +168,11 @@ class RoomListViewModel extends Notifier<RoomListState> {
   }
 
   // 新增的方法：用於手動更新列表上的最後一則訊息
-  void updateRoomLastMessage(String roomId, String lastMessage, {DateTime? lastMessageTime}) {
+  void updateRoomLastMessage(
+    String roomId,
+    String lastMessage, {
+    DateTime? lastMessageTime,
+  }) {
     final updated = state.rooms.map((room) {
       if (room.id == roomId) {
         return room.copyWith(

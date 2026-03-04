@@ -79,6 +79,11 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    
+    // 👇 讓語音模塊自動讀取父元件 (MessageBubble) 所設定的文字顏色，以適應藍色/灰色背景
+    final defaultTextColor = DefaultTextStyle.of(context).style.color ?? colorScheme.onSurface;
+    final subtleTextColor = defaultTextColor.withValues(alpha: 0.6);
+
     final maxMs = _duration.inMilliseconds == 0
         ? 1.0
         : _duration.inMilliseconds.toDouble();
@@ -91,12 +96,14 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
     final movingHead = (progress * bars.length).floor();
     final remaining = _duration - _position;
     final remainingSafe = remaining.isNegative ? Duration.zero : remaining;
+    
     return SizedBox(
       width: 240,
       child: Row(
         children: [
           IconButton(
             icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+            color: defaultTextColor, // 動態套用播放鍵顏色
             onPressed: _togglePlay,
             visualDensity: VisualDensity.compact,
           ),
@@ -120,8 +127,8 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
                             color: isHead
                                 ? colorScheme.secondary
                                 : (isActive
-                                    ? colorScheme.primary
-                                    : colorScheme.outlineVariant),
+                                    ? defaultTextColor
+                                    : defaultTextColor.withValues(alpha: 0.3)), // 根據主字體調整音軌顏色
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -129,14 +136,21 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
                     }),
                   ),
                 ),
-                Slider(
-                  value: value,
-                  max: maxMs,
-                  onChanged: (newValue) async {
-                    if (_duration == Duration.zero) return;
-                    final position = Duration(milliseconds: newValue.toInt());
-                    await _player.seek(position);
-                  },
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    thumbColor: defaultTextColor,
+                    activeTrackColor: defaultTextColor.withValues(alpha: 0.8),
+                    inactiveTrackColor: defaultTextColor.withValues(alpha: 0.3),
+                  ),
+                  child: Slider(
+                    value: value,
+                    max: maxMs,
+                    onChanged: (newValue) async {
+                      if (_duration == Duration.zero) return;
+                      final position = Duration(milliseconds: newValue.toInt());
+                      await _player.seek(position);
+                    },
+                  ),
                 ),
               ],
             ),
@@ -147,11 +161,11 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
             children: [
               Text(
                 _formatDuration(_position),
-                style: TextStyle(fontSize: 11, color: colorScheme.onSurface),
+                style: TextStyle(fontSize: 11, color: defaultTextColor),
               ),
               Text(
                 '-${_formatDuration(remainingSafe)}',
-                style: TextStyle(fontSize: 11, color: colorScheme.outline),
+                style: TextStyle(fontSize: 11, color: subtleTextColor),
               ),
             ],
           ),

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/profile/ui/edit_profile_page.dart';
 import 'package:app/features/profile/providers/profile_provider.dart';
-import 'package:app/core/network/network_service.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -60,16 +60,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  CircleAvatar(
+                  ChatAvatar(
+                    avatarUrl: profileState.avatarUrl,
                     radius: 50,
-                    backgroundImage: profileState.avatarUrl.isNotEmpty
-                        ? NetworkImage(
-                            NetworkService.resolveUrl(profileState.avatarUrl),
-                          )
-                        : null,
-                    child: profileState.avatarUrl.isEmpty
-                        ? const Icon(Icons.person, size: 50)
-                        : null,
+                    fallbackText: profileState.username.isNotEmpty
+                        ? profileState.username[0].toUpperCase()
+                        : 'U',
+                    fallbackIcon: Icons.person,
+                    logTag: 'profile_page',
                   ),
                   if (profileState.isLoading)
                     Container(

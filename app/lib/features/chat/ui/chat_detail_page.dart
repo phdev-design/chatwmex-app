@@ -146,6 +146,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(_params));
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
         ? state.roomAvatarUrl
         : widget.avatarUrl;
@@ -167,9 +169,12 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0B141A),
+      backgroundColor: isDark ? const Color(0xFF0B141A) : colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF111B21),
+        backgroundColor: isDark
+            ? const Color(0xFF111B21)
+            : colorScheme.surfaceContainerHighest,
+        foregroundColor: colorScheme.onSurface,
         titleSpacing: 0,
         title: ChatAppBarTitleBlock(
           roomId: widget.roomId,

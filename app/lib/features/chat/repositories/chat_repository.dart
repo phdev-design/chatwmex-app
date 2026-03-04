@@ -59,7 +59,7 @@ class ChatRepository {
     if (messageIds.isEmpty) return; // 避免空陣列浪費 API 請求
     try {
       await _networkService.client.post(
-        '/messages/read',
+        '/messages/read/batch',
         data: {'message_ids': messageIds},
       );
     } catch (e) {

@@ -53,12 +53,13 @@ type MessageRepository interface {
 
 // Conversation represents a summary of a chat (DM).
 type Conversation struct {
-	OtherUserID     string    `json:"other_user_id"`
-	OtherUsername   string    `json:"other_username"`
-	LastMessage     string    `json:"last_message"`
-	LastMessageTime time.Time `json:"last_message_time"`
-	UnreadCount     int       `json:"unread_count"`
-	LastReadAt      time.Time `json:"last_read_at,omitempty"`
+	OtherUserID        string    `json:"other_user_id"`
+	OtherUsername      string    `json:"other_username"`
+	OtherUserAvatarURL string    `json:"other_user_avatar_url,omitempty"`
+	LastMessage        string    `json:"last_message"`
+	LastMessageTime    time.Time `json:"last_message_time"`
+	UnreadCount        int       `json:"unread_count"`
+	LastReadAt         time.Time `json:"last_read_at,omitempty"`
 }
 
 // MessageUsecase defines the interface for message business logic.

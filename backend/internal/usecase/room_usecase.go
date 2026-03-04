@@ -132,6 +132,7 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.
 		rooms = append(rooms, &domain.Room{
 			ID:              conv.OtherUserID, // Use UserID as RoomID for DM
 			Name:            conv.OtherUsername,
+			AvatarURL:       conv.OtherUserAvatarURL,
 			Type:            "dm",
 			LastMessage:     conv.LastMessage,
 			LastMessageTime: conv.LastMessageTime,
@@ -147,12 +148,12 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.
 		if !rooms[i].LastMessageTime.IsZero() {
 			t1 = rooms[i].LastMessageTime
 		}
-		
+
 		t2 := rooms[j].UpdatedAt
 		if !rooms[j].LastMessageTime.IsZero() {
 			t2 = rooms[j].LastMessageTime
 		}
-		
+
 		return t1.After(t2)
 	})
 

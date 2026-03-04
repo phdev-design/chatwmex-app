@@ -4,8 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
+import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
+import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/core/storage/storage_service.dart';
-import 'package:app/core/network/network_service.dart';
 
 class RoomListPage extends ConsumerStatefulWidget {
   const RoomListPage({super.key});
@@ -17,6 +18,8 @@ class RoomListPage extends ConsumerStatefulWidget {
 class _RoomListPageState extends ConsumerState<RoomListPage> {
   final TextEditingController _searchController = TextEditingController();
   String? _currentUserId;
+  String _currentUsername = '';
+  String? _currentAvatarUrl;
 
   @override
   void initState() {
@@ -25,7 +28,10 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
   }
 
   Future<void> _loadUserId() async {
-    final userId = await ref.read(storageServiceProvider).read('user_id');
+    final storage = ref.read(storageServiceProvider);
+    final userId = await storage.read('user_id');
+    final username = await storage.read('username');
+    final avatarUrl = await storage.read('avatar_url');
     if (mounted) {
       if (userId == null) {
         // Should not happen if logged in, but safe to redirect
@@ -34,6 +40,8 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
       }
       setState(() {
         _currentUserId = userId;
+        _currentUsername = username ?? '';
+        _currentAvatarUrl = avatarUrl;
       });
     }
   }
@@ -66,7 +74,15 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
       appBar: AppBar(
         title: const Text('Chats'),
         leading: IconButton(
-          icon: const CircleAvatar(child: Icon(Icons.person, size: 20)),
+          icon: ChatAvatar(
+            avatarUrl: _currentAvatarUrl,
+            radius: 16,
+            fallbackText: _currentUsername.isNotEmpty
+                ? _currentUsername[0].toUpperCase()
+                : 'U',
+            fallbackIcon: Icons.person,
+            logTag: 'room_list_profile',
+          ),
           onPressed: () => context.push('/profile'),
         ),
       ),
@@ -95,6 +111,11 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
   }
 
   Widget _buildRoomList(List<Room> rooms, String userId) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final tokens = resolveChatSurfaceTokens(
+      colorScheme: colorScheme,
+      brightness: Theme.of(context).brightness,
+    );
     if (rooms.isEmpty) {
       return const Center(child: Text('No chats found'));
     }
@@ -128,8 +149,8 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                       ? Container(
                           key: const ValueKey('unread'),
                           padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
+                          decoration: BoxDecoration(
+                            color: tokens.unreadBadgeBackground,
                             shape: BoxShape.circle,
                           ),
                           constraints: const BoxConstraints(
@@ -138,8 +159,8 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                           ),
                           child: Text(
                             '${room.unreadCount}',
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: tokens.unreadBadgeForeground,
                               fontSize: 10,
                             ),
                             textAlign: TextAlign.center,
@@ -159,7 +180,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
               ),
               Text(
                 timeStr,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: tokens.roomListTimeText),
               ),
             ],
           ),
@@ -171,7 +192,9 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
               fontWeight: room.unreadCount > 0
                   ? FontWeight.bold
                   : FontWeight.normal,
-              color: room.unreadCount > 0 ? Colors.black87 : Colors.grey,
+              color: room.unreadCount > 0
+                  ? tokens.roomListSubtitleUnread
+                  : tokens.roomListSubtitleRead,
             ),
           ),
           onTap: () => _openChat(
@@ -188,20 +211,12 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
   }
 
   Widget _buildRoomAvatar(Room room) {
-    final avatarUrl = room.avatarUrl;
-    if (avatarUrl == null || avatarUrl.isEmpty) {
-      return const CircleAvatar(child: Icon(Icons.group));
-    }
-    return ClipOval(
-      child: Image.network(
-        NetworkService.resolveUrl(avatarUrl),
-        width: 40,
-        height: 40,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return const CircleAvatar(child: Icon(Icons.group));
-        },
-      ),
+    return ChatAvatar(
+      avatarUrl: room.avatarUrl,
+      radius: 20,
+      fallbackText: room.name.isNotEmpty ? room.name[0].toUpperCase() : '?',
+      fallbackIcon: room.type == 'group' ? Icons.group : null,
+      logTag: 'room_list',
     );
   }
 

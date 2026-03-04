@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:app/core/media/media_service.dart';
 import 'package:app/features/chat/providers/chat_room_provider.dart';
+import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/models/message.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -65,6 +66,11 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(widget.params));
+    final colorScheme = Theme.of(context).colorScheme;
+    final tokens = resolveChatSurfaceTokens(
+      colorScheme: colorScheme,
+      brightness: Theme.of(context).brightness,
+    );
     final replying = state.replyingToMessage;
     if (replying != null && replying.id != _lastReplyMessageId) {
       _lastReplyMessageId = replying.id;
@@ -86,7 +92,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFF2A3942),
+                color: tokens.replyBackground,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -95,7 +101,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                     width: 4,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF53BDEB),
+                      color: tokens.accent,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -106,10 +112,10 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                       children: [
                         Text(
                           _resolveReplySenderName(replying),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                            color: tokens.bubbleText,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -121,7 +127,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                               : replying.content,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade400,
+                            color: tokens.subtleText,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -140,13 +146,13 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
               ),
             ),
           Container(
-            color: const Color(0xFF111B21),
+            color: tokens.panelBackground,
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
             child: Row(
               children: [
                 IconButton(
                   icon: const Icon(Icons.add),
-                  color: Colors.grey.shade400,
+                  color: tokens.subtleText,
                   onPressed: _showAttachmentMenu,
                 ),
                 Expanded(
@@ -156,7 +162,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2A3942),
+                      color: tokens.composerBackground,
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: state.isRecording
@@ -167,7 +173,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                                 child: Text(
                                   '🔴 正在錄音... 鬆開以送出',
                                   style: TextStyle(
-                                    color: Colors.grey.shade200,
+                                    color: tokens.bubbleText,
                                     fontStyle: FontStyle.italic,
                                   ),
                                 ),
@@ -176,7 +182,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                               Text(
                                 _formatRecordingTime(_recordingSeconds),
                                 style: TextStyle(
-                                  color: Colors.grey.shade400,
+                                  color: tokens.subtleText,
                                   fontSize: 12,
                                 ),
                               ),
@@ -185,15 +191,15 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                         : TextField(
                             controller: _textController,
                             focusNode: _focusNode,
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: tokens.bubbleText),
                             decoration: InputDecoration(
                               hintText: '輸入訊息',
-                              hintStyle: TextStyle(color: Colors.grey.shade400),
+                              hintStyle: TextStyle(color: tokens.subtleText),
                               border: InputBorder.none,
                               isDense: true,
                               suffixIcon: Icon(
                                 Icons.emoji_emotions_outlined,
-                                color: Colors.grey.shade400,
+                                color: tokens.subtleText,
                               ),
                               suffixIconConstraints: const BoxConstraints(
                                 minWidth: 40,
@@ -203,7 +209,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                             onSubmitted: (_) => _sendMessage(),
                             onChanged: (_) {
                               ref
-                                  .read(chatRoomProvider(widget.params).notifier)
+                                  .read(
+                                    chatRoomProvider(widget.params).notifier,
+                                  )
                                   .startTyping();
                             },
                           ),
@@ -216,7 +224,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                     if (isComposing) {
                       return IconButton(
                         icon: const Icon(Icons.send),
-                        color: const Color(0xFF53BDEB),
+                        color: tokens.accent,
                         onPressed: _sendMessage,
                       );
                     }
@@ -249,8 +257,8 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                         child: Icon(
                           Icons.mic,
                           color: state.isRecording
-                              ? const Color(0xFF53BDEB)
-                              : Colors.grey.shade400,
+                              ? tokens.accent
+                              : tokens.subtleText,
                           size: 26,
                         ),
                       ),
@@ -298,11 +306,15 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final menuTokens = resolveChatSurfaceTokens(
+          colorScheme: Theme.of(context).colorScheme,
+          brightness: Theme.of(context).brightness,
+        );
         return Container(
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E2A30),
+            color: menuTokens.menuBackground,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
@@ -361,7 +373,10 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
           const SizedBox(height: 8),
           Text(
             label,
-            style: TextStyle(color: Colors.grey.shade300, fontSize: 13),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 13,
+            ),
           ),
         ],
       ),
