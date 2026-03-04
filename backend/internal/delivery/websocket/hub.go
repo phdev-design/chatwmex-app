@@ -275,6 +275,8 @@ type chatEvent struct {
 	Reactions    map[string][]string `json:"reactions"`
 	SenderID     string              `json:"sender_id"`
 	ReceiverID   string              `json:"receiver_id"`
+	UserID       string              `json:"user_id"`
+	AvatarURL    string              `json:"avatar_url"`
 }
 
 func (h *Hub) BroadcastRoomReadReceipt(roomID string, messageIDs []string, readerID string) {
@@ -307,6 +309,10 @@ func (h *Hub) handleChatEvent(eventBytes []byte) {
 	}
 	if event.Type == "message_unsent" {
 		h.broadcastMessageUnsentLocal(event)
+		return
+	}
+	if event.Type == "user_profile_updated" {
+		h.broadcastUserProfileUpdatedLocal(event)
 	}
 }
 
@@ -478,6 +484,46 @@ func (h *Hub) SendTypingToUser(senderID, receiverID, event string) {
 		}
 		bytes, _ := json.Marshal(resp)
 		client.send <- bytes
+	}
+}
+
+func (h *Hub) BroadcastUserProfileUpdated(userID, avatarURL string) {
+	if userID == "" {
+		return
+	}
+	event := chatEvent{
+		Type:      "user_profile_updated",
+		UserID:    userID,
+		AvatarURL: avatarURL,
+	}
+	if h.rabbitMQ != nil {
+		if err := h.rabbitMQ.PublishEvent(event); err == nil {
+			return
+		}
+	}
+	h.broadcastUserProfileUpdatedLocal(event)
+}
+
+func (h *Hub) broadcastUserProfileUpdatedLocal(event chatEvent) {
+	payload := map[string]interface{}{
+		"event": "user_profile_updated",
+		"data": map[string]interface{}{
+			"user_id":    event.UserID,
+			"avatar_url": event.AvatarURL,
+		},
+	}
+	messageBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	for client := range h.clients {
+		select {
+		case client.send <- messageBytes:
+		default:
+			close(client.send)
+			delete(h.clients, client)
+			delete(h.userClients, client.userID)
+		}
 	}
 }
 

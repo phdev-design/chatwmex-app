@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/core/network/network_service.dart';
 
 class RoomListPage extends ConsumerStatefulWidget {
   const RoomListPage({super.key});
@@ -111,7 +112,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         return ListTile(
           leading: Stack(
             children: [
-              const CircleAvatar(child: Icon(Icons.group)),
+              _buildRoomAvatar(room),
               Positioned(
                 right: 0,
                 top: 0,
@@ -173,9 +174,34 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
               color: room.unreadCount > 0 ? Colors.black87 : Colors.grey,
             ),
           ),
-          onTap: () => _openChat(context, room.id, room.name, isRoom, userId),
+          onTap: () => _openChat(
+            context,
+            room.id,
+            room.name,
+            isRoom,
+            userId,
+            room.avatarUrl,
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildRoomAvatar(Room room) {
+    final avatarUrl = room.avatarUrl;
+    if (avatarUrl == null || avatarUrl.isEmpty) {
+      return const CircleAvatar(child: Icon(Icons.group));
+    }
+    return ClipOval(
+      child: Image.network(
+        NetworkService.resolveUrl(avatarUrl),
+        width: 40,
+        height: 40,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return const CircleAvatar(child: Icon(Icons.group));
+        },
+      ),
     );
   }
 
@@ -185,6 +211,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     String title,
     bool isRoom,
     String userId,
+    String? avatarUrl,
   ) async {
     final token = await ref.read(storageServiceProvider).read('jwt_token');
     if (mounted && token != null) {
@@ -197,6 +224,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
           'isRoom': isRoom,
           'currentUserId': userId,
           'token': token,
+          'avatarUrl': avatarUrl,
         },
       );
     }

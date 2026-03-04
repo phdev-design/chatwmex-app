@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/features/profile/ui/edit_profile_page.dart';
+import 'package:app/features/profile/providers/profile_provider.dart';
+import 'package:app/core/network/network_service.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -12,23 +14,13 @@ class ProfilePage extends ConsumerStatefulWidget {
 }
 
 class _ProfilePageState extends ConsumerState<ProfilePage> {
-  // In a real app, fetch user profile from API/Provider
-  // For now, mocking or using stored basic info
-  String _userId = '';
-
   @override
   void initState() {
     super.initState();
-    _loadUser();
-  }
-
-  Future<void> _loadUser() async {
-    final id = await ref.read(storageServiceProvider).read('user_id');
-    if (mounted) {
-      setState(() {
-        _userId = id ?? 'Unknown';
-      });
-    }
+    // 進入頁面時，呼叫 ViewModel 載入使用者資料
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(profileViewModelProvider.notifier).loadProfile();
+    });
   }
 
   void _logout() async {
@@ -38,6 +30,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(profileViewModelProvider, (prev, next) {
+      if (next.error != null && next.error != prev?.error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.error!), backgroundColor: Colors.red),
+        );
+      }
+    });
+    final profileState = ref.watch(profileViewModelProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
@@ -50,22 +51,71 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            const CircleAvatar(
-              radius: 50,
-              child: Icon(Icons.person, size: 50),
+            GestureDetector(
+              onTap: () {
+                ref
+                    .read(profileViewModelProvider.notifier)
+                    .pickAndUploadAvatar();
+              },
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundImage: profileState.avatarUrl.isNotEmpty
+                        ? NetworkImage(
+                            NetworkService.resolveUrl(profileState.avatarUrl),
+                          )
+                        : null,
+                    child: profileState.avatarUrl.isEmpty
+                        ? const Icon(Icons.person, size: 50)
+                        : null,
+                  ),
+                  if (profileState.isLoading)
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
+
+            // 顯示 Username (如果正在載入中或沒有值，顯示預設文字)
             Text(
-              'User ID: $_userId',
-              style: Theme.of(context).textTheme.titleLarge,
+              profileState.username.isNotEmpty
+                  ? profileState.username
+                  : 'Loading...',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
+
+            // 順便把 Email 也顯示在名字下方，讓介面更好看
+            if (profileState.email.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                profileState.email,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+              ),
+            ],
+
             const SizedBox(height: 32),
             ListTile(
               leading: const Icon(Icons.person_outline),
               title: const Text('Edit Profile'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EditProfilePage()));
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const EditProfilePage()),
+                );
               },
             ),
             const Divider(),

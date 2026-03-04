@@ -25,10 +25,16 @@ class AuthRepository {
       final token = data['token'];
       final userId = data['user_info']['id'];
       final usernameStr = data['user_info']['username'];
+      final email = data['user_info']['email'] ?? '';
+      final phoneNumber = data['user_info']['phone_number'] ?? '';
+      final avatarUrl = data['user_info']['avatar_url'] ?? '';
 
       await _storageService.save('jwt_token', token);
       await _storageService.save('user_id', userId);
       await _storageService.save('username', usernameStr);
+      await _storageService.save('email', email);
+      await _storageService.save('phone_number', phoneNumber);
+      await _storageService.save('avatar_url', avatarUrl);
     } catch (e) {
       throw e;
     }

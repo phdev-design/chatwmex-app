@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -118,7 +119,17 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.Default()
-	r.Static("/uploads", "./uploads")
+	uploadsRootDir := filepath.Join("cmd", "server", "uploads")
+	if err := os.MkdirAll(filepath.Join(uploadsRootDir, "avatars"), 0o755); err != nil {
+		log.Fatalf("failed to create uploads directory: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(uploadsRootDir, "images"), 0o755); err != nil {
+		log.Fatalf("failed to create uploads directory: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(uploadsRootDir, "audio"), 0o755); err != nil {
+		log.Fatalf("failed to create uploads directory: %v", err)
+	}
+	r.Static("/uploads", uploadsRootDir)
 
 	// 6. Initialize Handlers & Routes
 	// Setup Auth Middleware
@@ -132,7 +143,7 @@ func main() {
 	// Initialize WebSocket Hub
 	rabbitIn := make(chan *domain.Message)
 	rabbitEvents := make(chan []byte)
-	
+
 	var rabbitClient *rabbitmq.RabbitMQClient
 	if cfg.RabbitMQURL != "" {
 		var err error
@@ -143,13 +154,13 @@ func main() {
 			defer rabbitClient.Close()
 		}
 	}
-	
+
 	// Hub needs NotificationService to send push when user offline
 	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService)
-	
+
 	// Create SocketController
 	socketController := websocket.NewSocketController(hub, messageUsecase)
-	
+
 	go hub.Run()
 
 	// Initialize FriendUsecase (Requires Hub/NotificationService for notifications)
@@ -168,23 +179,23 @@ func main() {
 	// Hub is the best place for this logic.
 	// So Hub should wrap `notificationService`.
 	// And FriendUsecase should keep using Hub (as NotificationService).
-	
+
 	friendUsecase := usecase.NewFriendUsecase(friendRepo, userRepo, hub, timeout)
 
 	// Register Handlers
-	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret)
+	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret, hub)
 	delivery.NewMessageHandler(r, messageUsecase, hub, authMiddleware)
-	delivery.NewRoomHandler(r, roomUsecase, authMiddleware)
+	delivery.NewRoomHandler(r, roomUsecase, userUsecase, authMiddleware)
 	delivery.NewMediaHandler(r, authMiddleware)
 	delivery.NewOnlineHandler(r, onlineRepo, authMiddleware)
 	delivery.NewFriendHandler(r, friendUsecase, cfg.JWTSecret)
 	delivery.NewDeviceHandler(r, deviceUsecase, authMiddleware)
-	
+
 	// Register WebSocket Route
 	r.GET("/ws", func(c *gin.Context) {
 		websocket.ServeWs(hub, c, cfg.JWTSecret, socketController)
 	})
-	
+
 	// Register Metrics Endpoint
 	r.GET("/metrics", func(c *gin.Context) {
 		// Simple metrics

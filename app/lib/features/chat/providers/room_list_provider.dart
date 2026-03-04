@@ -76,6 +76,15 @@ class RoomListViewModel extends Notifier<RoomListState> {
               clearUnreadCount(roomId);
             }
           }
+        } else if (event == 'user_profile_updated') {
+          final payload = data['data'];
+          if (payload is Map) {
+            final userId = payload['user_id'];
+            final avatarUrl = payload['avatar_url'];
+            if (userId is String && avatarUrl is String) {
+              updateRoomAvatar(userId, avatarUrl);
+            }
+          }
         }
       }
     });
@@ -155,6 +164,16 @@ class RoomListViewModel extends Notifier<RoomListState> {
           lastMessage: lastMessage,
           lastMessageTime: lastMessageTime ?? room.lastMessageTime,
         );
+      }
+      return room;
+    }).toList();
+    state = state.copyWith(rooms: updated);
+  }
+
+  void updateRoomAvatar(String userId, String avatarUrl) {
+    final updated = state.rooms.map((room) {
+      if (room.id == userId) {
+        return room.copyWith(avatarUrl: avatarUrl);
       }
       return room;
     }).toList();

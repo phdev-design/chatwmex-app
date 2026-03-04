@@ -11,6 +11,7 @@ type User struct {
 	Username     string    `json:"username"`
 	Email        string    `json:"email"`
 	PhoneNumber  string    `json:"phone_number"`
+	AvatarURL    string    `json:"avatar_url,omitempty"`
 	PasswordHash string    `json:"-"` // PasswordHash should not be exposed in JSON
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -23,6 +24,7 @@ type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Update(ctx context.Context, user *User) error
+	UpdateAvatar(ctx context.Context, id, avatarURL string) error
 }
 
 // UserUsecase defines the interface for user business logic.
@@ -37,4 +39,6 @@ type UserUsecase interface {
 	GetUserProfile(ctx context.Context, id string) (*User, error)
 	// UpdateProfile updates the user's email and phone number.
 	UpdateProfile(ctx context.Context, id, email, phoneNumber string) error
+	// UpdateAvatar updates the user's avatar URL.
+	UpdateAvatar(ctx context.Context, id, avatarURL string) error
 }

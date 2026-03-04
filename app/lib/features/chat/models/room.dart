@@ -4,6 +4,7 @@ class Room extends Equatable {
   final String id;
   final String name;
   final String? type; // 'group' or 'dm'
+  final String? avatarUrl;
   final DateTime createdAt;
   final String? lastMessage;
   final DateTime? lastMessageTime;
@@ -14,6 +15,7 @@ class Room extends Equatable {
     required this.id,
     required this.name,
     this.type,
+    this.avatarUrl,
     required this.createdAt,
     this.lastMessage,
     this.lastMessageTime,
@@ -26,10 +28,11 @@ class Room extends Equatable {
       id: json['id'] ?? '',
       name: json['name'] ?? 'Unknown Room',
       type: json['type'],
+      avatarUrl: json['avatar_url'],
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       lastMessage: json['last_message'],
-      lastMessageTime: json['last_message_time'] != null 
-          ? DateTime.tryParse(json['last_message_time']) 
+      lastMessageTime: json['last_message_time'] != null
+          ? DateTime.tryParse(json['last_message_time'])
           : null,
       unreadCount: json['unread_count'] ?? 0,
       lastReadAt: json['last_read_at'] != null
@@ -42,6 +45,7 @@ class Room extends Equatable {
     String? id,
     String? name,
     String? type,
+    String? avatarUrl,
     DateTime? createdAt,
     String? lastMessage,
     DateTime? lastMessageTime,
@@ -52,6 +56,7 @@ class Room extends Equatable {
       id: id ?? this.id,
       name: name ?? this.name,
       type: type ?? this.type,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       createdAt: createdAt ?? this.createdAt,
       lastMessage: lastMessage ?? this.lastMessage,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
@@ -65,6 +70,7 @@ class Room extends Equatable {
     id,
     name,
     type,
+    avatarUrl,
     createdAt,
     lastMessage,
     lastMessageTime,
@@ -78,12 +84,14 @@ class User extends Equatable {
   final String username;
   final String email;
   final String? phoneNumber;
+  final String? avatarUrl;
 
   const User({
     required this.id,
     required this.username,
     required this.email,
     this.phoneNumber,
+    this.avatarUrl,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -92,9 +100,10 @@ class User extends Equatable {
       username: json['username'] ?? '',
       email: json['email'] ?? '',
       phoneNumber: json['phone_number'],
+      avatarUrl: json['avatar_url'],
     );
   }
 
   @override
-  List<Object?> get props => [id, username, email, phoneNumber];
+  List<Object?> get props => [id, username, email, phoneNumber, avatarUrl];
 }

@@ -143,6 +143,18 @@ func (u *userUsecase) UpdateProfile(c context.Context, id, email, phoneNumber st
 	return u.userRepo.Update(ctx, user)
 }
 
+func (u *userUsecase) UpdateAvatar(c context.Context, id, avatarURL string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+	if id == "" {
+		return errors.New("user id is required")
+	}
+	if avatarURL == "" {
+		return errors.New("avatar url is required")
+	}
+	return u.userRepo.UpdateAvatar(ctx, id, avatarURL)
+}
+
 func isEmail(s string) bool {
 	// Basic check
 	for _, c := range s {

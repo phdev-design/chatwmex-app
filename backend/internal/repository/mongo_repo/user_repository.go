@@ -23,6 +23,7 @@ type mongoUser struct {
 	Username     string             `bson:"username"`
 	Email        string             `bson:"email,omitempty"`
 	PhoneNumber  string             `bson:"phone_number,omitempty"`
+	AvatarURL    string             `bson:"avatar_url,omitempty"`
 	PasswordHash string             `bson:"password_hash"`
 	CreatedAt    time.Time          `bson:"created_at"`
 	UpdatedAt    time.Time          `bson:"updated_at"`
@@ -51,13 +52,13 @@ func NewUserRepository(db *mongo.Database) domain.UserRepository {
 		Options: options.Index().SetUnique(true).SetSparse(true),
 	}
 
-	// We create the index in the background to avoid blocking, 
+	// We create the index in the background to avoid blocking,
 	// though for a new app this is fast.
 	// In a real production scenario, index creation might be handled by migration scripts.
 	// For simplicity here, we do it on startup but log errors instead of crashing.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	_, err := collection.Indexes().CreateOne(ctx, usernameIndexModel)
 	if err != nil {
 		fmt.Printf("Warning: failed to create unique index on users.username: %v\n", err)
@@ -80,6 +81,7 @@ func (r *UserRepository) toDomain(u *mongoUser) *domain.User {
 		Username:     u.Username,
 		Email:        u.Email,
 		PhoneNumber:  u.PhoneNumber,
+		AvatarURL:    u.AvatarURL,
 		PasswordHash: u.PasswordHash,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
@@ -102,6 +104,7 @@ func (r *UserRepository) fromDomain(u *domain.User) (*mongoUser, error) {
 		Username:     u.Username,
 		Email:        u.Email,
 		PhoneNumber:  u.PhoneNumber,
+		AvatarURL:    u.AvatarURL,
 		PasswordHash: u.PasswordHash,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
@@ -192,6 +195,27 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 		return fmt.Errorf("failed to update user: %w", err)
 	}
 
+	return nil
+}
+
+func (r *UserRepository) UpdateAvatar(ctx context.Context, id, avatarURL string) error {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"avatar_url": avatarURL,
+			"updated_at": time.Now(),
+		},
+	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	if err != nil {
+		return fmt.Errorf("failed to update avatar: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
 	return nil
 }
 

@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:app/core/network/network_service.dart';
 
 class ContactInfoPage extends StatelessWidget {
   final String roomId;
   final String title;
   final bool isRoom;
+  final String? avatarUrl;
 
   const ContactInfoPage({
     super.key,
     required this.roomId,
     required this.title,
     this.isRoom = false,
+    this.avatarUrl,
   });
 
   @override
@@ -61,17 +64,7 @@ class ContactInfoPage extends StatelessWidget {
                         const SizedBox(height: 20),
                         Hero(
                           tag: 'avatar_$roomId',
-                          child: CircleAvatar(
-                            radius: 60,
-                            backgroundColor: const Color(0xFF2A3942),
-                            child: Text(
-                              title.isNotEmpty ? title[0].toUpperCase() : '?',
-                              style: const TextStyle(
-                                fontSize: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                          child: _buildAvatar(),
                         ),
                         const SizedBox(height: 12),
                         // 如果需要顯示電話號碼或 ID，可以放這裡
@@ -202,6 +195,31 @@ class ContactInfoPage extends StatelessWidget {
             ]),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvatar() {
+    final defaultAvatar = CircleAvatar(
+      radius: 60,
+      backgroundColor: const Color(0xFF2A3942),
+      child: Text(
+        title.isNotEmpty ? title[0].toUpperCase() : '?',
+        style: const TextStyle(fontSize: 48, color: Colors.white),
+      ),
+    );
+    if (avatarUrl == null || avatarUrl!.isEmpty) {
+      return defaultAvatar;
+    }
+    return ClipOval(
+      child: Image.network(
+        NetworkService.resolveUrl(avatarUrl!),
+        width: 120,
+        height: 120,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return defaultAvatar;
+        },
       ),
     );
   }

@@ -78,7 +78,7 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 	if isAudio {
 		dirType = "audio"
 	}
-	dir := filepath.Join(".", "uploads", dirType)
+	dir := filepath.Join(uploadsRootDir, dirType)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed to create upload directory")
 		return

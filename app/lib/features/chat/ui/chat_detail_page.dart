@@ -21,6 +21,7 @@ class ChatDetailPage extends ConsumerStatefulWidget {
   final bool isRoom;
   final String currentUserId;
   final String token;
+  final String? avatarUrl;
 
   const ChatDetailPage({
     super.key,
@@ -29,10 +30,60 @@ class ChatDetailPage extends ConsumerStatefulWidget {
     this.isRoom = false,
     required this.currentUserId,
     required this.token,
+    this.avatarUrl,
   });
 
   @override
   ConsumerState<ChatDetailPage> createState() => _ChatDetailPageState();
+}
+
+class ChatAvatar extends StatelessWidget {
+  final String? avatarUrl;
+  final double radius;
+  final String fallbackText;
+  final IconData? fallbackIcon;
+  final String logTag;
+
+  const ChatAvatar({
+    super.key,
+    required this.avatarUrl,
+    required this.radius,
+    required this.fallbackText,
+    this.fallbackIcon,
+    this.logTag = 'chat_avatar',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFF2A3942),
+      child: fallbackIcon != null
+          ? Icon(fallbackIcon, color: Colors.white, size: radius)
+          : Text(
+              fallbackText,
+              style: TextStyle(color: Colors.white, fontSize: radius * 0.8),
+            ),
+    );
+    if (avatarUrl == null || avatarUrl!.isEmpty) {
+      return fallback;
+    }
+    final resolvedUrl = Uri.encodeFull(NetworkService.resolveUrl(avatarUrl!));
+    return ClipOval(
+      child: Image.network(
+        resolvedUrl,
+        width: radius * 2,
+        height: radius * 2,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint(
+            '$logTag avatar load failed url=$resolvedUrl error=$error',
+          );
+          return fallback;
+        },
+      ),
+    );
+  }
 }
 
 class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
@@ -230,12 +281,17 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
 
   // ==== 導航至聯絡人頁面 ====
   void _navigateToContactInfo() {
+    final state = ref.read(chatRoomProvider(_params));
+    final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
+        ? state.roomAvatarUrl
+        : widget.avatarUrl;
     context.push(
       '/contact-info',
       extra: {
         'roomId': widget.roomId,
         'title': widget.title,
         'isRoom': widget.isRoom,
+        'avatarUrl': effectiveAvatarUrl,
       },
     );
   }
@@ -244,6 +300,9 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(_params));
     final colorScheme = Theme.of(context).colorScheme;
+    final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
+        ? state.roomAvatarUrl
+        : widget.avatarUrl;
 
     ref.listen(chatRoomProvider(_params), (previous, next) {
       if (previous == null ||
@@ -296,13 +355,13 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
               children: [
                 Hero(
                   tag: 'avatar_${widget.roomId}',
-                  child: CircleAvatar(
+                  child: ChatAvatar(
                     radius: 18,
-                    backgroundColor: const Color(0xFF2A3942),
-                    child: Text(
-                      widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '',
-                      style: const TextStyle(color: Colors.white),
-                    ),
+                    avatarUrl: effectiveAvatarUrl,
+                    fallbackText: widget.title.isNotEmpty
+                        ? widget.title[0].toUpperCase()
+                        : '',
+                    logTag: 'chat_appbar',
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -321,7 +380,10 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                       ),
                       Text(
                         '點按此處查看聯絡人資料',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade400,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -463,6 +525,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                                                           _buildMessageBubble(
                                                             msg,
                                                             isMe,
+                                                            state,
                                                           ),
                                                     ),
                                                   ),
@@ -773,7 +836,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     );
   }
 
-  Widget _buildMessageBubble(Message msg, bool isMe) {
+  Widget _buildMessageBubble(Message msg, bool isMe, ChatRoomState state) {
     final colorScheme = Theme.of(context).colorScheme;
     Widget content;
     if (msg.type == MessageType.image) {
@@ -952,13 +1015,19 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
         padding: EdgeInsets.only(
-          left: isMe ? 60 : 12,
+          left: isMe ? 60 : 44, // <--- 修改：永遠給左側保留 44 的空間，不管是群組還是私聊
           right: isMe ? 12 : 60,
           bottom: paddingBottom,
         ),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
+            if (!isMe) // <--- 修改：拿掉 widget.isRoom 的限制條件
+              Positioned(
+                left: -32,
+                top: 0,
+                child: _buildGroupSenderAvatar(msg, state),
+              ),
             // 利用 Builder 取得 GestureDetector (氣泡本身) 的 BuildContext
             Builder(
               builder: (bubbleContext) {
@@ -1047,6 +1116,23 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildGroupSenderAvatar(Message msg, ChatRoomState state) {
+    final avatarUrl = widget.isRoom
+        ? state.userAvatarUrls[msg.senderId]
+        : (state.roomAvatarUrl.isNotEmpty
+              ? state.roomAvatarUrl
+              : widget.avatarUrl);
+    final fallbackText = widget.isRoom
+        ? (msg.senderId.isNotEmpty ? msg.senderId[0].toUpperCase() : '?')
+        : (widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '?');
+    return ChatAvatar(
+      radius: 14,
+      avatarUrl: avatarUrl,
+      fallbackText: fallbackText,
+      logTag: 'chat_bubble',
     );
   }
 

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/features/profile/providers/profile_provider.dart';
-import 'package:app/core/storage/storage_service.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
   const EditProfilePage({super.key});
@@ -16,27 +15,14 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _usernameController = TextEditingController();
-  
-  // We need to load initial data. Since we don't have a robust "Get Profile" API yet that returns phone number,
-  // we might start with empty or rely on what we stored.
-  // For this task, I'll fetch basic info from storage or just leave empty if not available.
-  // Ideally, we should pass the User object to this page or fetch it.
+  bool _didBindInitialData = false;
   
   @override
   void initState() {
     super.initState();
-    // Simulate loading user data or fetch if possible.
-    // Since we don't have the full user object with phone number in storage easily accessible without extra calls,
-    // I will try to load what I can.
-    _loadUserData();
-  }
-  
-  Future<void> _loadUserData() async {
-    final storage = ref.read(storageServiceProvider);
-    final username = await storage.read('username');
-    if (mounted && username != null) {
-      _usernameController.text = username;
-    }
+    Future.microtask(() {
+      ref.read(profileViewModelProvider.notifier).loadProfile();
+    });
   }
 
   @override
@@ -45,6 +31,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     
     // Listen for success/error
     ref.listen(profileViewModelProvider, (prev, next) {
+      if (!_didBindInitialData && !next.isLoading && next.username.isNotEmpty) {
+        _usernameController.text = next.username;
+        _emailController.text = next.email;
+        _phoneController.text = next.phoneNumber;
+        _didBindInitialData = true;
+      }
       if (next.successMessage != null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next.successMessage!)));
         context.pop(); // Go back on success

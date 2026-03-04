@@ -35,6 +35,22 @@ class ChatRepository {
     }
   }
 
+  Future<List<User>> getRoomMemberProfiles(String roomId) async {
+    if (roomId.isEmpty) return const [];
+    try {
+      final response = await _networkService.client.get(
+        '/rooms/$roomId/member-profiles',
+      );
+      final List<dynamic> list = response.data['data'] ?? [];
+      return list
+          .whereType<Map>()
+          .map((e) => User.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      throw e;
+    }
+  }
+
   Future<String> uploadMedia(File file, String type) async {
     return await _networkService.uploadFile(file, type);
   }

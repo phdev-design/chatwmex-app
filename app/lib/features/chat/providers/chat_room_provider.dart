@@ -26,6 +26,8 @@ class ChatRoomState {
   final int offset;
   final Message? replyingToMessage;
   final bool isRecording;
+  final Map<String, String> userAvatarUrls;
+  final String roomAvatarUrl;
 
   const ChatRoomState({
     this.messages = const [],
@@ -39,6 +41,8 @@ class ChatRoomState {
     this.offset = 50,
     this.replyingToMessage,
     this.isRecording = false,
+    this.userAvatarUrls = const {},
+    this.roomAvatarUrl = '',
   });
 
   ChatRoomState copyWith({
@@ -53,6 +57,8 @@ class ChatRoomState {
     int? offset,
     Message? replyingToMessage,
     bool? isRecording,
+    Map<String, String>? userAvatarUrls,
+    String? roomAvatarUrl,
     bool clearReplyingTo = false,
   }) {
     return ChatRoomState(
@@ -69,6 +75,8 @@ class ChatRoomState {
           ? null
           : (replyingToMessage ?? this.replyingToMessage),
       isRecording: isRecording ?? this.isRecording,
+      userAvatarUrls: userAvatarUrls ?? this.userAvatarUrls,
+      roomAvatarUrl: roomAvatarUrl ?? this.roomAvatarUrl,
     );
   }
 }
@@ -107,6 +115,16 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _network = ref.watch(networkServiceProvider);
     _wsService = ref.watch(webSocketServiceProvider);
     _chatRepository = ref.watch(chatRepositoryProvider);
+    var initialRoomAvatarUrl = '';
+    if (!arg.isRoom) {
+      final rooms = ref.read(roomListViewModelProvider).rooms;
+      for (final room in rooms) {
+        if (room.id == arg.roomId && room.avatarUrl != null) {
+          initialRoomAvatarUrl = room.avatarUrl!;
+          break;
+        }
+      }
+    }
 
     // Connect WebSocket
     _wsService.connect();
@@ -243,6 +261,14 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               _applyUnsentUpdate(messageId);
             }
           }
+        } else if (event == 'user_profile_updated') {
+          if (payload is Map) {
+            final userId = payload['user_id'];
+            final avatarUrl = payload['avatar_url'];
+            if (userId is String && avatarUrl is String) {
+              _applyUserAvatarUpdated(arg, userId, avatarUrl);
+            }
+          }
         }
       }
     });
@@ -255,7 +281,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
     Future.microtask(() => loadHistory());
 
-    return const ChatRoomState(isConnected: true);
+    return ChatRoomState(
+      isConnected: true,
+      roomAvatarUrl: initialRoomAvatarUrl,
+    );
   }
 
   void _addMessage(Message msg) {
@@ -274,6 +303,19 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       return;
     }
     state = state.copyWith(messages: [hydrated, ...state.messages]);
+  }
+
+  void _applyUserAvatarUpdated(ChatRoomParams arg, String userId, String avatarUrl) {
+    final avatars = Map<String, String>.from(state.userAvatarUrls);
+    avatars[userId] = avatarUrl;
+    String roomAvatarUrl = state.roomAvatarUrl;
+    if (!arg.isRoom && arg.roomId == userId) {
+      roomAvatarUrl = avatarUrl;
+    }
+    state = state.copyWith(
+      userAvatarUrls: avatars,
+      roomAvatarUrl: roomAvatarUrl,
+    );
   }
 
   void _replaceMessageId(String clientMsgId, String messageId) {
@@ -419,6 +461,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       );
       if (offset == 0) {
         if (arg.isRoom) {
+          _preloadRoomMemberAvatars();
+        }
+        if (arg.isRoom) {
           final ids = ordered
               .where(
                 (m) =>
@@ -438,6 +483,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  Future<void> _preloadRoomMemberAvatars() async {
+    try {
+      final members = await _chatRepository.getRoomMemberProfiles(arg.roomId);
+      if (members.isEmpty) return;
+      final avatars = Map<String, String>.from(state.userAvatarUrls);
+      for (final user in members) {
+        final avatarUrl = user.avatarUrl;
+        if (avatarUrl != null && avatarUrl.isNotEmpty) {
+          avatars[user.id] = avatarUrl;
+        }
+      }
+      state = state.copyWith(userAvatarUrls: avatars);
+    } catch (_) {}
   }
 
   Future<void> loadMoreMessages() async {

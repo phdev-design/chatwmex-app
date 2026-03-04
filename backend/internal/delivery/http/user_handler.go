@@ -1,7 +1,12 @@
 package http
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"chatwmex_backend/internal/delivery/http/middleware"
@@ -13,15 +18,21 @@ import (
 )
 
 type UserHandler struct {
-	UserUsecase domain.UserUsecase
-	JWTSecret   string
+	UserUsecase        domain.UserUsecase
+	JWTSecret          string
+	ProfileBroadcaster UserProfileEventBroadcaster
+}
+
+type UserProfileEventBroadcaster interface {
+	BroadcastUserProfileUpdated(userID, avatarURL string)
 }
 
 // NewUserHandler initializes the user handler and registers routes.
-func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string) {
+func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string, profileBroadcaster UserProfileEventBroadcaster) {
 	handler := &UserHandler{
-		UserUsecase: us,
-		JWTSecret:   jwtSecret,
+		UserUsecase:        us,
+		JWTSecret:          jwtSecret,
+		ProfileBroadcaster: profileBroadcaster,
 	}
 
 	api := r.Group("/api/v1/users")
@@ -33,7 +44,9 @@ func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string) {
 	protected := r.Group("/api/v1/users")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
 	{
+		protected.GET("/profile", handler.GetMyProfile)
 		protected.PUT("/profile", handler.UpdateProfile)
+		protected.PUT("/avatar", handler.UploadAvatar)
 	}
 }
 
@@ -116,7 +129,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// Let's look at Usecase implementation:
 	// return "mock-jwt-token-for-" + user.ID, nil
 	// So we can extract the ID from this mock string, OR we just use the username to fetch the user again? No that's inefficient.
-	
+
 	// BEST APPROACH:
 	// The instruction says: "Call userUsecase.Login to verify. After verification success, call pkg/token to sign JWT Token".
 	// This implies the Usecase should probably just return the User object or ID.
@@ -127,22 +140,22 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// Let's cheat slightly: We will fetch the user by username to get the ID for the token generation.
 	// It's one extra DB call but it's safe.
 	// OR, we can parse the ID from the mock string returned by Usecase (hacky).
-	
+
 	// Let's do the "Fetch User" approach for correctness of the JWT,
 	// ignoring the Usecase Login return value (just treating it as success/fail).
-	
+
 	_, err := h.UserUsecase.Login(ctx, req.Username, req.Password)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
-	
+
 	// Fetch user details for the token and response
 	// We need to extend the Usecase to support GetByUsername? No, we have GetUserProfile(ID).
 	// We don't have GetByUsername exposed in Usecase interface.
 	// We only have `GetUserProfile(ctx, id)`.
 	// This is a small design gap.
-	
+
 	// WORKAROUND:
 	// Since `Login` in Usecase already does `GetByUsername`, it has the user.
 	// The best fix is to change Usecase `Login` to return `(*domain.User, error)`.
@@ -150,45 +163,45 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// Let's assume the user wants me to use the existing Usecase.
 	// But I need the UserID for the JWT.
 	// I will rely on the "mock" string to contain the ID for now? No, that's bad practice.
-	
+
 	// I will implement a helper in this handler or just assume I can change the Usecase?
 	// The prompt says: "Verify success, then call pkg/token to sign JWT Token".
 	// This strongly implies the token generation happens HERE.
-	
+
 	// Let's use `GetUserProfile`? No I don't have the ID.
-	
+
 	// Okay, I will modify the Usecase `Login` return type in my mind? No, the code is written.
 	// I will fetch the user by username using the repository directly? No, handler shouldn't touch repo.
-	
+
 	// I will parse the ID from the mock string returned by `Login`.
 	// Usecase: return user.ID
 	// Handler: userID := mockToken
-	
+
 	userID, err := h.UserUsecase.Login(ctx, req.Username, req.Password)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, err.Error())
 		return
 	}
-	
+
 	// Generate Real JWT
 	tokenString, err := token.GenerateToken(userID, h.JWTSecret, 7*24*time.Hour)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "Failed to generate token")
 		return
 	}
-	
+
 	// Get User Info for response
 	user, err := h.UserUsecase.GetUserProfile(ctx, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "Failed to fetch user profile")
 		return
 	}
-	
+
 	resp := LoginResponse{
 		Token:    tokenString,
 		UserInfo: user,
 	}
-	
+
 	response.Success(c, resp)
 }
 
@@ -222,4 +235,79 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	response.Success(c, "Profile updated successfully")
+}
+
+func (h *UserHandler) GetMyProfile(c *gin.Context) {
+	userID := c.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	ctx := c.Request.Context()
+	user, err := h.UserUsecase.GetUserProfile(ctx, userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, gin.H{
+		"id":           user.ID,
+		"username":     user.Username,
+		"email":        user.Email,
+		"phone_number": user.PhoneNumber,
+		"avatar_url":   user.AvatarURL,
+	})
+}
+
+func (h *UserHandler) UploadAvatar(c *gin.Context) {
+	userID := c.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "file is required")
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext == "" {
+		ext = ".jpg"
+	}
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		response.Error(c, http.StatusBadRequest, "unsupported image extension")
+		return
+	}
+	avatarDir := filepath.Join(uploadsRootDir, "avatars")
+	if err := os.MkdirAll(avatarDir, 0o755); err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to prepare upload directory")
+		return
+	}
+	fileName, err := generateAvatarFileName(ext)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to generate filename")
+		return
+	}
+	dstPath := filepath.Join(avatarDir, fileName)
+	if err := c.SaveUploadedFile(file, dstPath); err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to save file")
+		return
+	}
+	avatarURL := "/uploads/avatars/" + fileName
+	if err := h.UserUsecase.UpdateAvatar(c.Request.Context(), userID, avatarURL); err != nil {
+		_ = os.Remove(dstPath)
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if h.ProfileBroadcaster != nil {
+		h.ProfileBroadcaster.BroadcastUserProfileUpdated(userID, avatarURL)
+	}
+	response.Success(c, gin.H{"avatar_url": avatarURL})
+}
+
+func generateAvatarFileName(ext string) (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b) + ext, nil
 }

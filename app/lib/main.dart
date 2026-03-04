@@ -73,6 +73,7 @@ class _MyAppState extends ConsumerState<MyApp> {
               isRoom: extra['isRoom'],
               currentUserId: extra['currentUserId'],
               token: extra['token'],
+              avatarUrl: extra['avatarUrl'],
             );
           },
         ),
@@ -85,6 +86,7 @@ class _MyAppState extends ConsumerState<MyApp> {
               roomId: extra['roomId'] ?? '',
               title: extra['title'] ?? 'Unknown',
               isRoom: extra['isRoom'] ?? false,
+              avatarUrl: extra['avatarUrl'],
             );
           },
         ),

@@ -52,6 +52,11 @@ func (m *MockUserRepository) Update(ctx context.Context, user *domain.User) erro
 	return args.Error(0)
 }
 
+func (m *MockUserRepository) UpdateAvatar(ctx context.Context, id, avatarURL string) error {
+	args := m.Called(ctx, id, avatarURL)
+	return args.Error(0)
+}
+
 func TestRegister(t *testing.T) {
 	mockRepo := new(MockUserRepository)
 	usecase := NewUserUsecase(mockRepo, time.Second)
@@ -136,7 +141,7 @@ func TestLogin(t *testing.T) {
 	t.Run("UserNotFound", func(t *testing.T) {
 		mockRepo := new(MockUserRepository)
 		usecase := NewUserUsecase(mockRepo, time.Second)
-		
+
 		mockRepo.On("GetByUsername", mock.Anything, "nonexistent").Return(nil, errors.New("user not found"))
 
 		_, err := usecase.Login(ctx, "nonexistent", "password")

@@ -6,11 +6,18 @@ import 'package:app/core/storage/storage_service.dart';
 class NetworkService {
   late final Dio _dio;
   final StorageService _storageService;
+  static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
   static String get baseUrl {
+    if (_envBaseUrl.isNotEmpty) {
+      return _envBaseUrl;
+    }
     if (Platform.isAndroid) {
       return 'http://10.0.2.2:8080';
     }
-    return 'http://192.168.100.114:8080';
+    if (Platform.isIOS) {
+      return 'http://127.0.0.1:8080';
+    }
+    return 'http://localhost:8080';
   }
 
   static String resolveUrl(String path) {
@@ -38,6 +45,11 @@ class NetworkService {
           final token = await _storageService.read('jwt_token');
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
+          }
+          if (options.data is FormData) {
+            options.headers['Content-Type'] = 'multipart/form-data';
+          } else if (options.headers['Content-Type'] == null) {
+            options.headers['Content-Type'] = 'application/json';
           }
           return handler.next(options);
         },

@@ -12,11 +12,13 @@ import (
 
 type RoomHandler struct {
 	RoomUsecase domain.RoomUsecase
+	UserUsecase domain.UserUsecase
 }
 
-func NewRoomHandler(r *gin.Engine, ru domain.RoomUsecase, authMiddleware gin.HandlerFunc) {
+func NewRoomHandler(r *gin.Engine, ru domain.RoomUsecase, uu domain.UserUsecase, authMiddleware gin.HandlerFunc) {
 	handler := &RoomHandler{
 		RoomUsecase: ru,
+		UserUsecase: uu,
 	}
 
 	api := r.Group("/api/v1/rooms")
@@ -29,6 +31,7 @@ func NewRoomHandler(r *gin.Engine, ru domain.RoomUsecase, authMiddleware gin.Han
 		api.DELETE("/:id", handler.DeleteRoom)
 		api.GET("/my", handler.GetUserRooms)
 		api.GET("/:id/members", handler.GetRoomMembers)
+		api.GET("/:id/member-profiles", handler.GetRoomMemberProfiles)
 	}
 }
 
@@ -233,4 +236,34 @@ func (h *RoomHandler) GetRoomMembers(c *gin.Context) {
 	}
 
 	response.Success(c, members)
+}
+
+func (h *RoomHandler) GetRoomMemberProfiles(c *gin.Context) {
+	roomID := c.Param("id")
+	if roomID == "" {
+		response.Error(c, http.StatusBadRequest, "Room ID is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	memberIDs, err := h.RoomUsecase.GetRoomMembers(ctx, roomID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	profiles := make([]map[string]interface{}, 0, len(memberIDs))
+	for _, memberID := range memberIDs {
+		user, userErr := h.UserUsecase.GetUserProfile(ctx, memberID)
+		if userErr != nil || user == nil {
+			continue
+		}
+		profiles = append(profiles, map[string]interface{}{
+			"id":         user.ID,
+			"username":   user.Username,
+			"avatar_url": user.AvatarURL,
+		})
+	}
+
+	response.Success(c, profiles)
 }
