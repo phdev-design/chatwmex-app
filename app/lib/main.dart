@@ -4,11 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:app/features/auth/ui/login_page.dart';
 import 'package:app/features/chat/ui/chat_detail_page.dart';
 import 'package:app/features/chat/ui/room_list_page.dart';
+import 'package:app/features/chat/ui/contact_info_page.dart'; // <--- 匯入新的聯絡人頁面
+import 'package:app/features/splash/ui/splash_screen.dart';
 import 'package:app/features/friend/ui/add_friend_page.dart';
 import 'package:app/features/friend/ui/friend_requests_page.dart';
 import 'package:app/features/friend/ui/new_chat_page.dart';
 import 'package:app/features/profile/ui/profile_page.dart';
-import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/theme/theme.dart';
 import 'package:app/core/notification/notification_service.dart';
 
@@ -30,8 +31,12 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final router = GoRouter(
       navigatorKey: NotificationService.navigatorKey,
-      initialLocation: '/login',
+      initialLocation: '/splash',
       routes: [
+        GoRoute(
+          path: '/splash',
+          builder: (context, state) => const SplashScreen(),
+        ),
         GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
         GoRoute(
           path: '/chat-list',
@@ -71,23 +76,19 @@ class _MyAppState extends ConsumerState<MyApp> {
             );
           },
         ),
+        // 新增的聯絡人資料路由
+        GoRoute(
+          path: '/contact-info',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            return ContactInfoPage(
+              roomId: extra['roomId'] ?? '',
+              title: extra['title'] ?? 'Unknown',
+              isRoom: extra['isRoom'] ?? false,
+            );
+          },
+        ),
       ],
-      redirect: (context, state) async {
-        // Simple auth check
-        final storage = ref.read(storageServiceProvider);
-        final token = await storage.read('jwt_token');
-
-        final isLoggingIn = state.uri.toString() == '/login';
-
-        if (token == null && !isLoggingIn) {
-          return '/login';
-        }
-        if (token != null && isLoggingIn) {
-          return '/chat-list';
-        }
-
-        return null;
-      },
     );
 
     return MaterialApp.router(

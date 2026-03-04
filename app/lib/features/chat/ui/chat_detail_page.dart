@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
@@ -227,6 +228,18 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     );
   }
 
+  // ==== 導航至聯絡人頁面 ====
+  void _navigateToContactInfo() {
+    context.push(
+      '/contact-info',
+      extra: {
+        'roomId': widget.roomId,
+        'title': widget.title,
+        'isRoom': widget.isRoom,
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(_params));
@@ -273,40 +286,51 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
       appBar: AppBar(
         backgroundColor: const Color(0xFF111B21),
         titleSpacing: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: const Color(0xFF2A3942),
-              child: Text(
-                widget.title.isNotEmpty ? widget.title[0] : '',
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+        // 加入 InkWell 來讓點擊標題區時，可以前往新的聯絡人資料頁
+        title: InkWell(
+          onTap: _navigateToContactInfo,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
+            child: Row(
+              children: [
+                Hero(
+                  tag: 'avatar_${widget.roomId}',
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: const Color(0xFF2A3942),
+                    child: Text(
+                      widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '',
+                      style: const TextStyle(color: Colors.white),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  Text(
-                    '點按此處查看聯絡人資料',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        '點按此處查看聯絡人資料',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: [
           IconButton(icon: const Icon(Icons.videocam), onPressed: () {}),
