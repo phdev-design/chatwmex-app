@@ -15,6 +15,21 @@ import 'package:app/models/message.dart';
 import 'package:app/core/media/media_service.dart';
 import 'package:app/features/chat/ui/audio_message_bubble.dart';
 
+// ===== 核心修正：加入全域的網址轉換輔助函式 =====
+// 將後端傳來的相對路徑 (如 /uploads/avatars/...) 轉換為完整的絕對路徑
+String _resolveFullUrl(String? path) {
+  if (path == null || path.isEmpty) return '';
+  // 如果已經是完整的網址，就直接回傳
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  
+  // 修正：使用專案內建的 NetworkService，這樣不管是 iOS/Android 還是實體機，
+  // 都會自動對應到正確的 API IP (127.0.0.1 或 10.0.2.2)！
+  return NetworkService.resolveUrl(path);
+}
+// ==========================================
+
 class ChatDetailPage extends ConsumerStatefulWidget {
   final String roomId;
   final String title;
@@ -68,7 +83,10 @@ class ChatAvatar extends StatelessWidget {
     if (avatarUrl == null || avatarUrl!.isEmpty) {
       return fallback;
     }
-    final resolvedUrl = Uri.encodeFull(NetworkService.resolveUrl(avatarUrl!));
+    
+    // 修正：使用 _resolveFullUrl 來處理大頭貼網址
+    final resolvedUrl = Uri.encodeFull(_resolveFullUrl(avatarUrl));
+    
     return ClipOval(
       child: Image.network(
         resolvedUrl,
@@ -840,7 +858,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     final colorScheme = Theme.of(context).colorScheme;
     Widget content;
     if (msg.type == MessageType.image) {
-      final imageUrl = NetworkService.resolveUrl(msg.content);
+      // 修正：將聊天室內傳送的圖片也使用 _resolveFullUrl 進行轉換
+      final imageUrl = _resolveFullUrl(msg.content);
       content = ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: ConstrainedBox(
@@ -932,7 +951,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                           ClipRRect(
                             borderRadius: BorderRadius.circular(6),
                             child: Image.network(
-                              NetworkService.resolveUrl(replyMessage.content),
+                              // 修正：回覆中如果有圖片，也要轉換網址
+                              _resolveFullUrl(replyMessage.content),
                               width: 28,
                               height: 28,
                               fit: BoxFit.cover,
