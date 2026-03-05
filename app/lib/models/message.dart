@@ -5,6 +5,42 @@ enum MessageType { text, image, voice, video, file }
 
 enum MessageStatus { sending, sent, delivered, read, failed }
 
+class LinkPreview extends Equatable {
+  final String url;
+  final String title;
+  final String description;
+  final String? imageUrl;
+
+  const LinkPreview({
+    required this.url,
+    required this.title,
+    required this.description,
+    this.imageUrl,
+  });
+
+  factory LinkPreview.fromJson(Map<String, dynamic> json) {
+    final imageUrlRaw = (json['image_url'] ?? '').toString();
+    return LinkPreview(
+      url: (json['url'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      description: (json['description'] ?? '').toString(),
+      imageUrl: imageUrlRaw.isNotEmpty ? imageUrlRaw : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'url': url,
+      'title': title,
+      'description': description,
+      'image_url': imageUrl,
+    };
+  }
+
+  @override
+  List<Object?> get props => [url, title, description, imageUrl];
+}
+
 class Message extends Equatable {
   final String id;
   final String? clientMsgId;
@@ -22,6 +58,7 @@ class Message extends Equatable {
   final MessageStatus status;
   final DateTime? readAt;
   final List<String> readBy;
+  final LinkPreview? linkPreview;
 
   const Message({
     required this.id,
@@ -40,6 +77,7 @@ class Message extends Equatable {
     this.status = MessageStatus.sent,
     this.readAt,
     this.readBy = const [],
+    this.linkPreview,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -77,6 +115,11 @@ class Message extends Equatable {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      linkPreview: json['link_preview'] is Map
+          ? LinkPreview.fromJson(
+              Map<String, dynamic>.from(json['link_preview']),
+            )
+          : null,
     );
   }
 
@@ -96,6 +139,7 @@ class Message extends Equatable {
       'is_read': isRead,
       'read_at': readAt?.toIso8601String(),
       'read_by': readBy,
+      'link_preview': linkPreview?.toJson(),
     };
   }
 
@@ -115,6 +159,8 @@ class Message extends Equatable {
       'is_read': isRead ? 1 : 0,
       'read_at': readAt?.millisecondsSinceEpoch,
       'read_by': jsonEncode(readBy),
+      // 修正：將 linkPreview 轉成 JSON 字串存入本地資料庫
+      'link_preview': linkPreview != null ? jsonEncode(linkPreview!.toJson()) : null,
     };
   }
 
@@ -125,6 +171,7 @@ class Message extends Equatable {
               .map((e) => e.toString())
               .toList()
         : const <String>[];
+        
     final reactionsRaw = map['reactions'];
     Map<String, List<String>>? reactions;
     if (reactionsRaw is String && reactionsRaw.isNotEmpty) {
@@ -137,6 +184,19 @@ class Message extends Equatable {
           ),
         );
       }
+    }
+
+    // 修正：解析從本地資料庫讀取出來的 link_preview JSON 字串
+    LinkPreview? parsedLinkPreview;
+    final linkPreviewRaw = map['link_preview'];
+    if (linkPreviewRaw is String && linkPreviewRaw.isNotEmpty) {
+      try {
+        parsedLinkPreview = LinkPreview.fromJson(jsonDecode(linkPreviewRaw));
+      } catch (e) {
+        // 解析失敗時忽略
+      }
+    } else if (linkPreviewRaw is Map) {
+       parsedLinkPreview = LinkPreview.fromJson(Map<String, dynamic>.from(linkPreviewRaw));
     }
 
     return Message(
@@ -161,6 +221,7 @@ class Message extends Equatable {
           ? DateTime.fromMillisecondsSinceEpoch(map['read_at'] as int)
           : null,
       readBy: readByList,
+      linkPreview: parsedLinkPreview, // 修正：不再寫死為 null，填入解析結果
     );
   }
 
@@ -199,6 +260,7 @@ class Message extends Equatable {
     status,
     readAt,
     readBy,
+    linkPreview,
   ];
 
   Message copyWith({
@@ -218,6 +280,7 @@ class Message extends Equatable {
     MessageStatus? status,
     DateTime? readAt,
     List<String>? readBy,
+    LinkPreview? linkPreview,
   }) {
     return Message(
       id: id ?? this.id,
@@ -236,6 +299,7 @@ class Message extends Equatable {
       status: status ?? this.status,
       readAt: readAt ?? this.readAt,
       readBy: readBy ?? this.readBy,
+      linkPreview: linkPreview ?? this.linkPreview,
     );
   }
 }

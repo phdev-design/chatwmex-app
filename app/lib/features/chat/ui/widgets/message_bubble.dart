@@ -137,10 +137,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
             try {
               await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => PdfPreviewScreen(
-                    pdfUrl: fileUrl,
-                    fileName: fileName,
-                  ),
+                  builder: (_) =>
+                      PdfPreviewScreen(pdfUrl: fileUrl, fileName: fileName),
                 ),
               );
             } catch (_) {
@@ -207,6 +205,94 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       );
     } else {
       content = Text(msg.content, style: const TextStyle(fontSize: 15));
+    }
+    final preview = msg.linkPreview;
+    final hasPreview =
+        !msg.isUnsent &&
+        preview != null &&
+        (preview.url.isNotEmpty ||
+            preview.title.isNotEmpty ||
+            preview.description.isNotEmpty);
+    Widget? linkPreviewCard;
+    if (hasPreview) {
+      final previewUrl = resolveFullUrl(preview.url);
+      final previewTitle = preview.title.isNotEmpty
+          ? preview.title
+          : preview.url;
+      final previewDescription = preview.description.isNotEmpty
+          ? preview.description
+          : preview.url;
+      final previewImageUrl = resolveFullUrl(preview.imageUrl);
+      linkPreviewCard = GestureDetector(
+        onTap: () async {
+          final uri = Uri.tryParse(previewUrl);
+          if (uri == null) return;
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.6,
+          ),
+          child: Container(
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: tokens.replyBackground,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: tokens.composerBackground,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: previewImageUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(
+                            previewImageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(Icons.link, color: subtleTextColor);
+                            },
+                          ),
+                        )
+                      : Icon(Icons.link, color: subtleTextColor),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        previewTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        previewDescription,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: subtleTextColor, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     final replyMessage = msg.isUnsent ? null : msg.replyToMessage;
@@ -413,6 +499,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                             style: TextStyle(color: textColor),
                                             child: content,
                                           ),
+                                    if (linkPreviewCard != null)
+                                      linkPreviewCard,
                                     const SizedBox(height: 2),
                                     Row(
                                       mainAxisSize: MainAxisSize.min,

@@ -2,11 +2,16 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
 	"chatwmex_backend/internal/domain"
+	"chatwmex_backend/internal/utils"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type messageUsecase struct {
@@ -16,6 +21,7 @@ type messageUsecase struct {
 	userRepo       domain.UserRepository
 	deviceRepo     domain.DeviceRepository
 	pushService    domain.PushNotificationService
+	redisClient    *redis.Client
 	contextTimeout time.Duration
 }
 
@@ -27,6 +33,7 @@ func NewMessageUsecase(
 	userRepo domain.UserRepository,
 	deviceRepo domain.DeviceRepository,
 	pushService domain.PushNotificationService,
+	redisClient *redis.Client,
 	timeout time.Duration,
 ) domain.MessageUsecase {
 	return &messageUsecase{
@@ -36,6 +43,7 @@ func NewMessageUsecase(
 		userRepo:       userRepo,
 		deviceRepo:     deviceRepo,
 		pushService:    pushService,
+		redisClient:    redisClient,
 		contextTimeout: timeout,
 	}
 }
@@ -109,6 +117,14 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	// 4) Set server timestamp to ensure canonical ordering.
 	msg.CreatedAt = time.Now()
 
+preview, err := u.GetLinkPreview(ctx, msg.Content)
+	if err != nil {
+		log.Printf("link preview skipped: %v", err)
+	} else {
+		msg.LinkPreview = preview
+		msg.Type = "link" // 👉 新增這一行：如果有預覽連結，強制將類型改為 link
+	}
+
 	// 5) Persist the message for history (encryption handled by repository).
 	if err := u.messageRepo.StoreMessage(ctx, msg); err != nil {
 		return err
@@ -172,6 +188,45 @@ func (u *messageUsecase) buildPushContent(ctx context.Context, msg *domain.Messa
 		content = "傳送了一張圖片"
 	}
 	return title, content
+}
+
+func (u *messageUsecase) GetLinkPreview(ctx context.Context, input string) (*domain.LinkPreview, error) {
+	url := utils.ExtractFirstURL(input)
+	if strings.TrimSpace(url) == "" {
+		return nil, errors.New("no url found")
+	}
+	cacheKey := "link_preview:" + url
+
+	if u.redisClient != nil {
+		cached, err := u.redisClient.Get(ctx, cacheKey).Result()
+		if err == nil && cached != "" {
+			var cachedPreview domain.LinkPreview
+			if unmarshalErr := json.Unmarshal([]byte(cached), &cachedPreview); unmarshalErr == nil {
+				return &cachedPreview, nil
+			}
+		}
+		if err != nil && err != redis.Nil {
+			log.Printf("link preview cache read failed: %v", err)
+		}
+	}
+
+	preview, err := utils.FetchLinkPreview(input)
+	if err != nil || preview == nil || preview.URL == "" {
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("no preview found")
+	}
+	if u.redisClient == nil {
+		return preview, nil
+	}
+	payload, marshalErr := json.Marshal(preview)
+	if marshalErr == nil {
+		if setErr := u.redisClient.Set(ctx, cacheKey, payload, 24*time.Hour).Err(); setErr != nil {
+			log.Printf("link preview cache write failed: %v", setErr)
+		}
+	}
+	return preview, nil
 }
 
 // GetChatHistory retrieves the chat history for a user.

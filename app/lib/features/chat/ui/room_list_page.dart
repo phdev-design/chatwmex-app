@@ -7,6 +7,7 @@ import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/features/chat/utils/chat_url_utils.dart';
 
 class RoomListPage extends ConsumerStatefulWidget {
   const RoomListPage({super.key});
@@ -133,10 +134,14 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         final subtitleWeight = room.unreadCount > 0
             ? FontWeight.bold
             : FontWeight.normal;
-        // 👉 重構判斷邏輯，直接判斷 `lastMessageType`
+        // 👉 重構判斷邏輯
         IconData? subtitleIcon;
         String displayText = room.lastMessage ?? 'No messages yet';
 
+        // 👉 新增：使用正則檢查純文字中是否包含網址 (處理 API 撈取的歷史訊息)
+        bool hasLink =
+            room.lastMessage != null &&
+            extractAllUrls(room.lastMessage!).isNotEmpty;
         if (room.lastMessageType == 'image') {
           subtitleIcon = Icons.photo;
           displayText = '[圖片]';
@@ -148,8 +153,12 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
             room.lastMessageType == 'document') {
           subtitleIcon = Icons.insert_drive_file;
           displayText = '[檔案]';
+        } else if (room.lastMessageType == 'link' || hasLink) {
+          // 👉 新增這段：處理連結與 Link Preview
+          subtitleIcon = Icons.link; // 顯示 🔗 Icon
+          // 顯示格式：[連結] 加上原本的訊息內容或網站標題
+          displayText = '[連結] ${room.lastMessage}';
         } else if (room.lastMessage == '此訊息已收回') {
-          // 如果有特殊系統訊息，可以做額外處理
           displayText = room.lastMessage!;
         }
 

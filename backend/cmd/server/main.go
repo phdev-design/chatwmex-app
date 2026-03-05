@@ -109,6 +109,7 @@ func main() {
 		userRepo,
 		deviceRepo,
 		pushService,
+		redisClient,
 		timeout,
 	)
 	roomUsecase := usecase.NewRoomUsecase(roomRepo, messageRepo, timeout)

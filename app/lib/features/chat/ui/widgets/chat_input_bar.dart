@@ -2,14 +2,30 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:app/core/media/media_service.dart';
+import 'package:app/core/network/network_service.dart';
 import 'package:app/features/chat/providers/chat_room_provider.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
+import 'package:app/features/chat/utils/chat_url_utils.dart';
 import 'package:app/models/message.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+
+class LinkPreviewData {
+  final String url;
+  final String title;
+  final String description;
+  final String? imageUrl;
+
+  const LinkPreviewData({
+    required this.url,
+    required this.title,
+    required this.description,
+    this.imageUrl,
+  });
+}
 
 class ChatInputBar extends ConsumerStatefulWidget {
   final ChatRoomParams params;
@@ -38,6 +54,11 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   late final AnimationController _recordingBlinkController;
   late final Animation<double> _recordingOpacity;
   String? _lastReplyMessageId;
+  Timer? _debounceTimer;
+  String? _detectedUrl;
+  bool _isLoadingPreview = false;
+  LinkPreviewData? _previewData;
+  bool _isUrlPreviewCancelled = false;
 
   @override
   void initState() {
@@ -60,6 +81,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
     _focusNode.dispose();
     _recordingBlinkController.dispose();
     _recordingTimer?.cancel();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
@@ -145,6 +167,88 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                 ],
               ),
             ),
+          if (_detectedUrl != null && !_isUrlPreviewCancelled)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: tokens.replyBackground,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: tokens.composerBackground,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: _isLoadingPreview
+                        ? const Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : ((_previewData?.imageUrl ?? '').isNotEmpty
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    _previewData!.imageUrl!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) => Icon(
+                                          Icons.link,
+                                          color: tokens.subtleText,
+                                        ),
+                                  ),
+                                )
+                              : Icon(Icons.link, color: tokens.subtleText)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _previewData?.title ?? _detectedUrl!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: tokens.bubbleText,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _previewData?.description ?? _detectedUrl!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: tokens.subtleText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      setState(() {
+                        _isUrlPreviewCancelled = true;
+                        _isLoadingPreview = false;
+                        _previewData = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
           Container(
             color: tokens.panelBackground,
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
@@ -207,13 +311,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                               ),
                             ),
                             onSubmitted: (_) => _sendMessage(),
-                            onChanged: (_) {
-                              ref
-                                  .read(
-                                    chatRoomProvider(widget.params).notifier,
-                                  )
-                                  .startTyping();
-                            },
+                            onChanged: _onTextChanged,
                           ),
                   ),
                 ),
@@ -278,6 +376,104 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
     if (text.isNotEmpty) {
       ref.read(chatRoomProvider(widget.params).notifier).sendMessage(text);
       _textController.clear();
+      _debounceTimer?.cancel();
+      setState(() {
+        _detectedUrl = null;
+        _previewData = null;
+        _isLoadingPreview = false;
+        _isUrlPreviewCancelled = false;
+      });
+    }
+  }
+
+  void _onTextChanged(String text) {
+    ref.read(chatRoomProvider(widget.params).notifier).startTyping();
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      if (!mounted) return;
+      final urls = extractAllUrls(text);
+      if (text.trim().isEmpty || urls.isEmpty) {
+        setState(() {
+          _detectedUrl = null;
+          _previewData = null;
+          _isLoadingPreview = false;
+          _isUrlPreviewCancelled = false;
+        });
+        return;
+      }
+
+      final url = urls.first;
+      final isNewUrl = _detectedUrl != url;
+      if (isNewUrl && _isUrlPreviewCancelled) {
+        setState(() {
+          _isUrlPreviewCancelled = false;
+        });
+      }
+      if (_isUrlPreviewCancelled && !isNewUrl) {
+        return;
+      }
+      setState(() {
+        _detectedUrl = url;
+        _isLoadingPreview = true;
+        _previewData = null;
+      });
+      final apiPreview = await _fetchLinkPreview(url);
+      if (!mounted) return;
+      final latestUrls = extractAllUrls(_textController.text);
+      if (latestUrls.isEmpty ||
+          latestUrls.first != url ||
+          _isUrlPreviewCancelled) {
+        return;
+      }
+      final uri = Uri.tryParse(url);
+      final title = apiPreview?.title ?? (uri?.host.isNotEmpty == true ? uri!.host : '網站連結');
+      final description =
+          apiPreview?.description ??
+          (uri?.path.isNotEmpty == true ? uri!.path : url);
+      final imageUrl =
+          apiPreview?.imageUrl ??
+          (uri == null
+              ? null
+              : 'https://www.google.com/s2/favicons?sz=128&domain_url=${Uri.encodeComponent(url)}');
+      setState(() {
+        _detectedUrl = url;
+        _isLoadingPreview = false;
+        _previewData = LinkPreviewData(
+          url: url,
+          title: title,
+          description: description,
+          imageUrl: imageUrl,
+        );
+      });
+    });
+  }
+
+  Future<LinkPreviewData?> _fetchLinkPreview(String text) async {
+    try {
+      final response = await ref
+          .read(networkServiceProvider)
+          .client
+          .get('/messages/link-preview', queryParameters: {'content': text});
+      final data = response.data;
+      if (data is! Map) return null;
+      final payload = data['data'];
+      if (payload is! Map) return null;
+      final map = Map<String, dynamic>.from(payload);
+      final url = (map['url'] ?? '').toString();
+      final title = (map['title'] ?? '').toString();
+      final description = (map['description'] ?? '').toString();
+      final imageUrlRaw = (map['image_url'] ?? '').toString();
+      if (url.isEmpty && title.isEmpty && description.isEmpty) {
+        return null;
+      }
+      return LinkPreviewData(
+        url: url,
+        title: title.isNotEmpty ? title : url,
+        description: description.isNotEmpty ? description : url,
+        imageUrl: imageUrlRaw.isNotEmpty ? imageUrlRaw : null,
+      );
+    } catch (_) {
+      return null;
     }
   }
 

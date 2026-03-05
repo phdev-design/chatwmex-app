@@ -31,7 +31,7 @@ class LocalDbService {
   Future<Database> _openDatabase(String dbPath) async {
     return openDatabase(
       dbPath,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await _createMessagesTable(db);
         await _logDbEvent('db_create', {'version': version});
@@ -74,7 +74,8 @@ class LocalDbService {
       'created_at INTEGER, '
       'is_read INTEGER, '
       'read_at INTEGER, '
-      'read_by TEXT'
+      'read_by TEXT, ' // 👉 記得上一行結尾要加逗號
+      'link_preview TEXT' // 👉 新增這行
       ')',
     );
   }
@@ -101,6 +102,8 @@ class LocalDbService {
       'is_read': 'ALTER TABLE messages ADD COLUMN is_read INTEGER',
       'read_at': 'ALTER TABLE messages ADD COLUMN read_at INTEGER',
       'read_by': 'ALTER TABLE messages ADD COLUMN read_by TEXT',
+      // 👉 新增下面這一行
+      'link_preview': 'ALTER TABLE messages ADD COLUMN link_preview TEXT',
     };
     for (final entry in missing.entries) {
       if (!existing.contains(entry.key)) {
@@ -173,13 +176,13 @@ class LocalDbService {
     await batch.commit(noResult: true);
   }
 
-Future<List<Message>> getMessagesByRoom(
+  Future<List<Message>> getMessagesByRoom(
     String roomId, {
     int limit = 50,
     int offset = 0,
   }) async {
     final db = await initDB();
-    
+
     // 👉 關鍵修正：同時比對 room_id、sender_id 與 receiver_id
     // 這樣不論是群組 (room_id) 還是私訊 (sender_id/receiver_id)，都能正確撈出歷史訊息！
     final rows = await db.query(

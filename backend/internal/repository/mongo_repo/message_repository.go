@@ -33,6 +33,7 @@ type mongoMessage struct {
 	Type             string              `bson:"type"`
 	IsRead           bool                `bson:"is_read"`
 	ReadBy           []string            `bson:"read_by"`
+	LinkPreview      *domain.LinkPreview `bson:"link_preview,omitempty"`
 	CreatedAt        time.Time           `bson:"created_at"`
 }
 
@@ -108,6 +109,7 @@ func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
 		Type:             m.Type,
 		IsRead:           m.IsRead,
 		ReadBy:           m.ReadBy,
+		LinkPreview:      m.LinkPreview,
 		CreatedAt:        m.CreatedAt,
 	}, nil
 }
@@ -155,6 +157,7 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 		Type:             m.Type,
 		IsRead:           m.IsRead,
 		ReadBy:           readBy,
+		LinkPreview:      m.LinkPreview,
 		CreatedAt:        m.CreatedAt,
 	}, nil
 }
@@ -400,6 +403,7 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		// 3. Project "other_id"
 		{{Key: "$project", Value: bson.M{
 			"sender_id": 1, "receiver_id": 1, "content": 1, "created_at": 1, "is_read": 1, "read_by": 1,
+			"link_preview": 1,
 			"type": 1, // 👉 務必加上這一行！把 type 傳遞到下一個階段
 			"other_id": bson.M{
 				"$cond": bson.M{
@@ -486,6 +490,10 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		content, err := r.cryptor.Decrypt(res.LastMessageDoc.Content)
 		if err != nil {
 			content = "[Encrypted Message]"
+		}
+		if res.LastMessageDoc.LinkPreview != nil &&
+			res.LastMessageDoc.LinkPreview.Title != "" {
+			content = res.LastMessageDoc.LinkPreview.Title
 		}
 
 		conversations = append(conversations, &domain.Conversation{

@@ -21,7 +21,15 @@ type Message struct {
 	Type             string              `json:"type"`              // "text", "image", "read_receipt"
 	IsRead           bool                `json:"is_read,omitempty"` // For backwards compatibility or simple 1-on-1
 	ReadBy           []string            `json:"read_by"`           // List of UserIDs who read the message
+	LinkPreview      *LinkPreview        `json:"link_preview,omitempty" bson:"link_preview,omitempty"`
 	CreatedAt        time.Time           `json:"created_at"`
+}
+
+type LinkPreview struct {
+	URL         string `json:"url,omitempty" bson:"url,omitempty"`
+	Title       string `json:"title,omitempty" bson:"title,omitempty"`
+	Description string `json:"description,omitempty" bson:"description,omitempty"`
+	ImageURL    string `json:"image_url,omitempty" bson:"image_url,omitempty"`
 }
 
 // MessageRepository defines the interface for message data persistence.
@@ -69,6 +77,7 @@ type MessageUsecase interface {
 	// SendMessage handles the business logic of sending a message.
 	// It should validate the message and delegate to the repository.
 	SendMessage(ctx context.Context, msg *Message) error
+	GetLinkPreview(ctx context.Context, input string) (*LinkPreview, error)
 
 	GetHistory(ctx context.Context, userID, contactID string, limit, offset int) ([]*Message, error)
 

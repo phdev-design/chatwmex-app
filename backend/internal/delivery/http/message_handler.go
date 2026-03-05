@@ -29,6 +29,7 @@ func NewMessageHandler(r *gin.Engine, mu domain.MessageUsecase, hub *ws.Hub, aut
 	api.Use(authMiddleware)
 	{
 		api.POST("/send", handler.SendMessage)
+		api.GET("/link-preview", handler.GetLinkPreview)
 		api.GET("/history", handler.GetHistory)
 		api.POST("/read/batch", handler.MarkMessagesRead)
 		api.POST("/read", handler.MarkAsRead)
@@ -138,6 +139,24 @@ func (h *MessageHandler) GetHistory(c *gin.Context) {
 	}
 
 	response.Success(c, messages)
+}
+
+func (h *MessageHandler) GetLinkPreview(c *gin.Context) {
+	content := c.Query("content")
+	if content == "" {
+		content = c.Query("url")
+	}
+	if content == "" {
+		response.Success(c, nil)
+		return
+	}
+
+	preview, err := h.MessageUsecase.GetLinkPreview(c.Request.Context(), content)
+	if err != nil {
+		response.Success(c, nil)
+		return
+	}
+	response.Success(c, preview)
 }
 
 type MarkReadRequest struct {

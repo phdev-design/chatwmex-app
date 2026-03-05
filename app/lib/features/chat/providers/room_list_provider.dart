@@ -68,6 +68,15 @@ class RoomListViewModel extends Notifier<RoomListState> {
             final receiverId = message['receiver_id']?.toString() ?? '';
             final messageType = message['type']?.toString();
             final messageContent = message['content']?.toString() ?? '';
+            String? previewTitle;
+            final previewRaw = message['link_preview'];
+            if (previewRaw is Map) {
+              final previewMap = Map<String, dynamic>.from(previewRaw);
+              final title = previewMap['title']?.toString() ?? '';
+              if (title.isNotEmpty) {
+                previewTitle = title;
+              }
+            }
             final createdAt = DateTime.tryParse(
               message['created_at']?.toString() ?? '',
             );
@@ -83,8 +92,13 @@ class RoomListViewModel extends Notifier<RoomListState> {
             if (targetRoomId.isNotEmpty) {
               updateRoomLastMessage(
                 targetRoomId,
-                _buildLastMessagePreview(messageType, messageContent),
-                lastMessageType: messageType,
+                _buildLastMessagePreview(
+                  messageType,
+                  messageContent,
+                  previewTitle: previewTitle,
+                ),
+                // 👉 修改這裡：如果有 previewTitle，強制將類型標記為 'link'
+                lastMessageType: previewTitle != null ? 'link' : messageType,
                 lastMessageTime: createdAt ?? DateTime.now(),
               );
             }
@@ -154,9 +168,9 @@ class RoomListViewModel extends Notifier<RoomListState> {
                 (room.avatarUrl == null || room.avatarUrl!.isEmpty),
           )
           .length;
-      debugPrint(
-        'room_list fetch rooms=${updated.length} dm_without_avatar=$dmWithoutAvatar',
-      );
+      // debugPrint(
+      //   'room_list fetch rooms=${updated.length} dm_without_avatar=$dmWithoutAvatar',
+      // );
       state = state.copyWith(isLoading: false, rooms: updated);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -262,7 +276,14 @@ class RoomListViewModel extends Notifier<RoomListState> {
     return events;
   }
 
-  String _buildLastMessagePreview(String? messageType, String content) {
+  String _buildLastMessagePreview(
+    String? messageType,
+    String content, {
+    String? previewTitle,
+  }) {
+    if (previewTitle != null && previewTitle.isNotEmpty) {
+      return previewTitle;
+    }
     switch (messageType) {
       case 'image':
         return '[圖片]';
