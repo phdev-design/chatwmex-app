@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"chatwmex_backend/internal/domain"
@@ -158,4 +159,53 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.
 	})
 
 	return rooms, nil
+}
+
+func (u *roomUsecase) GetRoomMedia(c context.Context, userID, roomID, reqType, cursor string, limit int) ([]domain.Message, bool, error) {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	if strings.TrimSpace(roomID) == "" {
+		return nil, false, errors.New("room ID is required")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	members, err := u.roomRepo.GetMembers(ctx, roomID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	isMember := false
+	for _, memberID := range members {
+		if memberID == userID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		return nil, false, errors.New("forbidden")
+	}
+
+	category := strings.ToLower(strings.TrimSpace(reqType))
+	switch category {
+	case "", "media", "link", "doc":
+	default:
+		return nil, false, errors.New("invalid_type")
+	}
+
+	messages, err := u.messageRepo.GetRoomResources(ctx, roomID, category, cursor, limit)
+	if err != nil {
+		if err.Error() == "invalid category" {
+			return nil, false, errors.New("invalid_type")
+		}
+		return nil, false, err
+	}
+
+	hasMore := len(messages) > limit
+	if hasMore {
+		messages = messages[:limit]
+	}
+	return messages, hasMore, nil
 }

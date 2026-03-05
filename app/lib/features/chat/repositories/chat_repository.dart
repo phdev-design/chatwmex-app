@@ -6,6 +6,18 @@ import 'package:app/features/chat/models/room.dart';
 import 'package:app/models/message.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+class PaginatedMessages {
+  final List<Message> messages;
+  final String nextCursor;
+  final bool hasMore;
+
+  const PaginatedMessages({
+    required this.messages,
+    required this.nextCursor,
+    required this.hasMore,
+  });
+}
+
 class ChatRepository {
   final NetworkService _networkService;
   final LocalDbService _localDb;
@@ -53,6 +65,47 @@ class ChatRepository {
 
   Future<String> uploadMedia(File file, String type) async {
     return await _networkService.uploadFile(file, type);
+  }
+
+  Future<PaginatedMessages> getRoomResources(
+    String roomId, {
+    String type = 'media',
+    String cursor = '',
+    int limit = 20,
+  }) async {
+    if (roomId.isEmpty) {
+      return const PaginatedMessages(
+        messages: [],
+        nextCursor: '',
+        hasMore: false,
+      );
+    }
+    try {
+      final response = await _networkService.client.get(
+        '/rooms/$roomId/media',
+        queryParameters: {'type': type, 'cursor': cursor, 'limit': limit},
+      );
+      final payload = Map<String, dynamic>.from(
+        response.data['data'] as Map? ?? {},
+      );
+      final list = payload['data'] as List<dynamic>? ?? [];
+      final messages = list.map((e) {
+        final msg = Message.fromJson(Map<String, dynamic>.from(e));
+        if (msg.roomId == null || msg.roomId!.isEmpty) {
+          return msg.copyWith(roomId: roomId);
+        }
+        return msg;
+      }).toList();
+      final nextCursor = payload['next_cursor']?.toString() ?? '';
+      final hasMore = payload['has_more'] == true;
+      return PaginatedMessages(
+        messages: messages,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      );
+    } catch (e) {
+      throw e;
+    }
   }
 
   Future<void> markMessagesAsRead(List<String> messageIds) async {

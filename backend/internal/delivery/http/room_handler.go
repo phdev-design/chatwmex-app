@@ -2,6 +2,8 @@ package http
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"chatwmex_backend/internal/delivery/http/middleware"
 	"chatwmex_backend/internal/domain"
@@ -30,6 +32,7 @@ func NewRoomHandler(r *gin.Engine, ru domain.RoomUsecase, uu domain.UserUsecase,
 		api.DELETE("/:id/members/:memberId", handler.KickMember)
 		api.DELETE("/:id", handler.DeleteRoom)
 		api.GET("/my", handler.GetUserRooms)
+		api.GET("/:id/media", handler.GetRoomMedia)
 		api.GET("/:id/members", handler.GetRoomMembers)
 		api.GET("/:id/member-profiles", handler.GetRoomMemberProfiles)
 	}
@@ -236,6 +239,60 @@ func (h *RoomHandler) GetRoomMembers(c *gin.Context) {
 	}
 
 	response.Success(c, members)
+}
+
+func (h *RoomHandler) GetRoomMedia(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+
+	roomID := c.Param("id")
+	if roomID == "" {
+		response.Error(c, http.StatusBadRequest, "Room ID is required")
+		return
+	}
+
+	reqType := c.DefaultQuery("type", "media")
+	cursor := c.DefaultQuery("cursor", "")
+	limitStr := c.DefaultQuery("limit", "20")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "Invalid limit parameter")
+		return
+	}
+
+	ctx := c.Request.Context()
+	media, hasMore, err := h.RoomUsecase.GetRoomMedia(ctx, userIDStr, roomID, reqType, cursor, limit)
+	if err != nil {
+		switch err.Error() {
+		case "forbidden":
+			response.Error(c, http.StatusForbidden, "Only room members can access media")
+		case "invalid_type":
+			response.Error(c, http.StatusBadRequest, "Invalid type parameter")
+		default:
+			response.Error(c, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	nextCursor := ""
+	if len(media) > 0 && hasMore {
+		nextCursor = media[len(media)-1].CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	response.Success(c, gin.H{
+		"data":        media,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
+	})
 }
 
 func (h *RoomHandler) GetRoomMemberProfiles(c *gin.Context) {

@@ -40,6 +40,7 @@ type MessageRepository interface {
 	CountUnreadInRoomAfter(ctx context.Context, roomID, userID string, lastReadAt time.Time) (int, error)
 	MarkMessageAsReadBy(ctx context.Context, messageID string, userID string) error
 	GetRoomMessageMap(ctx context.Context, messageIDs []string) (map[string][]string, error)
+	GetRoomResources(ctx context.Context, roomID, category, cursor string, limit int) ([]Message, error)
 	ToggleReaction(ctx context.Context, messageID string, userID string, emoji string) (*Message, error)
 	UnsendMessage(ctx context.Context, messageID string, userID string) (*Message, error)
 	SoftDeleteMessage(ctx context.Context, messageID string, userID string) error

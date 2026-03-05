@@ -54,7 +54,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
 
     // 👇 根據是否為自己發送的，決定文字顏色
     final textColor = isMe ? tokens.bubbleOutgoingText : tokens.bubbleText;
-    final subtleTextColor = isMe ? tokens.bubbleOutgoingSubtleText : tokens.subtleText;
+    final subtleTextColor = isMe
+        ? tokens.bubbleOutgoingSubtleText
+        : tokens.subtleText;
 
     Widget content;
     if (msg.type == MessageType.image) {
@@ -175,7 +177,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                             replyText,
                             style: TextStyle(
                               fontSize: 12,
-                              color: tokens.subtleText, 
+                              color: tokens.subtleText,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -195,7 +197,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     final timeText = DateFormat('a h:mm').format(msg.createdAt);
     final statusColor = msg.status == MessageStatus.read
         ? tokens.accent
-        : subtleTextColor; 
+        : subtleTextColor;
 
     IconData statusIcon;
     switch (msg.status) {
@@ -298,13 +300,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                             style: TextStyle(
                                               fontSize: 13,
                                               fontStyle: FontStyle.italic,
-                                              color: subtleTextColor, 
+                                              color: subtleTextColor,
                                             ),
                                           )
                                         : DefaultTextStyle.merge(
-                                            style: TextStyle(
-                                              color: textColor, 
-                                            ),
+                                            style: TextStyle(color: textColor),
                                             child: content,
                                           ),
                                     const SizedBox(height: 2),
@@ -315,7 +315,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                           timeText,
                                           style: TextStyle(
                                             fontSize: 10,
-                                            color: subtleTextColor, 
+                                            color: subtleTextColor,
                                           ),
                                         ),
                                         if (isMe) ...[
@@ -378,7 +378,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       colorScheme: Theme.of(context).colorScheme,
       brightness: Theme.of(context).brightness,
     );
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showModalBottomSheet(
       context: context,
@@ -416,7 +415,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                     emojiViewConfig: EmojiViewConfig(
                       backgroundColor: tokens.menuBackground,
                       columns: 7,
-                      emojiSizeMax: 28 * (foundation.defaultTargetPlatform == TargetPlatform.iOS ? 1.30 : 1.0),
+                      emojiSizeMax:
+                          28 *
+                          (foundation.defaultTargetPlatform ==
+                                  TargetPlatform.iOS
+                              ? 1.30
+                              : 1.0),
                     ),
                     categoryViewConfig: CategoryViewConfig(
                       backgroundColor: tokens.menuBackground,
@@ -433,7 +437,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                     searchViewConfig: SearchViewConfig(
                       backgroundColor: tokens.menuBackground,
                       buttonIconColor: tokens.subtleText,
-                    )
+                    ),
                   ),
                 ),
               ),
@@ -455,9 +459,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     final bubbleSize = renderBox.size;
     final bubbleOffset = renderBox.localToGlobal(Offset.zero);
     final screenSize = MediaQuery.of(context).size;
-    
-    // 將選單寬度稍微調大一點以容納加號
-    const menuWidth = 260.0;
+
+    const menuWidth = 240.0;
     double menuHeight = 155.0;
     if (msg.senderId == widget.currentUserId && !msg.isUnsent) {
       menuHeight = 199.0;
@@ -546,57 +549,69 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                               vertical: 12,
                               horizontal: 8,
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                // 預設的 5 個表情
-                                ...emojis.map((emoji) {
-                                  return InkWell(
-                                    onTap: () {
-                                      Navigator.of(context).pop();
-                                      ref
-                                          .read(
-                                            chatRoomProvider(
-                                              widget.params,
-                                            ).notifier,
-                                          )
-                                          .toggleReaction(msg.id, emoji);
-                                    },
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: tokens.menuEmojiBackground,
-                                        shape: BoxShape.circle,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  ...emojis.map((emoji) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 2,
                                       ),
-                                      child: Text(
-                                        emoji,
-                                        style: const TextStyle(fontSize: 22),
+                                      child: InkWell(
+                                        onTap: () {
+                                          Navigator.of(context).pop();
+                                          ref
+                                              .read(
+                                                chatRoomProvider(
+                                                  widget.params,
+                                                ).notifier,
+                                              )
+                                              .toggleReaction(msg.id, emoji);
+                                        },
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(7),
+                                          decoration: BoxDecoration(
+                                            color: tokens.menuEmojiBackground,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Text(
+                                            emoji,
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                            ),
+                                          ),
+                                        ),
                                       ),
+                                    );
+                                  }),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 2,
                                     ),
-                                  );
-                                }),
-                                // 新增：『+』加號按鈕 (呼叫 BottomSheet)
-                                InkWell(
-                                  onTap: () {
-                                    Navigator.of(context).pop(); // 先關掉長按選單
-                                    _showFullEmojiPicker(context, msg); // 彈出完整 Emoji 面板
-                                  },
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: tokens.menuEmojiBackground,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      Icons.add,
-                                      color: tokens.subtleText, // 使用主題輔助文字色
-                                      size: 24,
+                                    child: InkWell(
+                                      onTap: () {
+                                        Navigator.of(context).pop();
+                                        _showFullEmojiPicker(context, msg);
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(7),
+                                        decoration: BoxDecoration(
+                                          color: tokens.menuEmojiBackground,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.add,
+                                          color: tokens.subtleText,
+                                          size: 22,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                           Divider(

@@ -42,4 +42,5 @@ type RoomUsecase interface {
 	DeleteRoom(ctx context.Context, roomID string, ownerID string) error
 	GetRoomMembers(ctx context.Context, roomID string) ([]string, error)
 	GetUserRooms(ctx context.Context, userID string) ([]*Room, error)
+	GetRoomMedia(ctx context.Context, userID, roomID, reqType, cursor string, limit int) ([]Message, bool, error)
 }

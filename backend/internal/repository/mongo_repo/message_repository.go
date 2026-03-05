@@ -51,11 +51,40 @@ type MessageRepository struct {
 
 // NewMessageRepository creates a new instance of MessageRepository.
 func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.MessageRepository {
-	return &MessageRepository{
+	repo := &MessageRepository{
 		collection:        db.Collection(messageCollectionName),
 		offlineCollection: db.Collection(offlineCollectionName),
 		cryptor:           cryptor,
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := repo.EnsureIndexes(ctx); err != nil {
+		log.Printf("failed to ensure message indexes: %v", err)
+	}
+	return repo
+}
+
+func (r *MessageRepository) EnsureIndexes(ctx context.Context) error {
+	background := true
+	models := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "room_id", Value: 1},
+				{Key: "created_at", Value: -1},
+				{Key: "type", Value: 1},
+			},
+			Options: options.Index().SetBackground(background).SetName("room_created_type_idx"),
+		},
+		{
+			Keys: bson.D{
+				{Key: "room_id", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetBackground(background).SetName("room_created_idx"),
+		},
+	}
+	_, err := r.collection.Indexes().CreateMany(ctx, models)
+	return err
 }
 
 // toDomain converts a mongoMessage to a domain.Message.
@@ -215,6 +244,74 @@ func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID st
 	}
 
 	return messages, nil
+}
+
+func (r *MessageRepository) GetRoomResources(ctx context.Context, roomID, category, cursor string, limit int) ([]domain.Message, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	filter := bson.M{"room_id": roomID}
+
+	switch category {
+	case "", "media":
+		// media: image/video 類型
+		filter["type"] = bson.M{"$in": []string{"image", "video"}}
+	case "link":
+		// link: 專門 link 類型，或 text 且 content 含 URL
+		// 注意：若 content 在 DB 內為加密字串，regex 命中率會受限
+		filter["$or"] = []bson.M{
+			{"type": "link"},
+			{
+				"type":    "text",
+				"content": bson.M{"$regex": "https?://", "$options": "i"},
+			},
+		}
+	case "doc":
+		// doc: file/document 類型
+		filter["type"] = bson.M{"$in": []string{"file", "document"}}
+	default:
+		return nil, fmt.Errorf("invalid category")
+	}
+
+	if cursor != "" {
+		cursorTime, err := time.Parse(time.RFC3339Nano, cursor)
+		if err != nil {
+			cursorTime, err = time.Parse(time.RFC3339, cursor)
+			if err != nil {
+				return nil, fmt.Errorf("invalid cursor format: %w", err)
+			}
+		}
+		filter["created_at"] = bson.M{"$lt": cursorTime}
+	}
+
+	// limit+1: 用於上層判斷 has_more
+	findOptions := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: -1}}).
+		SetLimit(int64(limit + 1))
+
+	cur, err := r.collection.Find(ctx, filter, findOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch room resources: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	result := make([]domain.Message, 0, limit+1)
+	for cur.Next(ctx) {
+		var m mongoMessage
+		if err := cur.Decode(&m); err != nil {
+			return nil, fmt.Errorf("failed to decode room resource message: %w", err)
+		}
+		domainMsg, err := r.toDomain(&m)
+		if err != nil {
+			continue
+		}
+		result = append(result, *domainMsg)
+	}
+	if err := cur.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate room resource messages: %w", err)
+	}
+	return result, nil
 }
 
 // StoreOfflineMessage stores a message for offline delivery.
