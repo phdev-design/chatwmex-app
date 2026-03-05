@@ -8,6 +8,8 @@ import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
+import 'dart:async'; // 👉 1. 新增這個 import
+import 'package:flutter/material.dart';
 
 class RoomListPage extends ConsumerStatefulWidget {
   const RoomListPage({super.key});
@@ -18,6 +20,7 @@ class RoomListPage extends ConsumerStatefulWidget {
 
 class _RoomListPageState extends ConsumerState<RoomListPage> {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _debounce; // 👉 2. 新增 Debounce Timer 變數
   String? _currentUserId;
   String _currentUsername = '';
   String? _currentAvatarUrl;
@@ -49,12 +52,19 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
 
   @override
   void dispose() {
+    _debounce?.cancel(); // 👉 3. 記得在 dispose 時取消 timer 避免 memory leak
     _searchController.dispose();
     super.dispose();
   }
 
   void _onSearchChanged(String query) {
-    setState(() {});
+    // 如果使用者還在打字，取消上一個計時器
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+
+    // 設定 500 毫秒的延遲，使用者停下打字半秒後才會觸發 API
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      ref.read(roomListViewModelProvider.notifier).fetchRooms(query: query);
+    });
   }
 
   @override
@@ -65,11 +75,11 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final filteredRooms = state.rooms.where((room) {
-      return room.name.toLowerCase().contains(
-        _searchController.text.toLowerCase(),
-      );
-    }).toList();
+    // final filteredRooms = state.rooms.where((room) {
+    //   return room.name.toLowerCase().contains(
+    //     _searchController.text.toLowerCase(),
+    //   );
+    // }).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -105,7 +115,8 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
               onChanged: _onSearchChanged,
             ),
           ),
-          Expanded(child: _buildRoomList(filteredRooms, _currentUserId!)),
+          // 👉 6. 直接傳入 state.rooms，因為現在列表是由後端過濾的了
+          Expanded(child: _buildRoomList(state.rooms, _currentUserId!)),
         ],
       ),
     );

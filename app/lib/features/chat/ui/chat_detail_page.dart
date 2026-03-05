@@ -12,6 +12,8 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart'; // 👉 新增引入
 import 'package:app/models/message.dart';
+import 'package:app/features/chat/repositories/chat_repository.dart';
+import 'package:app/features/friend/providers/friend_provider.dart';
 
 class ChatDetailPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -82,13 +84,12 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     super.dispose();
   }
 
-  void _navigateToContactInfo() {
+Future<void> _navigateToContactInfo() async {
     final state = ref.read(chatRoomProvider(_params));
     final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
         ? state.roomAvatarUrl
         : widget.avatarUrl;
 
-    // 👉 新增這段：計算目前的媒體、文件與連結數量
     int mediaCount = state.messages.where((m) {
       final typeName = m.type.name;
       final isMediaOrFile =
@@ -100,16 +101,77 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
       return isMediaOrFile || hasLinks;
     }).length;
 
-    context.push(
-      '/contact-info',
-      extra: {
-        'roomId': widget.roomId,
-        'title': widget.title,
-        'isRoom': widget.isRoom,
-        'avatarUrl': effectiveAvatarUrl,
-        'mediaCount': mediaCount, // 👉 將計算好的數量傳過去
-      },
-    );
+    String? contactEmail;
+
+    // 👉 2. 如果是單人私訊，在跳轉前主動去抓 Email
+    if (!widget.isRoom) {
+      // 顯示載入中的圈圈，避免使用者覺得卡頓
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        // 方法 A：先嘗試從好友快取中找
+        final friends = ref.read(friendViewModelProvider).friends;
+        for (final f in friends) {
+          if (f.id == widget.roomId) {
+            contactEmail = f.email;
+            break;
+          }
+        }
+
+        // 方法 B：如果快取沒有，強制觸發載入一次好友清單再找找看
+        if (contactEmail == null) {
+          await ref.read(friendViewModelProvider.notifier).loadAll();
+          final updatedFriends = ref.read(friendViewModelProvider).friends;
+          for (final f in updatedFriends) {
+            if (f.id == widget.roomId) {
+              contactEmail = f.email;
+              break;
+            }
+          }
+        }
+
+        // 方法 C：如果還是沒有，才嘗試調用 search API (目前後端可能無此 API 返回 404)
+        if (contactEmail == null) {
+          try {
+            final users = await ref.read(chatRepositoryProvider).searchUsers(widget.title);
+            for (final u in users) {
+              if (u.id == widget.roomId) {
+                contactEmail = u.email;
+                break;
+              }
+            }
+          } catch (e) {
+            debugPrint('搜尋 API 失敗 (可能後端未實作 /users/search): $e');
+          }
+        }
+      } catch (e) {
+        debugPrint('取得 Email 失敗: $e');
+      } finally {
+        // 資料要到了，關閉載入框
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      }
+    }
+
+    // 👉 3. 確保畫面還在，再進行路由跳轉
+    if (mounted) {
+      context.push(
+        '/contact-info',
+        extra: {
+          'roomId': widget.roomId,
+          'title': widget.title,
+          'isRoom': widget.isRoom,
+          'avatarUrl': effectiveAvatarUrl,
+          'mediaCount': mediaCount, 
+          'email': contactEmail, // 成功帶入 Email
+        },
+      );
+    }
   }
 
   void _onScroll() {

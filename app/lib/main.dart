@@ -88,6 +88,7 @@ class _MyAppState extends ConsumerState<MyApp> {
               isRoom: extra['isRoom'] ?? false,
               avatarUrl: extra['avatarUrl'],
               mediaCount: extra['mediaCount'] ?? 0,
+              email: extra['email'], // 👉 新增這行：從路由參數接收 email
             );
           },
         ),

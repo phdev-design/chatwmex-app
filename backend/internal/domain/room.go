@@ -42,6 +42,6 @@ type RoomUsecase interface {
 	KickMember(ctx context.Context, roomID string, ownerID string, memberID string) error
 	DeleteRoom(ctx context.Context, roomID string, ownerID string) error
 	GetRoomMembers(ctx context.Context, roomID string) ([]string, error)
-	GetUserRooms(ctx context.Context, userID string) ([]*Room, error)
+	GetUserRooms(ctx context.Context, userID string, keyword string) ([]*Room, error)
 	GetRoomMedia(ctx context.Context, userID, roomID, reqType, cursor string, limit int) ([]Message, bool, error)
 }

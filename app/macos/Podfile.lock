@@ -1,0 +1,92 @@
+PODS:
+  - audioplayers_darwin (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - device_info_plus (0.0.1):
+    - FlutterMacOS
+  - emoji_picker_flutter (0.0.1):
+    - FlutterMacOS
+  - file_picker (0.0.1):
+    - FlutterMacOS
+  - file_selector_macos (0.0.1):
+    - FlutterMacOS
+  - flutter_image_compress_macos (1.0.0):
+    - FlutterMacOS
+  - flutter_secure_storage_darwin (10.0.0):
+    - Flutter
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+  - record_macos (1.2.0):
+    - FlutterMacOS
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - sqflite_darwin (0.0.4):
+    - Flutter
+    - FlutterMacOS
+  - syncfusion_pdfviewer_macos (0.0.1):
+    - FlutterMacOS
+  - url_launcher_macos (0.0.1):
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - audioplayers_darwin (from `Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/darwin`)
+  - device_info_plus (from `Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos`)
+  - emoji_picker_flutter (from `Flutter/ephemeral/.symlinks/plugins/emoji_picker_flutter/macos`)
+  - file_picker (from `Flutter/ephemeral/.symlinks/plugins/file_picker/macos`)
+  - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
+  - flutter_image_compress_macos (from `Flutter/ephemeral/.symlinks/plugins/flutter_image_compress_macos/macos`)
+  - flutter_secure_storage_darwin (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - record_macos (from `Flutter/ephemeral/.symlinks/plugins/record_macos/macos`)
+  - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - sqflite_darwin (from `Flutter/ephemeral/.symlinks/plugins/sqflite_darwin/darwin`)
+  - syncfusion_pdfviewer_macos (from `Flutter/ephemeral/.symlinks/plugins/syncfusion_pdfviewer_macos/macos`)
+  - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
+
+EXTERNAL SOURCES:
+  audioplayers_darwin:
+    :path: Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/darwin
+  device_info_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos
+  emoji_picker_flutter:
+    :path: Flutter/ephemeral/.symlinks/plugins/emoji_picker_flutter/macos
+  file_picker:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_picker/macos
+  file_selector_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
+  flutter_image_compress_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_image_compress_macos/macos
+  flutter_secure_storage_darwin:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  record_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/record_macos/macos
+  shared_preferences_foundation:
+    :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
+  sqflite_darwin:
+    :path: Flutter/ephemeral/.symlinks/plugins/sqflite_darwin/darwin
+  syncfusion_pdfviewer_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/syncfusion_pdfviewer_macos/macos
+  url_launcher_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
+
+SPEC CHECKSUMS:
+  audioplayers_darwin: 4027b33a8f471d996c13f71cb77f0b1583b5d923
+  device_info_plus: 1b14eed9bf95428983aed283a8d51cce3d8c4215
+  emoji_picker_flutter: 846d4afb3368bc864a3884f02654961198bd72da
+  file_picker: e716a70a9fe5fd9e09ebc922d7541464289443af
+  file_selector_macos: 3e56eaea051180007b900eacb006686fd54da150
+  flutter_image_compress_macos: c26c3c13ea0f28ae6dea4e139b3292e7729f99f1
+  flutter_secure_storage_darwin: 557817588b80e60213cbecb573c45c76b788018d
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  record_macos: 4680f37daeebf52162e715efb7ff682f0a5ce4fd
+  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
+  sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
+  syncfusion_pdfviewer_macos: caeb5113e428fcad0cddcb054f5745b565c08fd7
+  url_launcher_macos: 175a54c831f4375a6cf895875f716ee5af3888ce
+
+PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+
+COCOAPODS: 1.16.2

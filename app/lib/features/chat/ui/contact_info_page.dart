@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/chat/ui/room_media_page.dart'; // 1. 引入剛剛寫好的媒體庫頁面
+import 'package:app/features/chat/providers/chat_setting_provider.dart';
 
-class ContactInfoPage extends StatelessWidget {
+class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
   final String title;
   final bool isRoom;
   final String? avatarUrl;
   final int mediaCount; // 👉 1. 新增這行
+  final String? email; // 👉 1. 新增 email 參數
 
   const ContactInfoPage({
     super.key,
@@ -18,7 +21,156 @@ class ContactInfoPage extends StatelessWidget {
     this.isRoom = false,
     this.avatarUrl,
     this.mediaCount = 0, // 👉 2. 設定預設值
+    this.email, // 👉 2. 加入建構子
   });
+
+  @override
+  ConsumerState<ContactInfoPage> createState() => _ContactInfoPageState();
+}
+
+class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
+  String _formatTimerOption(int seconds) {
+    if (seconds == 0) return '關閉';
+    if (seconds == 86400) return '24小時';
+    if (seconds == 604800) return '7天';
+    if (seconds == 7776000) return '90天';
+    return '關閉';
+  }
+
+  int _parseTimerOption(String option) {
+    if (option == '24小時') return 86400;
+    if (option == '7天') return 604800;
+    if (option == '90天') return 7776000;
+    return 0; // '關閉'
+  }
+
+  void _showDisappearingMessagesDialog(Color primaryTextColor, Color accentColor, String currentOption) {
+    String tempOption = currentOption;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 16),
+                  Text(
+                    '自動刪除的訊息',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: primaryTextColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Text(
+                      '選取此聊天室新訊息的自動刪除時間。這不會影響既有的訊息。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildOption(
+                    title: '24小時',
+                    value: '24小時',
+                    groupValue: tempOption,
+                    accentColor: accentColor,
+                    primaryTextColor: primaryTextColor,
+                    onChanged: (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  _buildOption(
+                    title: '7天',
+                    value: '7天',
+                    groupValue: tempOption,
+                    accentColor: accentColor,
+                    primaryTextColor: primaryTextColor,
+                    onChanged: (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  _buildOption(
+                    title: '90天',
+                    value: '90天',
+                    groupValue: tempOption,
+                    accentColor: accentColor,
+                    primaryTextColor: primaryTextColor,
+                    onChanged: (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  _buildOption(
+                    title: '關閉',
+                    value: '關閉',
+                    groupValue: tempOption,
+                    accentColor: accentColor,
+                    primaryTextColor: primaryTextColor,
+                    onChanged: (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _updateTimer(String option) async {
+    final timerSeconds = _parseTimerOption(option);
+    try {
+      final service = ref.read(chatSettingServiceProvider);
+      await service.updateChatSetting(widget.roomId, timerSeconds);
+      ref.invalidate(chatSettingProvider(widget.roomId));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失敗: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildOption({
+    required String title,
+    required String value,
+    required String groupValue,
+    required Color accentColor,
+    required Color primaryTextColor,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return RadioListTile<String>(
+      title: Text(title, style: TextStyle(color: primaryTextColor)),
+      value: value,
+      groupValue: groupValue,
+      activeColor: accentColor,
+      onChanged: onChanged,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +216,7 @@ class ContactInfoPage extends StatelessWidget {
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
               title: Text(
-                title,
+                widget.title,
                 style: TextStyle(
                   color: primaryTextColor,
                   fontWeight: FontWeight.w500,
@@ -81,12 +233,12 @@ class ContactInfoPage extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SizedBox(height: 20),
-                        Hero(tag: 'avatar_$roomId', child: _buildAvatar()),
+                        Hero(tag: 'avatar_${widget.roomId}', child: _buildAvatar()),
                         const SizedBox(height: 12),
-                        // 如果需要顯示電話號碼或 ID，可以放這裡
-                        if (!isRoom)
+                        // 👉 3. 將原本寫死的電話改為顯示 email
+                        if (!widget.isRoom && widget.email != null && widget.email!.isNotEmpty)
                           Text(
-                            '+886 912 345 678', // 這裡先用假資料
+                            widget.email!,
                             style: TextStyle(
                               fontSize: 16,
                               color: secondaryTextColor,
@@ -117,7 +269,7 @@ class ContactInfoPage extends StatelessWidget {
                     children: [
                       // 👉 3. 替換原本的 '0' 為 $mediaCount
                       Text(
-                        '$mediaCount',
+                        '${widget.mediaCount}',
                         style: TextStyle(color: secondaryTextColor),
                       ),
                       const SizedBox(width: 8),
@@ -129,12 +281,12 @@ class ContactInfoPage extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => RoomMediaPage(roomId: roomId),
+                        builder: (context) => RoomMediaPage(roomId: widget.roomId),
                       ),
                     );
 
                     // 如果你的 go_router 已經配好了路徑，也可以改成：
-                    // context.push('/rooms/$roomId/media');
+                    // context.push('/rooms/${widget.roomId}/media');
                   },
                 ),
               ),
@@ -207,20 +359,44 @@ class ContactInfoPage extends StatelessWidget {
                       onTap: () {},
                     ),
                     Divider(height: 1, color: dividerColor),
-                    ListTile(
-                      leading: Icon(Icons.av_timer, color: secondaryTextColor),
-                      title: Text(
-                        '自動刪除的訊息',
-                        style: TextStyle(color: primaryTextColor),
-                      ),
-                      subtitle: Text(
-                        '關閉',
-                        style: TextStyle(
-                          color: secondaryTextColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                      onTap: () {},
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final settingAsync = ref.watch(chatSettingProvider(widget.roomId));
+                        
+                        return settingAsync.when(
+                          data: (setting) {
+                            final currentOption = _formatTimerOption(setting.disappearingTimer);
+                            return ListTile(
+                              leading: Icon(Icons.av_timer, color: secondaryTextColor),
+                              title: Text(
+                                '自動刪除的訊息',
+                                style: TextStyle(color: primaryTextColor),
+                              ),
+                              subtitle: Text(
+                                currentOption,
+                                style: TextStyle(
+                                  color: secondaryTextColor,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              onTap: () {
+                                _showDisappearingMessagesDialog(primaryTextColor, accentColor, currentOption);
+                              },
+                            );
+                          },
+                          loading: () => ListTile(
+                            leading: Icon(Icons.av_timer, color: secondaryTextColor),
+                            title: Text('自動刪除的訊息', style: TextStyle(color: primaryTextColor)),
+                            subtitle: const LinearProgressIndicator(),
+                          ),
+                          error: (err, stack) => ListTile(
+                            leading: Icon(Icons.av_timer, color: secondaryTextColor),
+                            title: Text('自動刪除的訊息', style: TextStyle(color: primaryTextColor)),
+                            subtitle: Text('載入失敗', style: TextStyle(color: dangerColor)),
+                            onTap: () => ref.refresh(chatSettingProvider(widget.roomId)),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -235,7 +411,7 @@ class ContactInfoPage extends StatelessWidget {
                     ListTile(
                       leading: Icon(Icons.block, color: dangerColor),
                       title: Text(
-                        '封鎖 $title',
+                        '封鎖 ${widget.title}',
                         style: TextStyle(color: dangerColor),
                       ),
                       onTap: () {},
@@ -247,7 +423,7 @@ class ContactInfoPage extends StatelessWidget {
                         color: dangerColor,
                       ),
                       title: Text(
-                        '檢舉 $title',
+                        '檢舉 ${widget.title}',
                         style: TextStyle(color: dangerColor),
                       ),
                       onTap: () {},
@@ -265,9 +441,9 @@ class ContactInfoPage extends StatelessWidget {
 
   Widget _buildAvatar() {
     return ChatAvatar(
-      avatarUrl: avatarUrl,
+      avatarUrl: widget.avatarUrl,
       radius: 60,
-      fallbackText: title.isNotEmpty ? title[0].toUpperCase() : '?',
+      fallbackText: widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '?',
       logTag: 'contact_info',
     );
   }

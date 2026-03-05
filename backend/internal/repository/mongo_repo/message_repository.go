@@ -34,6 +34,7 @@ type mongoMessage struct {
 	IsRead           bool                `bson:"is_read"`
 	ReadBy           []string            `bson:"read_by"`
 	LinkPreview      *domain.LinkPreview `bson:"link_preview,omitempty"`
+	ExpiresAt        *time.Time          `bson:"expires_at,omitempty"` // For disappearing messages TTL
 	CreatedAt        time.Time           `bson:"created_at"`
 }
 
@@ -83,6 +84,10 @@ func (r *MessageRepository) EnsureIndexes(ctx context.Context) error {
 			},
 			Options: options.Index().SetBackground(background).SetName("room_created_idx"),
 		},
+		{
+			Keys:    bson.D{{Key: "expires_at", Value: 1}},
+			Options: options.Index().SetBackground(background).SetName("expires_at_ttl_idx").SetExpireAfterSeconds(0),
+		},
 	}
 	_, err := r.collection.Indexes().CreateMany(ctx, models)
 	return err
@@ -110,6 +115,7 @@ func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
 		IsRead:           m.IsRead,
 		ReadBy:           m.ReadBy,
 		LinkPreview:      m.LinkPreview,
+		ExpiresAt:        m.ExpiresAt,
 		CreatedAt:        m.CreatedAt,
 	}, nil
 }
@@ -158,6 +164,7 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 		IsRead:           m.IsRead,
 		ReadBy:           readBy,
 		LinkPreview:      m.LinkPreview,
+		ExpiresAt:        m.ExpiresAt,
 		CreatedAt:        m.CreatedAt,
 	}, nil
 }
@@ -404,7 +411,7 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		{{Key: "$project", Value: bson.M{
 			"sender_id": 1, "receiver_id": 1, "content": 1, "created_at": 1, "is_read": 1, "read_by": 1,
 			"link_preview": 1,
-			"type": 1, // 👉 務必加上這一行！把 type 傳遞到下一個階段
+			"type":         1, // 👉 務必加上這一行！把 type 傳遞到下一個階段
 			"other_id": bson.M{
 				"$cond": bson.M{
 					"if":   bson.M{"$eq": []interface{}{"$sender_id", userID}},

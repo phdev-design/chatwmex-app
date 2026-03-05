@@ -101,7 +101,7 @@ func (u *roomUsecase) GetRoomMembers(c context.Context, roomID string) ([]string
 	return u.roomRepo.GetMembers(ctx, roomID)
 }
 
-func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.Room, error) {
+func (u *roomUsecase) GetUserRooms(c context.Context, userID string, keyword string) ([]*domain.Room, error) {
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
 
@@ -142,6 +142,17 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.
 			LastReadAt:      conv.LastReadAt,
 			UpdatedAt:       conv.LastMessageTime,
 		})
+	}
+
+	if strings.TrimSpace(keyword) != "" {
+		needle := strings.ToLower(strings.TrimSpace(keyword))
+		filtered := make([]*domain.Room, 0, len(rooms))
+		for _, room := range rooms {
+			if strings.Contains(strings.ToLower(room.Name), needle) {
+				filtered = append(filtered, room)
+			}
+		}
+		rooms = filtered
 	}
 
 	// 3. Sort by last activity (UpdatedAt or LastMessageTime)

@@ -145,10 +145,12 @@ class RoomListViewModel extends Notifier<RoomListState> {
     return const RoomListState();
   }
 
-  Future<void> fetchRooms() async {
+Future<void> fetchRooms({String query = ''}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final rooms = await _repository.getMyRooms();
+      // 👉 將 query 傳給 repository
+      final rooms = await _repository.getMyRooms(query: query);
+      
       final updated = rooms.map((room) {
         final override = _unreadOverrides[room.id];
         if (override != null) {
@@ -156,21 +158,13 @@ class RoomListViewModel extends Notifier<RoomListState> {
         }
         return room;
       }).toList();
+      
       for (final room in rooms) {
         if (room.unreadCount == 0) {
           _unreadOverrides.remove(room.id);
         }
       }
-      final dmWithoutAvatar = updated
-          .where(
-            (room) =>
-                room.type == 'dm' &&
-                (room.avatarUrl == null || room.avatarUrl!.isEmpty),
-          )
-          .length;
-      // debugPrint(
-      //   'room_list fetch rooms=${updated.length} dm_without_avatar=$dmWithoutAvatar',
-      // );
+      
       state = state.copyWith(isLoading: false, rooms: updated);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());

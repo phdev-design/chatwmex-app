@@ -22,6 +22,7 @@ type Message struct {
 	IsRead           bool                `json:"is_read,omitempty"` // For backwards compatibility or simple 1-on-1
 	ReadBy           []string            `json:"read_by"`           // List of UserIDs who read the message
 	LinkPreview      *LinkPreview        `json:"link_preview,omitempty" bson:"link_preview,omitempty"`
+	ExpiresAt        *time.Time          `json:"expires_at,omitempty"` // For disappearing messages (MongoDB TTL)
 	CreatedAt        time.Time           `json:"created_at"`
 }
 

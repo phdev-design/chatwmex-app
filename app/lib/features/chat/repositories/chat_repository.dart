@@ -24,13 +24,21 @@ class ChatRepository {
 
   ChatRepository(this._networkService, this._localDb);
 
-  Future<List<Room>> getMyRooms() async {
+Future<List<Room>> getMyRooms({String query = ''}) async {
     try {
-      final response = await _networkService.client.get('/rooms/my');
+      final Map<String, dynamic> queryParams = {};
+      if (query.isNotEmpty) {
+        queryParams['q'] = query;
+      }
+      
+      final response = await _networkService.client.get(
+        '/rooms/my',
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
       final List<dynamic> list = response.data['data'] ?? [];
       return list.map((e) => Room.fromJson(e)).toList();
     } catch (e) {
-      throw e;
+      throw e; // 實務上建議使用自訂 Exception
     }
   }
 

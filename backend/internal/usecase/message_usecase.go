@@ -21,6 +21,7 @@ type messageUsecase struct {
 	userRepo       domain.UserRepository
 	deviceRepo     domain.DeviceRepository
 	pushService    domain.PushNotificationService
+	settingUsecase domain.ChatSettingUsecase // 👉 新增設定的 Usecase
 	redisClient    *redis.Client
 	contextTimeout time.Duration
 }
@@ -33,6 +34,7 @@ func NewMessageUsecase(
 	userRepo domain.UserRepository,
 	deviceRepo domain.DeviceRepository,
 	pushService domain.PushNotificationService,
+	settingUsecase domain.ChatSettingUsecase, // 👉 加入參數
 	redisClient *redis.Client,
 	timeout time.Duration,
 ) domain.MessageUsecase {
@@ -43,6 +45,7 @@ func NewMessageUsecase(
 		userRepo:       userRepo,
 		deviceRepo:     deviceRepo,
 		pushService:    pushService,
+		settingUsecase: settingUsecase, // 👉 設定依賴
 		redisClient:    redisClient,
 		contextTimeout: timeout,
 	}
@@ -67,6 +70,27 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	}
 
 	offlineUserIDs := make([]string, 0)
+
+	// 👉 自動刪除訊息：判斷此對話是否開啟計時器
+	var chatID string
+	if msg.RoomID != "" {
+		chatID = msg.RoomID
+	} else {
+		// DM 的 ChatID 組合規則，必須確保 A->B 和 B->A 的 ID 一致
+		if msg.SenderID < msg.ReceiverID {
+			chatID = msg.SenderID + "_" + msg.ReceiverID
+		} else {
+			chatID = msg.ReceiverID + "_" + msg.SenderID
+		}
+	}
+
+	if chatID != "" && u.settingUsecase != nil {
+		setting, err := u.settingUsecase.GetChatSetting(ctx, chatID)
+		if err == nil && setting != nil && setting.DisappearingTimer > 0 {
+			expiresAt := time.Now().Add(time.Duration(setting.DisappearingTimer) * time.Second)
+			msg.ExpiresAt = &expiresAt
+		}
+	}
 
 	// 3) Group message routing rules:
 	//    - When RoomID is set, we verify the sender is a member of the room.
@@ -117,7 +141,7 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	// 4) Set server timestamp to ensure canonical ordering.
 	msg.CreatedAt = time.Now()
 
-preview, err := u.GetLinkPreview(ctx, msg.Content)
+	preview, err := u.GetLinkPreview(ctx, msg.Content)
 	if err != nil {
 		log.Printf("link preview skipped: %v", err)
 	} else {

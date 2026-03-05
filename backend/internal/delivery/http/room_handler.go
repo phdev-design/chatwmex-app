@@ -213,9 +213,10 @@ func (h *RoomHandler) GetUserRooms(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
 		return
 	}
+	keyword := c.Query("q")
 
 	ctx := c.Request.Context()
-	rooms, err := h.RoomUsecase.GetUserRooms(ctx, memberID)
+	rooms, err := h.RoomUsecase.GetUserRooms(ctx, memberID, keyword)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
