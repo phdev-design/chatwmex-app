@@ -57,6 +57,11 @@ func (m *MockUserRepository) UpdateAvatar(ctx context.Context, id, avatarURL str
 	return args.Error(0)
 }
 
+func (m *MockUserRepository) UpdatePublicKey(ctx context.Context, id, publicKey string) error {
+	args := m.Called(ctx, id, publicKey)
+	return args.Error(0)
+}
+
 func TestRegister(t *testing.T) {
 	mockRepo := new(MockUserRepository)
 	usecase := NewUserUsecase(mockRepo, time.Second)

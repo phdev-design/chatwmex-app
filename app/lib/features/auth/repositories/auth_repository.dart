@@ -47,6 +47,13 @@ class AuthRepository {
     );
   }
 
+  Future<void> updatePublicKey(String publicKey) async {
+    await _networkService.client.put(
+      '/users/public_key',
+      data: {'public_key': publicKey},
+    );
+  }
+
   Future<void> logout() async {
     try {
       // Unregister Device

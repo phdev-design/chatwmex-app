@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/models/message.dart';
+import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/media/media_service.dart';
 import 'package:app/core/websocket/websocket_service.dart';
@@ -105,6 +106,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   late final NetworkService _network;
   late final WebSocketService _wsService;
   late final ChatRepository _chatRepository;
+  late final CryptoService _cryptoService;
+  String? _opponentPublicKey;
+  bool _publicKeyFetchFailed = false;
   Timer? _typingTimer;
   bool _typingSent = false;
   Timer? _readBatchTimer;
@@ -116,6 +120,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _network = ref.watch(networkServiceProvider);
     _wsService = ref.watch(webSocketServiceProvider);
     _chatRepository = ref.watch(chatRepositoryProvider);
+    _cryptoService = ref.watch(cryptoServiceProvider);
     var initialRoomAvatarUrl = '';
     if (!arg.isRoom) {
       final rooms = ref.read(roomListViewModelProvider).rooms;
@@ -141,21 +146,23 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
         if (event == 'chat_message') {
           try {
-            final message = Message.fromJson(payload);
-            if ((arg.isRoom && message.roomId == arg.roomId) ||
-                (!arg.isRoom &&
-                    (message.senderId == arg.roomId ||
-                        message.receiverId == arg.roomId))) {
-              _addMessage(message);
-              Future(() => LocalDbService().insertMessages([message]));
-              if (message.senderId != arg.currentUserId) {
-                if (arg.isRoom) {
-                  markAsRead(message.id);
-                } else {
-                  markConversationAsRead();
+            final rawMessage = Message.fromJson(payload);
+            _tryDecryptMessage(rawMessage).then((message) {
+              if ((arg.isRoom && message.roomId == arg.roomId) ||
+                  (!arg.isRoom &&
+                      (message.senderId == arg.roomId ||
+                          message.receiverId == arg.roomId))) {
+                _addMessage(message);
+                Future(() => LocalDbService().insertMessages([rawMessage])); // Store encrypted locally
+                if (message.senderId != arg.currentUserId) {
+                  if (arg.isRoom) {
+                    markAsRead(message.id);
+                  } else {
+                    markConversationAsRead();
+                  }
                 }
               }
-            }
+            });
           } catch (e) {
             print('Error parsing message: $e');
           }
@@ -453,6 +460,81 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  // 為了避免 N+1 API 風暴建立的記憶體快取
+  final Map<String, String> _publicKeyCache = {};
+  final Map<String, Future<String?>> _inFlightKeyRequests = {};
+
+  Future<String?> _getPublicKey(String userId) async {
+    if (arg.isRoom) return null;
+
+    // 1. 先檢查記憶體快取中是否有這個 user 的公鑰
+    if (_publicKeyCache.containsKey(userId)) {
+      final key = _publicKeyCache[userId];
+      // 如果快取裡是空字串，代表對方目前確實沒上傳，直接回傳 null 不再發 API
+      return (key != null && key.isNotEmpty) ? key : null;
+    }
+
+    // 2. 檢查是否已經有這個 user 的請在進行中（防止 ListView 一次 50 個訊息併發導致送出 50 次 API）
+    if (_inFlightKeyRequests.containsKey(userId)) {
+      return await _inFlightKeyRequests[userId];
+    }
+
+    // 3. 發送 API 並設定在 _inFlightKeyRequests 讓其他請求可以 await
+    final fetchFuture = _chatRepository.getUserPublicKey(userId).then((key) {
+      // 拿到後存入快取，就算是 null 或空字串也存為 ''，避免後續一直狂打 API
+      _publicKeyCache[userId] = key ?? '';
+      _inFlightKeyRequests.remove(userId);
+      return (key != null && key.isNotEmpty) ? key : null;
+    }).catchError((e) {
+      print('Fetch public key failed: $e');
+      _inFlightKeyRequests.remove(userId);
+      return null;
+    });
+
+    _inFlightKeyRequests[userId] = fetchFuture;
+    return await fetchFuture;
+  }
+
+  Future<Message> _tryDecryptMessage(Message m) async {
+    if (arg.isRoom) return m;
+    if (m.isUnsent || m.content.isEmpty) return m;
+
+    final opponentId = (m.senderId == arg.currentUserId) ? m.receiverId : m.senderId;
+    if (opponentId == null) return m;
+
+    final pubKey = await _getPublicKey(opponentId);
+    if (pubKey == null) return m;
+
+    final decrypted = await _cryptoService.decryptMessage(m.content, pubKey);
+
+    // 解密成功：回傳解密後的內容
+    if (decrypted != m.content) {
+      return m.copyWith(content: decrypted);
+    }
+
+    // 解密後內容與密文相同，代表：
+    // A) 原本就是舊版明文（非 base64），直接顯示即可
+    // B) 解密失敗（金鑰不匹配），顯示 placeholder
+    // 判斷依據：純文字通常不會以 base64 字元集組成且長度是4的倍數
+    final looksLikeCiphertext = _looksLikeE2EECiphertext(m.content);
+    if (looksLikeCiphertext) {
+      return m.copyWith(content: '🔒 此訊息無法解密（金鑰已更新）');
+    }
+    return m; // 原本就是明文，直接顯示
+  }
+
+  // 判斷字串是否看起來像我們的 E2EE 密文格式（base64，且長度 > 28bytes 對應的 base64 長度）
+  bool _looksLikeE2EECiphertext(String content) {
+    if (content.length < 40) return false; // < 28 bytes base64 encoded 約 40 chars
+    final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
+    return base64Regex.hasMatch(content.trim());
+  }
+
+  Future<List<Message>> _decryptMessages(List<Message> messages) async {
+    final futures = messages.map((m) => _tryDecryptMessage(m));
+    return Future.wait(futures);
+  }
+
   // --- API Logic ---
 
   Future<void> loadHistory({int limit = 50, int offset = 0}) async {
@@ -466,8 +548,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         offset: offset,
       );
       final ordered = history.map(_attachReplyMessage).toList();
+      final decrypted = await _decryptMessages(ordered);
       state = state.copyWith(
-        messages: offset == 0 ? ordered : [...state.messages, ...ordered],
+        messages: offset == 0 ? decrypted : [...state.messages, ...decrypted],
         isLoading: false,
         offset: offset == 0 ? ordered.length : state.offset + ordered.length,
         hasMore: ordered.length >= limit,
@@ -525,9 +608,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         offset: state.offset,
       );
       final hydrated = olderMessages.map(_attachReplyMessage).toList();
+      final decrypted = await _decryptMessages(hydrated);
       final hasMore = olderMessages.length >= 50;
       state = state.copyWith(
-        messages: [...state.messages, ...hydrated],
+        messages: [...state.messages, ...decrypted],
         isLoadingMore: false,
         hasMore: hasMore,
         offset: state.offset + 50,
@@ -562,11 +646,23 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     );
     _addMessage(tempMessage);
 
+    String payloadContent = content;
+    if (!arg.isRoom) {
+      final pubKey = await _getPublicKey(arg.roomId);
+      if (pubKey != null) {
+        try {
+          payloadContent = await _cryptoService.encryptMessage(content, pubKey);
+        } catch (e) {
+          print('Failed to encrypt message: $e');
+        }
+      }
+    }
+
     final payload = {
       'receiver_id': arg.isRoom ? null : arg.roomId,
       'room_id': arg.isRoom ? arg.roomId : null,
       'reply_to_message_id': replyToId,
-      'content': content,
+      'content': payloadContent,
       'type': type.toString().split('.').last,
       'client_msg_id': clientMsgId,
     };
@@ -587,11 +683,24 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
     final clientMsgId = message.clientMsgId!;
     _updateMessageStatus(clientMsgId, MessageStatus.sending);
+
+    String payloadContent = message.content;
+    if (!arg.isRoom) {
+      final pubKey = await _getPublicKey(arg.roomId);
+      if (pubKey != null) {
+        try {
+          payloadContent = await _cryptoService.encryptMessage(message.content, pubKey);
+        } catch (e) {
+          print('Failed to encrypt retry: $e');
+        }
+      }
+    }
+
     final payload = {
       'receiver_id': message.receiverId,
       'room_id': message.roomId,
       'reply_to_message_id': message.replyToMessageId,
-      'content': message.content,
+      'content': payloadContent,
       'type': message.type.toString().split('.').last,
       'client_msg_id': clientMsgId,
     };
@@ -661,11 +770,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       );
       _addMessage(tempMessage);
 
+      String payloadContent = url;
+      if (!arg.isRoom) {
+        final pubKey = await _getPublicKey(arg.roomId);
+        if (pubKey != null) {
+          try {
+            payloadContent = await _cryptoService.encryptMessage(url, pubKey);
+          } catch(e) {}
+        }
+      }
+
       final payload = {
         'receiver_id': arg.isRoom ? null : arg.roomId,
         'room_id': arg.isRoom ? arg.roomId : null,
         'reply_to_message_id': replyToId,
-        'content': url,
+        'content': payloadContent,
         'type': 'audio',
         'client_msg_id': clientMsgId,
       };

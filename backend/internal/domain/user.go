@@ -12,7 +12,8 @@ type User struct {
 	Email        string    `json:"email"`
 	PhoneNumber  string    `json:"phone_number"`
 	AvatarURL    string    `json:"avatar_url,omitempty"`
-	PasswordHash string    `json:"-"` // PasswordHash should not be exposed in JSON
+	PublicKey    string    `json:"public_key,omitempty"` // X25519 public key in Base64
+	PasswordHash string    `json:"-"`                    // PasswordHash should not be exposed in JSON
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -25,6 +26,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	UpdateAvatar(ctx context.Context, id, avatarURL string) error
+	UpdatePublicKey(ctx context.Context, id, publicKey string) error
 }
 
 // UserUsecase defines the interface for user business logic.
@@ -41,4 +43,6 @@ type UserUsecase interface {
 	UpdateProfile(ctx context.Context, id, email, phoneNumber string) error
 	// UpdateAvatar updates the user's avatar URL.
 	UpdateAvatar(ctx context.Context, id, avatarURL string) error
+	// UpdatePublicKey updates the user's X25519 public key for E2EE.
+	UpdatePublicKey(ctx context.Context, id, publicKey string) error
 }

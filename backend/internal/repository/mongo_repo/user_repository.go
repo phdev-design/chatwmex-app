@@ -24,6 +24,7 @@ type mongoUser struct {
 	Email        string             `bson:"email,omitempty"`
 	PhoneNumber  string             `bson:"phone_number,omitempty"`
 	AvatarURL    string             `bson:"avatar_url,omitempty"`
+	PublicKey    string             `bson:"public_key,omitempty"`
 	PasswordHash string             `bson:"password_hash"`
 	CreatedAt    time.Time          `bson:"created_at"`
 	UpdatedAt    time.Time          `bson:"updated_at"`
@@ -82,6 +83,7 @@ func (r *UserRepository) toDomain(u *mongoUser) *domain.User {
 		Email:        u.Email,
 		PhoneNumber:  u.PhoneNumber,
 		AvatarURL:    u.AvatarURL,
+		PublicKey:    u.PublicKey, // ← 修復：必須映射公鑰
 		PasswordHash: u.PasswordHash,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
@@ -216,6 +218,32 @@ func (r *UserRepository) UpdateAvatar(ctx context.Context, id, avatarURL string)
 	if result.MatchedCount == 0 {
 		return errors.New("user not found")
 	}
+	return nil
+}
+
+// UpdatePublicKey updates the user's public key in the database.
+func (r *UserRepository) UpdatePublicKey(ctx context.Context, id, publicKey string) error {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"public_key": publicKey,
+			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	if err != nil {
+		return fmt.Errorf("failed to update public key: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+
 	return nil
 }
 

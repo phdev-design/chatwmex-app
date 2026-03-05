@@ -5,6 +5,7 @@ import 'package:app/features/auth/repositories/auth_repository.dart';
 import 'package:app/features/auth/models/auth_state.dart';
 import 'package:app/core/notification/notification_service.dart';
 import 'package:app/core/network/network_service.dart';
+import 'package:app/core/crypto/crypto_service.dart';
 
 class AuthViewModel extends Notifier<AuthState> {
   late final AuthRepository _repository;
@@ -23,6 +24,9 @@ class AuthViewModel extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       await _repository.login(username, password);
+      final crypto = ref.read(cryptoServiceProvider);
+      final pubKey = await crypto.initialize();
+      await _repository.updatePublicKey(pubKey);
       await _notificationService.initOneSignal(
         "88247551-a540-4ffc-89aa-e6ea9478b7be",
       );

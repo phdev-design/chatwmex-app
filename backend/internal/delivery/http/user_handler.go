@@ -47,6 +47,9 @@ func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string, prof
 		protected.GET("/profile", handler.GetMyProfile)
 		protected.PUT("/profile", handler.UpdateProfile)
 		protected.PUT("/avatar", handler.UploadAvatar)
+		// E2EE Public Key endpoints
+		protected.PUT("/public_key", handler.UpdatePublicKey)
+		protected.GET("/:id/public_key", handler.GetPublicKey)
 	}
 }
 
@@ -73,6 +76,11 @@ type LoginResponse struct {
 type UpdateProfileRequest struct {
 	Email       string `json:"email" binding:"omitempty,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
+}
+
+// UpdatePublicKeyRequest defines the request body for uploading public key.
+type UpdatePublicKeyRequest struct {
+	PublicKey string `json:"public_key" binding:"required"`
 }
 
 // Register handles user registration.
@@ -255,6 +263,7 @@ func (h *UserHandler) GetMyProfile(c *gin.Context) {
 		"email":        user.Email,
 		"phone_number": user.PhoneNumber,
 		"avatar_url":   user.AvatarURL,
+		"public_key":   user.PublicKey,
 	})
 }
 
@@ -310,4 +319,50 @@ func generateAvatarFileName(ext string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b) + ext, nil
+}
+
+func (h *UserHandler) UpdatePublicKey(c *gin.Context) {
+	var req UpdatePublicKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	userID := c.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	ctx := c.Request.Context()
+	err := h.UserUsecase.UpdatePublicKey(ctx, userID, req.PublicKey)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, "Public key updated successfully")
+}
+
+func (h *UserHandler) GetPublicKey(c *gin.Context) {
+	targetUserID := c.Param("id")
+	if targetUserID == "" {
+		response.Error(c, http.StatusBadRequest, "User ID is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	user, err := h.UserUsecase.GetUserProfile(ctx, targetUserID)
+	if err != nil {
+		if err.Error() == "user not found" || err.Error() == "invalid object ID" {
+			response.Error(c, http.StatusNotFound, "User not found")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{
+		"public_key": user.PublicKey, // 可能是空字串，前端需自行判斷
+	})
 }

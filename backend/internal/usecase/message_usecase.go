@@ -141,12 +141,12 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	// 4) Set server timestamp to ensure canonical ordering.
 	msg.CreatedAt = time.Now()
 
-	preview, err := u.GetLinkPreview(ctx, msg.Content)
-	if err != nil {
-		log.Printf("link preview skipped: %v", err)
+	// 👉 E2EE 架構下，msg.Content 已經是密文，後端無法再做 URL 解析。
+	// 改為：如果前端有傳 LinkPreview 且含有 URL，就將訊息類型設為 "link"
+	if msg.LinkPreview != nil && msg.LinkPreview.URL != "" {
+		msg.Type = "link"
 	} else {
-		msg.LinkPreview = preview
-		msg.Type = "link" // 👉 新增這一行：如果有預覽連結，強制將類型改為 link
+		msg.LinkPreview = nil // 清除無效的預覽資料
 	}
 
 	// 5) Persist the message for history (encryption handled by repository).
@@ -175,6 +175,9 @@ func (u *messageUsecase) pushToOfflineUsers(userIDs []string, msg *domain.Messag
 		"room_id":   roomID,
 		"is_room":   msg.RoomID != "",
 		"room_name": title,
+		// 👉 將原始加密內容與發送者 ID 放進隱藏資料中，供前端本地解密
+		"encrypted_content": msg.Content,
+		"sender_id":         msg.SenderID,
 	}
 
 	for _, userID := range userIDs {
@@ -208,9 +211,18 @@ func (u *messageUsecase) buildPushContent(ctx context.Context, msg *domain.Messa
 	}
 
 	content := msg.Content
-	if msg.Type == "image" {
+	// 👉 判斷如果是 E2EE 密文（通常大於一定長度，且不含一般中英文字型特徵，或者簡單的長度/Base64判斷）
+	// 在後端由於不負責解密，最安全的做法是：如果是 text，全部統一顯示「您收到了一則新訊息」或「🔒 一則加密訊息」。
+	if msg.Type == "text" {
+		content = "🔒 一則加密訊息"
+	} else if msg.Type == "image" {
 		content = "傳送了一張圖片"
+	} else if msg.Type == "audio" || msg.Type == "voice" {
+		content = "傳送了一則語音訊息"
+	} else if msg.Type == "file" || msg.Type == "document" {
+		content = "傳送了一個檔案"
 	}
+
 	return title, content
 }
 

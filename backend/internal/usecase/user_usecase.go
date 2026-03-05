@@ -155,6 +155,20 @@ func (u *userUsecase) UpdateAvatar(c context.Context, id, avatarURL string) erro
 	return u.userRepo.UpdateAvatar(ctx, id, avatarURL)
 }
 
+func (u *userUsecase) UpdatePublicKey(c context.Context, id, publicKey string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	if id == "" {
+		return errors.New("user id is required")
+	}
+	if publicKey == "" {
+		return errors.New("public key is required")
+	}
+
+	return u.userRepo.UpdatePublicKey(ctx, id, publicKey)
+}
+
 func isEmail(s string) bool {
 	// Basic check
 	for _, c := range s {

@@ -274,6 +274,16 @@ Future<List<Room>> getMyRooms({String query = ''}) async {
     }
   }
 
+  Future<String?> getUserPublicKey(String userId) async {
+    try {
+      final response = await _networkService.client.get('/users/$userId/public_key');
+      return response.data['data']['public_key'] as String?;
+    } catch (e) {
+      print('Failed to get user public key: $e');
+      return null;
+    }
+  }
+
   _DedupedResult _dedupeMessages(List<Message> input) {
     final working = [...input]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));

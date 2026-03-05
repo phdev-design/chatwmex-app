@@ -148,15 +148,24 @@ class RoomListViewModel extends Notifier<RoomListState> {
 Future<void> fetchRooms({String query = ''}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      // 👉 將 query 傳給 repository
       final rooms = await _repository.getMyRooms(query: query);
       
       final updated = rooms.map((room) {
+        // 過濾密文的 lastMessage
+        Room r = room;
+        final lm = room.lastMessage;
+        final lmType = room.lastMessageType;
+        if (lm != null && lmType != 'image' && lmType != 'audio' && lmType != 'file' && lmType != 'document') {
+          if (_looksLikeCiphertext(lm)) {
+            r = r.copyWith(lastMessage: '🔒 加密訊息');
+          }
+        }
+
         final override = _unreadOverrides[room.id];
         if (override != null) {
-          return room.copyWith(unreadCount: override);
+          return r.copyWith(unreadCount: override);
         }
-        return room;
+        return r;
       }).toList();
       
       for (final room in rooms) {
@@ -287,10 +296,20 @@ Future<void> fetchRooms({String query = ''}) async {
       case 'document':
         return '[檔案]';
       default:
+        // 判斷是否為 E2EE 密文（base64 且長度夠長）
+        if (_looksLikeCiphertext(content)) {
+          return '🔒 加密訊息';
+        }
         return content;
     }
   }
-}
+
+  bool _looksLikeCiphertext(String content) {
+    if (content.length < 40) return false;
+    final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
+    return base64Regex.hasMatch(content.trim());
+  }
+} // ← 這裡才是正確的 Class 結尾
 
 final roomListViewModelProvider =
     NotifierProvider<RoomListViewModel, RoomListState>(RoomListViewModel.new);

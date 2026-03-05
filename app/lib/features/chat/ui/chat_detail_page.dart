@@ -221,6 +221,67 @@ Future<void> _navigateToContactInfo() async {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
+  Widget _buildE2EEBanner(BuildContext context) {
+    if (widget.isRoom) return const SizedBox.shrink();
+    
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2B33) : const Color(0xFFFFF3C4),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: GestureDetector(
+        onTap: () => _showE2EEExplanation(context),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.lock,
+              size: 16,
+              color: isDark ? const Color(0xFFFFD43B) : const Color(0xFF866700),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '訊息和通話都受到端對端加密。點擊以了解更多。',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? const Color(0xFFFFD43B) : const Color(0xFF866700),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showE2EEExplanation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF111B21) : Colors.white,
+          title: const Text('端對端加密 (E2EE)'),
+          content: const Text(
+            '您的訊息內容都受到端對端加密保護。這代表在您與聯絡人之間的傳輸過程中，任何人都無法讀取內容，連 ChatWmex 伺服器也無法解密您的個人訊息。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('了解'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(_params));
@@ -271,8 +332,11 @@ Future<void> _navigateToContactInfo() async {
                     : ListView.builder(
                         controller: _scrollController,
                         reverse: true,
-                        itemCount: state.messages.length,
+                        itemCount: state.messages.length + 1,
                         itemBuilder: (context, index) {
+                          if (index == state.messages.length) {
+                            return _buildE2EEBanner(context);
+                          }
                           final msg = state.messages[index];
                           final isMe = msg.senderId == widget.currentUserId;
                           final showDate =

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"chatwmex_backend/internal/domain"
-	"chatwmex_backend/pkg/crypto"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -48,15 +47,13 @@ type offlineMessage struct {
 type MessageRepository struct {
 	collection        *mongo.Collection
 	offlineCollection *mongo.Collection
-	cryptor           *crypto.AESCrypto
 }
 
 // NewMessageRepository creates a new instance of MessageRepository.
-func NewMessageRepository(db *mongo.Database, cryptor *crypto.AESCrypto) domain.MessageRepository {
+func NewMessageRepository(db *mongo.Database) domain.MessageRepository {
 	repo := &MessageRepository{
 		collection:        db.Collection(messageCollectionName),
 		offlineCollection: db.Collection(offlineCollectionName),
-		cryptor:           cryptor,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -94,13 +91,7 @@ func (r *MessageRepository) EnsureIndexes(ctx context.Context) error {
 }
 
 // toDomain converts a mongoMessage to a domain.Message.
-// It decrypts the content during the conversion.
 func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
-	decryptedContent, err := r.cryptor.Decrypt(m.Content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt message content: %w", err)
-	}
-
 	return &domain.Message{
 		ID:               m.ID.Hex(),
 		SenderID:         m.SenderID,
@@ -110,7 +101,7 @@ func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
 		Reactions:        m.Reactions,
 		IsUnsent:         m.IsUnsent,
 		DeletedBy:        m.DeletedBy,
-		Content:          decryptedContent,
+		Content:          m.Content,
 		Type:             m.Type,
 		IsRead:           m.IsRead,
 		ReadBy:           m.ReadBy,
@@ -121,13 +112,7 @@ func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
 }
 
 // fromDomain converts a domain.Message to a mongoMessage.
-// It encrypts the content during the conversion.
 func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error) {
-	encryptedContent, err := r.cryptor.Encrypt(m.Content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt message content: %w", err)
-	}
-
 	id := primitive.NilObjectID
 	if m.ID != "" {
 		var err error
@@ -159,7 +144,7 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 		Reactions:        reactions,
 		IsUnsent:         m.IsUnsent,
 		DeletedBy:        deletedBy,
-		Content:          encryptedContent,
+		Content:          m.Content,
 		Type:             m.Type,
 		IsRead:           m.IsRead,
 		ReadBy:           readBy,
@@ -170,7 +155,6 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 }
 
 // StoreMessage saves a message to the repository.
-// It encrypts the message content before storing it in MongoDB.
 func (r *MessageRepository) StoreMessage(ctx context.Context, msg *domain.Message) error {
 	mongoMsg, err := r.fromDomain(msg)
 	if err != nil {
@@ -493,11 +477,7 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 
 	var conversations []*domain.Conversation
 	for _, res := range results {
-		// Decrypt last message content
-		content, err := r.cryptor.Decrypt(res.LastMessageDoc.Content)
-		if err != nil {
-			content = "[Encrypted Message]"
-		}
+		content := res.LastMessageDoc.Content
 		if res.LastMessageDoc.LinkPreview != nil &&
 			res.LastMessageDoc.LinkPreview.Title != "" {
 			content = res.LastMessageDoc.LinkPreview.Title
@@ -679,15 +659,12 @@ func (r *MessageRepository) UnsendMessage(ctx context.Context, messageID string,
 	if err != nil {
 		return nil, fmt.Errorf("invalid object ID: %w", err)
 	}
-	encryptedEmpty, err := r.cryptor.Encrypt("")
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt empty content: %w", err)
-	}
+
 	filter := bson.M{"_id": oid, "sender_id": userID}
 	update := bson.M{
 		"$set": bson.M{
 			"is_unsent": true,
-			"content":   encryptedEmpty,
+			"content":   "", // Content is emptied out
 		},
 	}
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)

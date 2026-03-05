@@ -21,7 +21,6 @@ import (
 	"chatwmex_backend/internal/repository/mongo_repo"
 	"chatwmex_backend/internal/repository/redis_repo"
 	"chatwmex_backend/internal/usecase"
-	"chatwmex_backend/pkg/crypto"
 
 	"github.com/gin-gonic/gin"
 )
@@ -50,16 +49,6 @@ func main() {
 		}
 	}()
 
-	// Crypto Service
-	// Ensure encryption key is valid (32 bytes for AES-256)
-	if len(cfg.EncryptionKey) != 32 {
-		log.Fatalf("Encryption key must be exactly 32 bytes (got %d)", len(cfg.EncryptionKey))
-	}
-	cryptor, err := crypto.NewAESCrypto(cfg.EncryptionKey)
-	if err != nil {
-		log.Fatalf("Failed to initialize crypto service: %v", err)
-	}
-
 	// Redis Connection
 	redisClient, err := infrastructure.NewRedisClient(cfg)
 	if err != nil {
@@ -75,7 +64,7 @@ func main() {
 
 	// 3. Initialize Repositories
 	userRepo := mongo_repo.NewUserRepository(db)
-	messageRepo := mongo_repo.NewMessageRepository(db, cryptor)
+	messageRepo := mongo_repo.NewMessageRepository(db)
 	roomRepo := mongo_repo.NewRoomRepository(db)
 	friendRepo := mongo_repo.NewFriendRepository(db)
 	deviceRepo := mongo_repo.NewDeviceRepository(db)
