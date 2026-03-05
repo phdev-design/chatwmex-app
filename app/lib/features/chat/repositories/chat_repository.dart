@@ -112,35 +112,11 @@ class ChatRepository {
     if (apiMessages.isEmpty && cursor.isEmpty) {
       print('⚠️ API 回傳空資料，嘗試從 LocalDB 撈取...');
       final cached = await _localDb.getMessagesByRoom(roomId, limit: 1000);
-
-      final dedupedByKey = <String, Message>{};
-      for (final msg in cached) {
-        final key = (msg.clientMsgId != null && msg.clientMsgId!.isNotEmpty)
-            ? msg.clientMsgId!
-            : msg.id;
-        if (key.isEmpty) continue;
-        final current = dedupedByKey[key];
-        if (current == null) {
-          dedupedByKey[key] = msg;
-          continue;
-        }
-        final incomingIsServerRecord =
-            msg.clientMsgId != null &&
-            msg.clientMsgId!.isNotEmpty &&
-            msg.id != msg.clientMsgId;
-        final currentIsServerRecord =
-            current.clientMsgId != null &&
-            current.clientMsgId!.isNotEmpty &&
-            current.id != current.clientMsgId;
-        if (incomingIsServerRecord && !currentIsServerRecord) {
-          dedupedByKey[key] = msg;
-        } else if (incomingIsServerRecord == currentIsServerRecord &&
-            msg.createdAt.isAfter(current.createdAt)) {
-          dedupedByKey[key] = msg;
-        }
+      final deduped = _dedupeMessages(cached);
+      for (final id in deduped.removedIds) {
+        await _localDb.deleteMessageLocal(id);
       }
-
-      apiMessages = dedupedByKey.values.where((msg) {
+      apiMessages = deduped.messages.where((msg) {
         if (type == 'media') {
           return msg.type == MessageType.image || msg.type == MessageType.video;
         } else if (type == 'doc') {
@@ -250,6 +226,7 @@ class ChatRepository {
       if (latest.isNotEmpty) {
         try {
           await _localDb.insertMessages(latest);
+          await _cleanupOptimisticDuplicates(latest);
         } catch (dbError) {
           print('⚠️ 寫入 SQLite 失敗，但不影響畫面顯示: $dbError');
         }
@@ -275,6 +252,99 @@ class ChatRepository {
       throw e;
     }
   }
+
+  Future<void> _cleanupOptimisticDuplicates(List<Message> latest) async {
+    final idsToDelete = <String>{};
+    for (final msg in latest) {
+      final clientMsgId = msg.clientMsgId;
+      if (clientMsgId == null || clientMsgId.isEmpty) continue;
+      if (msg.id == clientMsgId) continue;
+      idsToDelete.add(clientMsgId);
+    }
+    for (final id in idsToDelete) {
+      await _localDb.deleteMessageLocal(id);
+    }
+  }
+
+  _DedupedResult _dedupeMessages(List<Message> input) {
+    final working = [...input]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final kept = <Message>[];
+    final removedIds = <String>{};
+    const tolerance = Duration(seconds: 3);
+
+    for (final msg in working) {
+      final index = kept.indexWhere((existing) {
+        if (_canonicalKey(existing).isNotEmpty &&
+            _canonicalKey(existing) == _canonicalKey(msg)) {
+          return true;
+        }
+        return _isPotentialDuplicate(existing, msg, tolerance);
+      });
+      if (index == -1) {
+        kept.add(msg);
+        continue;
+      }
+      final current = kept[index];
+      final preferred = _preferServerRecord(current, msg);
+      final dropped = identical(preferred, current) ? msg : current;
+      if (dropped.id.isNotEmpty) {
+        removedIds.add(dropped.id);
+      }
+      kept[index] = preferred;
+    }
+
+    return _DedupedResult(
+      messages: kept..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
+      removedIds: removedIds,
+    );
+  }
+
+  String _canonicalKey(Message msg) {
+    if (msg.clientMsgId != null && msg.clientMsgId!.isNotEmpty) {
+      return 'client:${msg.clientMsgId}';
+    }
+    if (msg.id.isNotEmpty) {
+      return 'id:${msg.id}';
+    }
+    return '';
+  }
+
+  bool _isPotentialDuplicate(Message a, Message b, Duration tolerance) {
+    if (a.type != b.type) return false;
+    if (a.senderId != b.senderId) return false;
+    if ((a.roomId ?? '') != (b.roomId ?? '')) return false;
+    if ((a.receiverId ?? '') != (b.receiverId ?? '')) return false;
+    if (a.content.trim() != b.content.trim()) return false;
+    final diff = a.createdAt.difference(b.createdAt).inMilliseconds.abs();
+    return diff <= tolerance.inMilliseconds;
+  }
+
+  Message _preferServerRecord(Message current, Message incoming) {
+    final currentServer = _isServerRecord(current);
+    final incomingServer = _isServerRecord(incoming);
+    if (incomingServer && !currentServer) return incoming;
+    if (currentServer && !incomingServer) return current;
+    if (incoming.createdAt.isAfter(current.createdAt)) return incoming;
+    return current;
+  }
+
+  bool _isServerRecord(Message msg) {
+    if (msg.id.isEmpty) return false;
+    if (msg.clientMsgId != null &&
+        msg.clientMsgId!.isNotEmpty &&
+        msg.id == msg.clientMsgId) {
+      return false;
+    }
+    return RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(msg.id);
+  }
+}
+
+class _DedupedResult {
+  final List<Message> messages;
+  final Set<String> removedIds;
+
+  const _DedupedResult({required this.messages, required this.removedIds});
 }
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {

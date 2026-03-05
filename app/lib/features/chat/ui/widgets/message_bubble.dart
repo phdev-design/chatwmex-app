@@ -1,4 +1,5 @@
 import 'package:app/features/chat/providers/chat_room_provider.dart';
+import 'package:app/features/chat/ui/pdf_preview_screen.dart';
 import 'package:app/features/chat/ui/photo_screen.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/audio_message_bubble.dart';
@@ -9,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 // 加入 emoji_picker_flutter 匯入
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/foundation.dart' as foundation;
@@ -107,7 +109,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                     width: 120,
                     height: 120,
                     child: Center(
-                      child: Icon(Icons.broken_image, color: colorScheme.outline),
+                      child: Icon(
+                        Icons.broken_image,
+                        color: colorScheme.outline,
+                      ),
                     ),
                   );
                 },
@@ -118,6 +123,88 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       );
     } else if (msg.type == MessageType.voice) {
       content = AudioMessageBubble(audioUrl: msg.content);
+    } else if (msg.type == MessageType.file) {
+      final fileUrl = resolveFullUrl(msg.content);
+      final parsed = Uri.tryParse(fileUrl);
+      final fileName = (parsed != null && parsed.pathSegments.isNotEmpty)
+          ? parsed.pathSegments.last
+          : 'Document';
+      final lowerName = fileName.toLowerCase();
+      final isPdf = lowerName.endsWith('.pdf');
+      content = GestureDetector(
+        onTap: () async {
+          if (isPdf) {
+            try {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PdfPreviewScreen(
+                    pdfUrl: fileUrl,
+                    fileName: fileName,
+                  ),
+                ),
+              );
+            } catch (_) {
+              final uri = Uri.tryParse(fileUrl);
+              if (uri != null) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            }
+            return;
+          }
+          final uri = Uri.tryParse(fileUrl);
+          if (uri == null) return;
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.65,
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isMe
+                  ? tokens.bubbleOutgoingBackground
+                  : tokens.bubbleIncomingBackground,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isPdf ? Icons.picture_as_pdf : Icons.insert_drive_file,
+                  color: isPdf ? Colors.redAccent : subtleTextColor,
+                  size: 24,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        fileName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isPdf ? 'PDF 文件' : '檔案',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: subtleTextColor, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     } else {
       content = Text(msg.content, style: const TextStyle(fontSize: 15));
     }

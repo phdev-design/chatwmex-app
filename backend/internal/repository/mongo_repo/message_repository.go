@@ -246,33 +246,40 @@ func (r *MessageRepository) GetHistory(ctx context.Context, userID, contactID st
 	return messages, nil
 }
 
-func (r *MessageRepository) GetRoomResources(ctx context.Context, roomID, category, cursor string, limit int) ([]domain.Message, error) {
+func (r *MessageRepository) GetRoomResources(ctx context.Context, userID, roomID, category, cursor string, limit int) ([]domain.Message, error) {
 	if limit <= 0 {
 		limit = 20
 	}
+	baseFilter := bson.M{
+		"$or": []bson.M{
+			{"sender_id": userID, "receiver_id": roomID},
+			{"sender_id": roomID, "receiver_id": userID},
+			{"room_id": roomID},
+		},
+		"deleted_by": bson.M{"$ne": userID},
+	}
 
-	filter := bson.M{"room_id": roomID}
-
+	var categoryFilter bson.M
 	switch category {
 	case "", "media":
-		// media: image/video 類型
-		filter["type"] = bson.M{"$in": []string{"image", "video"}}
+		categoryFilter = bson.M{"type": bson.M{"$in": []string{"image", "video"}}}
 	case "link":
-		// link: 專門 link 類型，或 text 且 content 含 URL
-		// 注意：若 content 在 DB 內為加密字串，regex 命中率會受限
-		filter["$or"] = []bson.M{
-			{"type": "link"},
-			{
-				"type":    "text",
-				"content": bson.M{"$regex": "https?://", "$options": "i"},
+		categoryFilter = bson.M{
+			"$or": []bson.M{
+				{"type": "link"},
+				{
+					"type":    "text",
+					"content": bson.M{"$regex": "https?://", "$options": "i"},
+				},
 			},
 		}
 	case "doc":
-		// doc: file/document 類型
-		filter["type"] = bson.M{"$in": []string{"file", "document"}}
+		categoryFilter = bson.M{"type": bson.M{"$in": []string{"file", "document"}}}
 	default:
 		return nil, fmt.Errorf("invalid category")
 	}
+
+	conditions := []bson.M{baseFilter, categoryFilter}
 
 	if cursor != "" {
 		cursorTime, err := time.Parse(time.RFC3339Nano, cursor)
@@ -282,8 +289,9 @@ func (r *MessageRepository) GetRoomResources(ctx context.Context, roomID, catego
 				return nil, fmt.Errorf("invalid cursor format: %w", err)
 			}
 		}
-		filter["created_at"] = bson.M{"$lt": cursorTime}
+		conditions = append(conditions, bson.M{"created_at": bson.M{"$lt": cursorTime}})
 	}
+	filter := bson.M{"$and": conditions}
 
 	// limit+1: 用於上層判斷 has_more
 	findOptions := options.Find().

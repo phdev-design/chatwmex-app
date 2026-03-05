@@ -1,5 +1,6 @@
 import 'package:app/features/chat/providers/room_media_provider.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
+import 'package:app/features/chat/ui/photo_screen.dart';
 import 'package:app/models/message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -89,24 +90,43 @@ class _MediaTabContentState extends ConsumerState<MediaTabContent> {
             delegate: SliverChildBuilderDelegate((context, index) {
               final message = mediaMessages[index];
               final url = resolveFullUrl(message.content);
+              final heroTag = message.id; // 取 message.id 作為唯一的 hero tag
+
               if (url.isEmpty) {
                 return Container(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 );
               }
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.broken_image_outlined),
-                    );
-                  },
+              
+              // 加入 GestureDetector 處理點擊與 Hero 動畫
+              return GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => PhotoScreen(
+                        imageUrl: url,
+                        heroTag: heroTag,
+                      ),
+                    ),
+                  );
+                },
+                child: Hero(
+                  tag: heroTag,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                          child: const Icon(Icons.broken_image_outlined),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               );
             }, childCount: mediaMessages.length),

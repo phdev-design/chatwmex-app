@@ -50,7 +50,8 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 	contentType := http.DetectContentType(buffer[:n])
 	isImage := isImageContentType(contentType)
 	isAudio := isAudioContentType(contentType)
-	if !isImage && !isAudio {
+	isDocument := isDocumentContentType(contentType)
+	if !isImage && !isAudio && !isDocument {
 		response.Error(c, http.StatusBadRequest, "invalid media type")
 		return
 	}
@@ -77,6 +78,8 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 	dirType := "images"
 	if isAudio {
 		dirType = "audio"
+	} else if isDocument {
+		dirType = "documents"
 	}
 	dir := filepath.Join(uploadsRootDir, dirType)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -121,9 +124,18 @@ func isAudioContentType(contentType string) bool {
 	}
 }
 
+func isDocumentContentType(contentType string) bool {
+	switch contentType {
+	case "application/pdf":
+		return true
+	default:
+		return false
+	}
+}
+
 func isAllowedMediaExt(ext string) bool {
 	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".m4a", ".mp3", ".aac":
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".m4a", ".mp3", ".aac", ".pdf":
 		return true
 	default:
 		return false
@@ -146,6 +158,8 @@ func contentTypeToExt(contentType string) string {
 		return ".aac"
 	case "audio/mpeg":
 		return ".mp3"
+	case "application/pdf":
+		return ".pdf"
 	default:
 		return ""
 	}

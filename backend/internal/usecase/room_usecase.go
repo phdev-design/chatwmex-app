@@ -186,7 +186,7 @@ func (u *roomUsecase) GetRoomMedia(c context.Context, userID, roomID, reqType, c
 		case strings.Contains(errText, "invalid object ID"):
 			return nil, false, errors.New("invalid_room_id")
 		case strings.Contains(errText, "room not found"):
-			messages, fetchErr := u.messageRepo.GetRoomResources(ctx, roomID, category, cursor, limit)
+			messages, fetchErr := u.messageRepo.GetRoomResources(ctx, userID, roomID, category, cursor, limit)
 			if fetchErr != nil {
 				if fetchErr.Error() == "invalid category" {
 					return nil, false, errors.New("invalid_type")
@@ -214,7 +214,7 @@ func (u *roomUsecase) GetRoomMedia(c context.Context, userID, roomID, reqType, c
 		return nil, false, errors.New("forbidden")
 	}
 
-	messages, err := u.messageRepo.GetRoomResources(ctx, roomID, category, cursor, limit)
+	messages, err := u.messageRepo.GetRoomResources(ctx, userID, roomID, category, cursor, limit)
 	if err != nil {
 		if err.Error() == "invalid category" {
 			return nil, false, errors.New("invalid_type")

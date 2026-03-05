@@ -3,6 +3,7 @@ import 'package:app/features/chat/utils/chat_url_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:app/features/chat/ui/pdf_preview_screen.dart';
 
 class DocsTabContent extends ConsumerStatefulWidget {
   final String roomId;
@@ -52,11 +53,22 @@ class _DocsTabContentState extends ConsumerState<DocsTabContent> {
     return segments.last;
   }
 
-  Future<void> _openDoc(String content) async {
+  Future<void> _openDoc(BuildContext context, String content) async {
     final resolved = resolveFullUrl(content);
     final uri = Uri.tryParse(resolved);
     if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    final fileName = _fileNameFromContent(content);
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              PdfPreviewScreen(pdfUrl: resolved, fileName: fileName),
+        ),
+      );
+    } else {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -69,12 +81,11 @@ class _DocsTabContentState extends ConsumerState<DocsTabContent> {
       return const Center(child: CircularProgressIndicator());
     }
     if (grouped.isEmpty) {
-      return const Center(child: Text('No docs yet'));
+      return const Center(child: Text('No documents yet'));
     }
 
     final slivers = <Widget>[];
     for (final entry in grouped.entries) {
-      if (entry.value.isEmpty) continue;
       slivers.add(
         SliverToBoxAdapter(
           child: Padding(
@@ -93,11 +104,17 @@ class _DocsTabContentState extends ConsumerState<DocsTabContent> {
             itemCount: entry.value.length,
             itemBuilder: (context, index) {
               final msg = entry.value[index];
+              final fileName = _fileNameFromContent(msg.content);
+              final isPdf = fileName.toLowerCase().endsWith('.pdf');
+
               return Card(
                 child: ListTile(
-                  leading: const Icon(Icons.insert_drive_file),
+                  leading: Icon(
+                    isPdf ? Icons.picture_as_pdf : Icons.insert_drive_file,
+                    color: isPdf ? Colors.redAccent : null,
+                  ),
                   title: Text(
-                    _fileNameFromContent(msg.content),
+                    fileName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -106,7 +123,7 @@ class _DocsTabContentState extends ConsumerState<DocsTabContent> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  onTap: () => _openDoc(msg.content),
+                  onTap: () => _openDoc(context, msg.content),
                 ),
               );
             },
