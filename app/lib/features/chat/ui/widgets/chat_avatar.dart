@@ -43,9 +43,9 @@ class ChatAvatar extends StatelessWidget {
       );
       return fallback;
     }
-    debugPrint('$logTag avatar raw_avatar_url=$avatarUrl');
+    // debugPrint('$logTag avatar raw_avatar_url=$avatarUrl');
     final resolvedUrl = Uri.encodeFull(resolveFullUrl(avatarUrl));
-    debugPrint('$logTag avatar resolved_url=$resolvedUrl');
+    // debugPrint('$logTag avatar resolved_url=$resolvedUrl');
     return ClipOval(
       child: Image.network(
         resolvedUrl,

@@ -175,6 +175,7 @@ class Message extends Equatable {
       case 'video':
         return MessageType.video;
       case 'file':
+      case 'document':
         return MessageType.file;
       default:
         return MessageType.text;

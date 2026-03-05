@@ -136,6 +136,7 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string) ([]*domain.
 			AvatarURL:       conv.OtherUserAvatarURL,
 			Type:            "dm",
 			LastMessage:     conv.LastMessage,
+			LastMessageType: conv.LastMessageType, // 👉 映射新欄位
 			LastMessageTime: conv.LastMessageTime,
 			UnreadCount:     conv.UnreadCount,
 			LastReadAt:      conv.LastReadAt,
@@ -171,10 +172,35 @@ func (u *roomUsecase) GetRoomMedia(c context.Context, userID, roomID, reqType, c
 	if limit <= 0 {
 		limit = 20
 	}
+	category := strings.ToLower(strings.TrimSpace(reqType))
+	switch category {
+	case "", "media", "link", "doc":
+	default:
+		return nil, false, errors.New("invalid_type")
+	}
 
 	members, err := u.roomRepo.GetMembers(ctx, roomID)
 	if err != nil {
-		return nil, false, err
+		errText := err.Error()
+		switch {
+		case strings.Contains(errText, "invalid object ID"):
+			return nil, false, errors.New("invalid_room_id")
+		case strings.Contains(errText, "room not found"):
+			messages, fetchErr := u.messageRepo.GetRoomResources(ctx, roomID, category, cursor, limit)
+			if fetchErr != nil {
+				if fetchErr.Error() == "invalid category" {
+					return nil, false, errors.New("invalid_type")
+				}
+				return nil, false, fetchErr
+			}
+			hasMore := len(messages) > limit
+			if hasMore {
+				messages = messages[:limit]
+			}
+			return messages, hasMore, nil
+		default:
+			return nil, false, err
+		}
 	}
 
 	isMember := false
@@ -186,13 +212,6 @@ func (u *roomUsecase) GetRoomMedia(c context.Context, userID, roomID, reqType, c
 	}
 	if !isMember {
 		return nil, false, errors.New("forbidden")
-	}
-
-	category := strings.ToLower(strings.TrimSpace(reqType))
-	switch category {
-	case "", "media", "link", "doc":
-	default:
-		return nil, false, errors.New("invalid_type")
 	}
 
 	messages, err := u.messageRepo.GetRoomResources(ctx, roomID, category, cursor, limit)

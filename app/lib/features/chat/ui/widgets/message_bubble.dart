@@ -1,4 +1,5 @@
 import 'package:app/features/chat/providers/chat_room_provider.dart';
+import 'package:app/features/chat/ui/photo_screen.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/audio_message_bubble.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
@@ -61,39 +62,57 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     Widget content;
     if (msg.type == MessageType.image) {
       final imageUrl = resolveFullUrl(msg.content);
-      content = ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.6,
-          ),
-          child: Image.network(
-            imageUrl,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return SizedBox(
-                width: 120,
-                height: 120,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    value: progress.expectedTotalBytes != null
-                        ? progress.cumulativeBytesLoaded /
-                              progress.expectedTotalBytes!
-                        : null,
+      final heroTag = msg.id.isNotEmpty ? msg.id : imageUrl;
+      content = GestureDetector(
+        onTap: imageUrl.isEmpty
+            ? null
+            : () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        PhotoScreen(imageUrl: imageUrl, heroTag: heroTag),
                   ),
-                ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return SizedBox(
-                width: 120,
-                height: 120,
-                child: Center(
-                  child: Icon(Icons.broken_image, color: colorScheme.outline),
-                ),
-              );
-            },
+                );
+              },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Hero(
+            tag: heroTag,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.6,
+                maxHeight: 250,
+              ),
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        value: progress.expectedTotalBytes != null
+                            ? progress.cumulativeBytesLoaded /
+                                  progress.expectedTotalBytes!
+                            : null,
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: Center(
+                      child: Icon(Icons.broken_image, color: colorScheme.outline),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ),
       );

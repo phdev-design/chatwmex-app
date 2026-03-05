@@ -52,25 +52,7 @@ class WebSocketService {
 
       _channel!.stream.listen(
         (message) {
-          try {
-            final decoded = jsonDecode(message);
-
-            if (decoded['event'] == 'messages_read_receipt') {
-              _streamController.add(decoded);
-            } else if (decoded['event'] == 'message_ack') {
-              final clientMsgId = decoded['data']['client_msg_id'];
-              if (clientMsgId != null &&
-                  _pendingAcks.containsKey(clientMsgId)) {
-                _pendingAcks[clientMsgId]?.complete();
-                _pendingAcks.remove(clientMsgId);
-              }
-              _streamController.add(decoded);
-            } else {
-              _streamController.add(decoded);
-            }
-          } catch (e) {
-            print('WebSocket decode error: $e');
-          }
+          _handleIncomingMessage(message);
         },
         onDone: () {
           print('WebSocket closed');
@@ -85,6 +67,48 @@ class WebSocketService {
       print('WebSocket connection failed: $e');
       _handleDisconnect();
     }
+  }
+
+  void _handleIncomingMessage(dynamic message) {
+    if (message is Map<String, dynamic>) {
+      _handleDecodedEvent(message);
+      return;
+    }
+    if (message is! String) {
+      return;
+    }
+    final raw = message.trim();
+    if (raw.isEmpty) return;
+
+    final chunks = raw
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    for (final chunk in chunks) {
+      try {
+        final decoded = jsonDecode(chunk);
+        if (decoded is Map) {
+          _handleDecodedEvent(Map<String, dynamic>.from(decoded));
+        }
+      } catch (e) {
+        print('WebSocket decode error: $e');
+      }
+    }
+  }
+
+  void _handleDecodedEvent(Map<String, dynamic> decoded) {
+    if (decoded['event'] == 'message_ack') {
+      final data = decoded['data'];
+      if (data is Map) {
+        final clientMsgId = data['client_msg_id'];
+        if (clientMsgId != null && _pendingAcks.containsKey(clientMsgId)) {
+          _pendingAcks[clientMsgId]?.complete();
+          _pendingAcks.remove(clientMsgId);
+        }
+      }
+    }
+    _streamController.add(decoded);
   }
 
   void _handleDisconnect() {

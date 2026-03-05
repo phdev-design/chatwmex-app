@@ -127,6 +127,31 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         final timeStr = room.lastMessageTime != null
             ? DateFormat('HH:mm').format(room.lastMessageTime!)
             : '';
+        final subtitleColor = room.unreadCount > 0
+            ? tokens.roomListSubtitleUnread
+            : tokens.roomListSubtitleRead;
+        final subtitleWeight = room.unreadCount > 0
+            ? FontWeight.bold
+            : FontWeight.normal;
+        // 👉 重構判斷邏輯，直接判斷 `lastMessageType`
+        IconData? subtitleIcon;
+        String displayText = room.lastMessage ?? 'No messages yet';
+
+        if (room.lastMessageType == 'image') {
+          subtitleIcon = Icons.photo;
+          displayText = '[圖片]';
+        } else if (room.lastMessageType == 'voice' ||
+            room.lastMessageType == 'audio') {
+          subtitleIcon = Icons.mic;
+          displayText = '[語音訊息]';
+        } else if (room.lastMessageType == 'file' ||
+            room.lastMessageType == 'document') {
+          subtitleIcon = Icons.insert_drive_file;
+          displayText = '[檔案]';
+        } else if (room.lastMessage == '此訊息已收回') {
+          // 如果有特殊系統訊息，可以做額外處理
+          displayText = room.lastMessage!;
+        }
 
         final isRoom = room.type == 'group';
         final hasUnread = room.unreadCount > 0;
@@ -184,18 +209,24 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
               ),
             ],
           ),
-          subtitle: Text(
-            room.lastMessage ?? 'No messages yet',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: room.unreadCount > 0
-                  ? FontWeight.bold
-                  : FontWeight.normal,
-              color: room.unreadCount > 0
-                  ? tokens.roomListSubtitleUnread
-                  : tokens.roomListSubtitleRead,
-            ),
+          subtitle: Row(
+            children: [
+              if (subtitleIcon != null) ...[
+                Icon(subtitleIcon, size: 16, color: subtitleColor),
+                const SizedBox(width: 4),
+              ],
+              Flexible(
+                child: Text(
+                  displayText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: subtitleWeight,
+                    color: subtitleColor,
+                  ),
+                ),
+              ),
+            ],
           ),
           onTap: () => _openChat(
             context,

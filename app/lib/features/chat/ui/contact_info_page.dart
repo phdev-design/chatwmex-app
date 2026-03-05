@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
+import 'package:app/features/chat/ui/room_media_page.dart'; // 1. 引入剛剛寫好的媒體庫頁面
 
 class ContactInfoPage extends StatelessWidget {
   final String roomId;
   final String title;
   final bool isRoom;
   final String? avatarUrl;
+  final int mediaCount; // 👉 1. 新增這行
 
   const ContactInfoPage({
     super.key,
@@ -15,6 +17,7 @@ class ContactInfoPage extends StatelessWidget {
     required this.title,
     this.isRoom = false,
     this.avatarUrl,
+    this.mediaCount = 0, // 👉 2. 設定預設值
   });
 
   @override
@@ -112,12 +115,27 @@ class ContactInfoPage extends StatelessWidget {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('0', style: TextStyle(color: secondaryTextColor)),
+                      // 👉 3. 替換原本的 '0' 為 $mediaCount
+                      Text(
+                        '$mediaCount',
+                        style: TextStyle(color: secondaryTextColor),
+                      ),
                       const SizedBox(width: 8),
                       Icon(Icons.chevron_right, color: secondaryTextColor),
                     ],
                   ),
-                  onTap: () {},
+                  onTap: () {
+                    // 2. 點擊後跳轉到 RoomMediaPage
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RoomMediaPage(roomId: roomId),
+                      ),
+                    );
+
+                    // 如果你的 go_router 已經配好了路徑，也可以改成：
+                    // context.push('/rooms/$roomId/media');
+                  },
                 ),
               ),
               const SizedBox(height: 12),

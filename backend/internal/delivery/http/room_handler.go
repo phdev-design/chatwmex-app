@@ -273,6 +273,10 @@ func (h *RoomHandler) GetRoomMedia(c *gin.Context) {
 	media, hasMore, err := h.RoomUsecase.GetRoomMedia(ctx, userIDStr, roomID, reqType, cursor, limit)
 	if err != nil {
 		switch err.Error() {
+		case "invalid_room_id":
+			response.Error(c, http.StatusBadRequest, "Invalid room ID")
+		case "room_not_found":
+			response.Error(c, http.StatusNotFound, "Room not found")
 		case "forbidden":
 			response.Error(c, http.StatusForbidden, "Only room members can access media")
 		case "invalid_type":

@@ -173,16 +173,19 @@ class LocalDbService {
     await batch.commit(noResult: true);
   }
 
-  Future<List<Message>> getMessagesByRoom(
+Future<List<Message>> getMessagesByRoom(
     String roomId, {
     int limit = 50,
     int offset = 0,
   }) async {
     final db = await initDB();
+    
+    // 👉 關鍵修正：同時比對 room_id、sender_id 與 receiver_id
+    // 這樣不論是群組 (room_id) 還是私訊 (sender_id/receiver_id)，都能正確撈出歷史訊息！
     final rows = await db.query(
       'messages',
-      where: 'room_id = ?',
-      whereArgs: [roomId],
+      where: 'room_id = ? OR sender_id = ? OR receiver_id = ?',
+      whereArgs: [roomId, roomId, roomId],
       orderBy: 'created_at DESC',
       limit: limit,
       offset: offset,

@@ -72,8 +72,15 @@ class NetworkService {
     });
 
     try {
-      final response = await _dio.post('/upload', data: formData);
-      return response.data['url']; // Assuming backend returns { "url": "..." }
+      final response = await _dio.post('/media/upload', data: formData);
+      final data = response.data['data'];
+      if (data is Map<String, dynamic> && data['url'] is String) {
+        return data['url'] as String;
+      }
+      if (response.data is Map && response.data['url'] is String) {
+        return response.data['url'] as String;
+      }
+      throw Exception('Invalid upload response format');
     } catch (e) {
       throw Exception('Upload failed: $e');
     }

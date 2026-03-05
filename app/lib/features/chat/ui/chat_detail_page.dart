@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:app/features/chat/utils/chat_url_utils.dart'; // 👉 新增引入
+import 'package:app/models/message.dart';
 
 class ChatDetailPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -85,6 +87,19 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
         ? state.roomAvatarUrl
         : widget.avatarUrl;
+
+    // 👉 新增這段：計算目前的媒體、文件與連結數量
+    int mediaCount = state.messages.where((m) {
+      final typeName = m.type.name;
+      final isMediaOrFile =
+          m.type == MessageType.image ||
+          m.type == MessageType.video ||
+          m.type == MessageType.file ||
+          typeName == 'document';
+      final hasLinks = extractAllUrls(m.content).isNotEmpty;
+      return isMediaOrFile || hasLinks;
+    }).length;
+
     context.push(
       '/contact-info',
       extra: {
@@ -92,6 +107,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
         'title': widget.title,
         'isRoom': widget.isRoom,
         'avatarUrl': effectiveAvatarUrl,
+        'mediaCount': mediaCount, // 👉 將計算好的數量傳過去
       },
     );
   }

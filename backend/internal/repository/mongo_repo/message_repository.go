@@ -392,6 +392,7 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		// 3. Project "other_id"
 		{{Key: "$project", Value: bson.M{
 			"sender_id": 1, "receiver_id": 1, "content": 1, "created_at": 1, "is_read": 1, "read_by": 1,
+			"type": 1, // 👉 務必加上這一行！把 type 傳遞到下一個階段
 			"other_id": bson.M{
 				"$cond": bson.M{
 					"if":   bson.M{"$eq": []interface{}{"$sender_id", userID}},
@@ -484,6 +485,7 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 			OtherUsername:      res.UserInfo.Username,
 			OtherUserAvatarURL: res.UserInfo.AvatarURL,
 			LastMessage:        content,
+			LastMessageType:    res.LastMessageDoc.Type, // 👉 從 Mongo Document 提取 Type
 			LastMessageTime:    res.LastMessageDoc.CreatedAt,
 			UnreadCount:        res.UnreadCount,
 			LastReadAt:         res.LastReadAt,

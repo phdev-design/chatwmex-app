@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/core/websocket/websocket_service.dart';
@@ -55,18 +56,48 @@ class RoomListViewModel extends Notifier<RoomListState> {
 
     // Listen to WS events
     final subscription = wsService.events.listen((data) {
-      if (data is Map) {
-        final event = data['event'];
+      final events = _decodeWsEvents(data);
+      for (final eventData in events) {
+        final event = eventData['event'];
         if (event == 'chat_message') {
-          fetchRooms();
-        } else if (event == 'read_receipt') {
-          final payload = data['data'];
-          if (payload is Map && payload['conversation_id'] != null) {
-            markRoomRead(payload['conversation_id']);
+          final payload = eventData['data'];
+          if (payload is Map) {
+            final message = Map<String, dynamic>.from(payload);
+            final roomIdRaw = message['room_id']?.toString() ?? '';
+            final senderId = message['sender_id']?.toString() ?? '';
+            final receiverId = message['receiver_id']?.toString() ?? '';
+            final messageType = message['type']?.toString();
+            final messageContent = message['content']?.toString() ?? '';
+            final createdAt = DateTime.tryParse(
+              message['created_at']?.toString() ?? '',
+            );
+            String targetRoomId = roomIdRaw;
+            if (targetRoomId.isEmpty) {
+              final currentUserId = _currentUserId;
+              if (currentUserId != null && senderId == currentUserId) {
+                targetRoomId = receiverId;
+              } else {
+                targetRoomId = senderId;
+              }
+            }
+            if (targetRoomId.isNotEmpty) {
+              updateRoomLastMessage(
+                targetRoomId,
+                _buildLastMessagePreview(messageType, messageContent),
+                lastMessageType: messageType,
+                lastMessageTime: createdAt ?? DateTime.now(),
+              );
+            }
           }
-          fetchRooms();
+          Future.microtask(() => fetchRooms());
+        } else if (event == 'read_receipt') {
+          final payload = eventData['data'];
+          if (payload is Map && payload['conversation_id'] != null) {
+            markRoomRead(payload['conversation_id'].toString());
+          }
+          Future.microtask(() => fetchRooms());
         } else if (event == 'messages_read_receipt') {
-          final payload = data['data'];
+          final payload = eventData['data'];
           if (payload is Map) {
             final roomId = payload['room_id'];
             final readBy = payload['read_by_user_id'];
@@ -78,7 +109,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
             }
           }
         } else if (event == 'user_profile_updated') {
-          final payload = data['data'];
+          final payload = eventData['data'];
           if (payload is Map) {
             final userId = payload['user_id'];
             final avatarUrl = payload['avatar_url'];
@@ -171,17 +202,24 @@ class RoomListViewModel extends Notifier<RoomListState> {
   void updateRoomLastMessage(
     String roomId,
     String lastMessage, {
+    String? lastMessageType,
     DateTime? lastMessageTime,
   }) {
     final updated = state.rooms.map((room) {
       if (room.id == roomId) {
         return room.copyWith(
           lastMessage: lastMessage,
+          lastMessageType: lastMessageType,
           lastMessageTime: lastMessageTime ?? room.lastMessageTime,
         );
       }
       return room;
     }).toList();
+    final index = updated.indexWhere((r) => r.id == roomId);
+    if (index > 0) {
+      final room = updated.removeAt(index);
+      updated.insert(0, room);
+    }
     state = state.copyWith(rooms: updated);
   }
 
@@ -193,6 +231,49 @@ class RoomListViewModel extends Notifier<RoomListState> {
       return room;
     }).toList();
     state = state.copyWith(rooms: updated);
+  }
+
+  List<Map<String, dynamic>> _decodeWsEvents(dynamic data) {
+    if (data is Map) {
+      return [Map<String, dynamic>.from(data)];
+    }
+    if (data is! String) {
+      return const [];
+    }
+    final trimmed = data.trim();
+    if (trimmed.isEmpty) {
+      return const [];
+    }
+    final events = <Map<String, dynamic>>[];
+    final chunks = trimmed
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty);
+    for (final chunk in chunks) {
+      try {
+        final decoded = jsonDecode(chunk);
+        if (decoded is Map) {
+          events.add(Map<String, dynamic>.from(decoded));
+        }
+      } catch (e) {
+        debugPrint('room_list ws decode error: $e');
+      }
+    }
+    return events;
+  }
+
+  String _buildLastMessagePreview(String? messageType, String content) {
+    switch (messageType) {
+      case 'image':
+        return '[圖片]';
+      case 'audio':
+        return '[語音訊息]';
+      case 'file':
+      case 'document':
+        return '[檔案]';
+      default:
+        return content;
+    }
   }
 }
 

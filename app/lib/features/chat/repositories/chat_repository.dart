@@ -80,6 +80,11 @@ class ChatRepository {
         hasMore: false,
       );
     }
+
+    List<Message> apiMessages = [];
+    String nextCursor = '';
+    bool hasMore = false;
+
     try {
       final response = await _networkService.client.get(
         '/rooms/$roomId/media',
@@ -89,23 +94,70 @@ class ChatRepository {
         response.data['data'] as Map? ?? {},
       );
       final list = payload['data'] as List<dynamic>? ?? [];
-      final messages = list.map((e) {
+
+      apiMessages = list.map((e) {
         final msg = Message.fromJson(Map<String, dynamic>.from(e));
         if (msg.roomId == null || msg.roomId!.isEmpty) {
           return msg.copyWith(roomId: roomId);
         }
         return msg;
       }).toList();
-      final nextCursor = payload['next_cursor']?.toString() ?? '';
-      final hasMore = payload['has_more'] == true;
-      return PaginatedMessages(
-        messages: messages,
-        nextCursor: nextCursor,
-        hasMore: hasMore,
-      );
+
+      nextCursor = payload['next_cursor']?.toString() ?? '';
+      hasMore = payload['has_more'] == true;
     } catch (e) {
-      throw e;
+      print('⚠️ API 發生錯誤: $e');
     }
+
+    if (apiMessages.isEmpty && cursor.isEmpty) {
+      print('⚠️ API 回傳空資料，嘗試從 LocalDB 撈取...');
+      final cached = await _localDb.getMessagesByRoom(roomId, limit: 1000);
+
+      final dedupedByKey = <String, Message>{};
+      for (final msg in cached) {
+        final key = (msg.clientMsgId != null && msg.clientMsgId!.isNotEmpty)
+            ? msg.clientMsgId!
+            : msg.id;
+        if (key.isEmpty) continue;
+        final current = dedupedByKey[key];
+        if (current == null) {
+          dedupedByKey[key] = msg;
+          continue;
+        }
+        final incomingIsServerRecord =
+            msg.clientMsgId != null &&
+            msg.clientMsgId!.isNotEmpty &&
+            msg.id != msg.clientMsgId;
+        final currentIsServerRecord =
+            current.clientMsgId != null &&
+            current.clientMsgId!.isNotEmpty &&
+            current.id != current.clientMsgId;
+        if (incomingIsServerRecord && !currentIsServerRecord) {
+          dedupedByKey[key] = msg;
+        } else if (incomingIsServerRecord == currentIsServerRecord &&
+            msg.createdAt.isAfter(current.createdAt)) {
+          dedupedByKey[key] = msg;
+        }
+      }
+
+      apiMessages = dedupedByKey.values.where((msg) {
+        if (type == 'media') {
+          return msg.type == MessageType.image || msg.type == MessageType.video;
+        } else if (type == 'doc') {
+          return msg.type == MessageType.file;
+        } else if (type == 'link') {
+          return msg.content.contains('http://') ||
+              msg.content.contains('https://');
+        }
+        return false;
+      }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+
+    return PaginatedMessages(
+      messages: apiMessages,
+      nextCursor: nextCursor,
+      hasMore: hasMore,
+    );
   }
 
   Future<void> markMessagesAsRead(List<String> messageIds) async {

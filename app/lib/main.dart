@@ -87,6 +87,7 @@ class _MyAppState extends ConsumerState<MyApp> {
               title: extra['title'] ?? 'Unknown',
               isRoom: extra['isRoom'] ?? false,
               avatarUrl: extra['avatarUrl'],
+              mediaCount: extra['mediaCount'] ?? 0,
             );
           },
         ),

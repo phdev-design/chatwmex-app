@@ -9,6 +9,7 @@ class Room extends Equatable {
   final String? lastMessage;
   final DateTime? lastMessageTime;
   final int unreadCount;
+  final String? lastMessageType; // 👉 新增這個欄位
   final DateTime? lastReadAt;
 
   const Room({
@@ -18,6 +19,7 @@ class Room extends Equatable {
     this.avatarUrl,
     required this.createdAt,
     this.lastMessage,
+    this.lastMessageType, // 👉 加入建構子
     this.lastMessageTime,
     this.unreadCount = 0,
     this.lastReadAt,
@@ -31,6 +33,7 @@ class Room extends Equatable {
       avatarUrl: json['avatar_url'],
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       lastMessage: json['last_message'],
+      lastMessageType: json['last_message_type'], // 👉 加入映射
       lastMessageTime: json['last_message_time'] != null
           ? DateTime.tryParse(json['last_message_time'])
           : null,
@@ -48,6 +51,7 @@ class Room extends Equatable {
     String? avatarUrl,
     DateTime? createdAt,
     String? lastMessage,
+    String? lastMessageType, // 👉 加入映射
     DateTime? lastMessageTime,
     int? unreadCount,
     DateTime? lastReadAt,
@@ -59,6 +63,7 @@ class Room extends Equatable {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       createdAt: createdAt ?? this.createdAt,
       lastMessage: lastMessage ?? this.lastMessage,
+      lastMessageType: lastMessageType ?? this.lastMessageType, // 👉 加入映射
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
       unreadCount: unreadCount ?? this.unreadCount,
       lastReadAt: lastReadAt ?? this.lastReadAt,

@@ -14,6 +14,7 @@ type Room struct {
 	Members         []string  `json:"members,omitempty"` // List of UserIDs
 	Type            string    `json:"type"`              // "group" or "dm"
 	LastMessage     string    `json:"last_message,omitempty"`
+	LastMessageType string    `json:"last_message_type,omitempty"` // 👉 新增這個欄位
 	LastMessageTime time.Time `json:"last_message_time,omitempty"`
 	UnreadCount     int       `json:"unread_count"`
 	LastReadAt      time.Time `json:"last_read_at,omitempty"`

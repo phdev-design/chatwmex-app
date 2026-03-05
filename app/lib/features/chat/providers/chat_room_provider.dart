@@ -125,9 +125,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           break;
         }
       }
-      debugPrint(
-        'chat_room init dm room_id=${arg.roomId} initial_room_avatar_url=$initialRoomAvatarUrl rooms_count=${rooms.length}',
-      );
+      // debugPrint(
+      //   'chat_room init dm room_id=${arg.roomId} initial_room_avatar_url=$initialRoomAvatarUrl rooms_count=${rooms.length}',
+      // );
     }
 
     // Connect WebSocket
@@ -356,6 +356,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final messages = [...state.messages];
     messages[index] = updated;
     state = state.copyWith(messages: messages);
+    Future(() => LocalDbService().insertMessages([updated]));
+    Future(() => LocalDbService().deleteMessageLocal(clientMsgId));
   }
 
   void _updateMessageStatus(String clientMsgId, MessageStatus status) {
