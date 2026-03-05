@@ -14,6 +14,7 @@ import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:equatable/equatable.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import 'package:app/features/chat/services/public_key_cache_service.dart';
 
 // State for the Chat Room
 class ChatRoomState {
@@ -107,11 +108,18 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   late final WebSocketService _wsService;
   late final ChatRepository _chatRepository;
   late final CryptoService _cryptoService;
-  String? _opponentPublicKey;
-  bool _publicKeyFetchFailed = false;
+  late final PublicKeyCacheService _publicKeyCacheService; // 👉 替換舊 cache 變數
   Timer? _typingTimer;
   bool _typingSent = false;
+  
+  // 👉 針對單人對話的批次已讀 (_markConversationAsRead) 狀態變數
+  Timer? _markConversationReadTimer;
+  DateTime? _lastMarkConversationReadTime;
+
+  // 👉 針對群組多筆訊息的批次已讀 (_markAsRead) 狀態變數
   Timer? _readBatchTimer;
+  DateTime? _lastReadBatchTime;
+
   final Set<String> _pendingReadMessageIds = {};
   final LinkedHashSet<String> _alreadyReportedMessageIds = LinkedHashSet();
 
@@ -121,6 +129,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _wsService = ref.watch(webSocketServiceProvider);
     _chatRepository = ref.watch(chatRepositoryProvider);
     _cryptoService = ref.watch(cryptoServiceProvider);
+    _publicKeyCacheService = ref.watch(publicKeyCacheServiceProvider); // 👉 初始化
     var initialRoomAvatarUrl = '';
     if (!arg.isRoom) {
       final rooms = ref.read(roomListViewModelProvider).rooms;
@@ -287,6 +296,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     ref.onDispose(() {
       subscription.cancel();
       _typingTimer?.cancel();
+      _markConversationReadTimer?.cancel(); // 👉 清理新增的計時器
       _readBatchTimer?.cancel();
     });
 
@@ -460,39 +470,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
-  // 為了避免 N+1 API 風暴建立的記憶體快取
-  final Map<String, String> _publicKeyCache = {};
-  final Map<String, Future<String?>> _inFlightKeyRequests = {};
-
+  // 統一使用 _publicKeyCacheService 下的快取與 API 機制
   Future<String?> _getPublicKey(String userId) async {
     if (arg.isRoom) return null;
-
-    // 1. 先檢查記憶體快取中是否有這個 user 的公鑰
-    if (_publicKeyCache.containsKey(userId)) {
-      final key = _publicKeyCache[userId];
-      // 如果快取裡是空字串，代表對方目前確實沒上傳，直接回傳 null 不再發 API
-      return (key != null && key.isNotEmpty) ? key : null;
-    }
-
-    // 2. 檢查是否已經有這個 user 的請在進行中（防止 ListView 一次 50 個訊息併發導致送出 50 次 API）
-    if (_inFlightKeyRequests.containsKey(userId)) {
-      return await _inFlightKeyRequests[userId];
-    }
-
-    // 3. 發送 API 並設定在 _inFlightKeyRequests 讓其他請求可以 await
-    final fetchFuture = _chatRepository.getUserPublicKey(userId).then((key) {
-      // 拿到後存入快取，就算是 null 或空字串也存為 ''，避免後續一直狂打 API
-      _publicKeyCache[userId] = key ?? '';
-      _inFlightKeyRequests.remove(userId);
-      return (key != null && key.isNotEmpty) ? key : null;
-    }).catchError((e) {
-      print('Fetch public key failed: $e');
-      _inFlightKeyRequests.remove(userId);
-      return null;
-    });
-
-    _inFlightKeyRequests[userId] = fetchFuture;
-    return await fetchFuture;
+    return await _publicKeyCacheService.getPublicKey(userId);
   }
 
   Future<Message> _tryDecryptMessage(Message m) async {
@@ -1030,14 +1011,26 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     if (arg.roomId.isEmpty) {
       return;
     }
-    final payload = {'conversation_id': arg.roomId, 'is_room': arg.isRoom};
-    _wsService.send('mark_read', payload);
-    try {
-      await _network.client.post('/messages/read', data: payload);
-      ref.read(roomListViewModelProvider.notifier).clearUnreadCount(arg.roomId);
-    } catch (e) {
-      state = state.copyWith(error: e.toString());
-    }
+
+    _markConversationReadTimer?.cancel();
+    _markConversationReadTimer = Timer(const Duration(milliseconds: 800), () async {
+      // 2 秒冷卻時間：如果短時間內針對同一個對話已經送過，跳過不送
+      final now = DateTime.now();
+      if (_lastMarkConversationReadTime != null &&
+          now.difference(_lastMarkConversationReadTime!).inSeconds < 2) {
+        return;
+      }
+      _lastMarkConversationReadTime = now;
+
+      final payload = {'conversation_id': arg.roomId, 'is_room': arg.isRoom};
+      _wsService.send('mark_read', payload);
+      try {
+        await _network.client.post('/messages/read', data: payload);
+        ref.read(roomListViewModelProvider.notifier).clearUnreadCount(arg.roomId);
+      } catch (e) {
+        state = state.copyWith(error: e.toString());
+      }
+    });
   }
 
   void markAsRead(String messageId) {
@@ -1046,9 +1039,20 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       return;
     }
     _pendingReadMessageIds.add(messageId);
+    
     _readBatchTimer?.cancel();
     _readBatchTimer = Timer(const Duration(milliseconds: 800), () async {
       if (_pendingReadMessageIds.isEmpty) return;
+
+      // 2 秒冷卻時間：如果短時間內剛剛送過一個 batch，且新的 batch 未滿特定數量，則考慮延遲或丟棄
+      // 這裡採用如果不到 2 秒則直接取消執行這回，等待下一次 trigger
+      final now = DateTime.now();
+      if (_lastReadBatchTime != null &&
+          now.difference(_lastReadBatchTime!).inSeconds < 2) {
+        return;
+      }
+      _lastReadBatchTime = now;
+
       final ids = _pendingReadMessageIds.toList();
       _pendingReadMessageIds.clear();
       _alreadyReportedMessageIds.addAll(ids);

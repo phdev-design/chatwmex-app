@@ -31,17 +31,22 @@ class LocalDbService {
   Future<Database> _openDatabase(String dbPath) async {
     return openDatabase(
       dbPath,
-      version: 4,
+      version: 5, // 👉 Bump to 5 for public_keys table
       onCreate: (db, version) async {
         await _createMessagesTable(db);
+        await _createPublicKeysTable(db); // 👉 Add this
         await _logDbEvent('db_create', {'version': version});
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await _ensureMessagesColumns(db);
+        if (oldVersion < 5) {
+          await _createPublicKeysTable(db); // 👉 Add this
+        }
         await _logDbEvent('db_upgrade', {'from': oldVersion, 'to': newVersion});
       },
       onOpen: (db) async {
         await _ensureMessagesColumns(db);
+        await _createPublicKeysTable(db); // 👉 Ensure table exists just in case
         final version = await db.rawQuery('PRAGMA user_version');
         await _logDbEvent('db_open', {'version': version});
       },
@@ -76,6 +81,16 @@ class LocalDbService {
       'read_at INTEGER, '
       'read_by TEXT, ' // 👉 記得上一行結尾要加逗號
       'link_preview TEXT' // 👉 新增這行
+      ')',
+    );
+  }
+
+  Future<void> _createPublicKeysTable(Database db) async {
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS public_keys('
+      'user_id TEXT PRIMARY KEY, '
+      'public_key TEXT, '
+      'updated_at INTEGER'
       ')',
     );
   }
@@ -200,5 +215,23 @@ class LocalDbService {
     if (messageId.isEmpty) return;
     final db = await initDB();
     await db.delete('messages', where: 'id = ?', whereArgs: [messageId]);
+  }
+
+  Future<void> savePublicKey(String userId, String publicKey) async {
+    final db = await initDB();
+    await db.insert('public_keys', {
+      'user_id': userId,
+      'public_key': publicKey,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<String?> getPublicKey(String userId) async {
+    final db = await initDB();
+    final result = await db.query('public_keys', where: 'user_id = ?', whereArgs: [userId]);
+    if (result.isNotEmpty) {
+      return result.first['public_key'] as String?;
+    }
+    return null;
   }
 }
