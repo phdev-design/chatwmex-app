@@ -184,3 +184,32 @@ func isValidPhone(s string) bool {
 	re := regexp.MustCompile(`^\+?[0-9]{10,15}$`)
 	return re.MatchString(s)
 }
+
+// BackupE2EEKey updates the encrypted private key and salt for E2EE cloud backup.
+func (u *userUsecase) BackupE2EEKey(c context.Context, id, encryptedKey, salt string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	if encryptedKey == "" || salt == "" {
+		return errors.New("encrypted key and salt cannot be empty")
+	}
+
+	return u.userRepo.UpdateKeyBackup(ctx, id, encryptedKey, salt)
+}
+
+// GetE2EEKeyBackup retrieves the user's encrypted private key and salt.
+func (u *userUsecase) GetE2EEKeyBackup(c context.Context, id string) (*domain.User, error) {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	user, err := u.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if user.EncryptedPrivateKey == "" || user.KeyBackupSalt == "" {
+		return nil, errors.New("no backup found")
+	}
+
+	return user, nil
+}

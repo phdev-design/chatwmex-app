@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -138,6 +139,98 @@ class CryptoService {
       print('⚠️ 解密判定：此為舊版明文訊息或解密失敗，直接顯示原文。');
       return encryptedOrPlainText;
     }
+  }
+
+  // --- 備份機制：私鑰雲端加密與還原 ---
+
+  /// 使用 PBKDF2 從密碼與 salt 推導出 256-bit 的 SecretKey
+  Future<SecretKey> deriveKeyFromPassword(String password, List<int> salt) async {
+    final pbkdf2 = Pbkdf2(
+      macAlgorithm: Hmac.sha256(),
+      iterations: 100000,
+      bits: 256,
+    );
+    final secretKey = await pbkdf2.deriveKey(
+      secretKey: SecretKey(utf8.encode(password)),
+      nonce: salt,
+    );
+    return secretKey;
+  }
+
+  /// 使用者設定密碼，將原本的 Private Key 拿出、加密，準備上傳到伺服器
+  Future<Map<String, String>> encryptPrivateKeyForBackup(String rawPrivateKeyBase64, String password) async {
+    final salt = List<int>.generate(16, (i) => Random.secure().nextInt(256));
+    final secretKey = await deriveKeyFromPassword(password, salt);
+
+    // X25519 的 private key 是一串 bytes
+    final privateKeyBytes = base64Decode(rawPrivateKeyBase64);
+
+    final secretBox = await _aesGcm.encrypt(
+      privateKeyBytes,
+      secretKey: secretKey,
+    );
+
+    final combinedBytes = [
+      ...secretBox.nonce,
+      ...secretBox.mac.bytes,
+      ...secretBox.cipherText,
+    ];
+
+    return {
+      'encryptedKeyBase64': base64Encode(combinedBytes),
+      'saltBase64': base64Encode(salt),
+    };
+  }
+
+  /// 使用者換手機登入後，輸入密碼解開從伺服器拿回的加密私鑰
+  Future<String> decryptPrivateKeyFromBackup(String encryptedKeyBase64, String saltBase64, String password) async {
+    final salt = base64Decode(saltBase64);
+    final secretKey = await deriveKeyFromPassword(password, salt);
+
+    final decodedBytes = base64Decode(encryptedKeyBase64);
+    if (decodedBytes.length < 28) {
+      throw Exception('Invalid encrypted key payload');
+    }
+
+    final nonce = decodedBytes.sublist(0, 12);
+    final macBytes = decodedBytes.sublist(12, 28);
+    final cipherText = decodedBytes.sublist(28);
+
+    final secretBox = SecretBox(
+      cipherText,
+      nonce: nonce,
+      mac: Mac(macBytes),
+    );
+
+    try {
+      final plainTextBytes = await _aesGcm.decrypt(
+        secretBox,
+        secretKey: secretKey,
+      );
+      // 還原為 base64 的原始 private key
+      return base64Encode(plainTextBytes);
+    } catch (e) {
+      throw Exception('Passphrase incorrect or data corrupted');
+    }
+  }
+
+  /// 取得當前本機的私鑰 (供加密備份時使用)
+  Future<String?> getRawPrivateKey() async {
+    return await _secureStorage.read(key: _privateKeyStorageKey);
+  }
+
+  /// 如果從雲端還原了私鑰，手動覆寫本地儲存的私鑰
+  Future<void> restorePrivateKey(String rawPrivateKeyBase64) async {
+    await _secureStorage.write(
+      key: _privateKeyStorageKey,
+      value: rawPrivateKeyBase64,
+    );
+    // 重新載入 KeyPair
+    final privateKeyBytes = base64Decode(rawPrivateKeyBase64);
+    final keyPair = await _x25519.newKeyPairFromSeed(privateKeyBytes);
+    _keyPair = keyPair;
+    final pubKey = await keyPair.extractPublicKey();
+    _publicKeyBase64 = base64Encode(pubKey.bytes);
   }
 
   // Clear keys for logout

@@ -50,6 +50,10 @@ func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string, prof
 		// E2EE Public Key endpoints
 		protected.PUT("/public_key", handler.UpdatePublicKey)
 		protected.GET("/:id/public_key", handler.GetPublicKey)
+
+		// E2EE Passphrase Cloud Backup endpoints
+		protected.POST("/key-backup", handler.BackupE2EEKey)
+		protected.GET("/key-backup", handler.GetE2EEKeyBackup)
 	}
 }
 
@@ -81,6 +85,18 @@ type UpdateProfileRequest struct {
 // UpdatePublicKeyRequest defines the request body for uploading public key.
 type UpdatePublicKeyRequest struct {
 	PublicKey string `json:"public_key" binding:"required"`
+}
+
+// KeyBackupRequest defines the request body for backing up the E2EE key.
+type KeyBackupRequest struct {
+	EncryptedPrivateKey string `json:"encrypted_private_key" binding:"required"`
+	Salt                string `json:"salt" binding:"required"`
+}
+
+// KeyBackupResponse defines the response body for retrieving the E2EE key backup.
+type KeyBackupResponse struct {
+	EncryptedPrivateKey string `json:"encrypted_private_key"`
+	Salt                string `json:"salt"`
 }
 
 // Register handles user registration.
@@ -365,4 +381,55 @@ func (h *UserHandler) GetPublicKey(c *gin.Context) {
 	response.Success(c, gin.H{
 		"public_key": user.PublicKey, // 可能是空字串，前端需自行判斷
 	})
+}
+
+// BackupE2EEKey handles the upload of the encrypted private key and salt.
+func (h *UserHandler) BackupE2EEKey(c *gin.Context) {
+	var req KeyBackupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	userID := c.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	ctx := c.Request.Context()
+	err := h.UserUsecase.BackupE2EEKey(ctx, userID, req.EncryptedPrivateKey, req.Salt)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, "E2EE key backup successfully updated")
+}
+
+// GetE2EEKeyBackup handles retrieving the user's encrypted private key and salt.
+func (h *UserHandler) GetE2EEKeyBackup(c *gin.Context) {
+	userID := c.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	ctx := c.Request.Context()
+	user, err := h.UserUsecase.GetE2EEKeyBackup(ctx, userID)
+	if err != nil {
+		if err.Error() == "no backup found" {
+			response.Error(c, http.StatusNotFound, err.Error())
+		} else {
+			response.Error(c, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	res := KeyBackupResponse{
+		EncryptedPrivateKey: user.EncryptedPrivateKey,
+		Salt:                user.KeyBackupSalt,
+	}
+
+	response.Success(c, res)
 }

@@ -19,15 +19,17 @@ const userCollectionName = "users"
 // mongoUser is the DTO for storing user data in MongoDB.
 // It is internal to this package and should not be exposed.
 type mongoUser struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty"`
-	Username     string             `bson:"username"`
-	Email        string             `bson:"email,omitempty"`
-	PhoneNumber  string             `bson:"phone_number,omitempty"`
-	AvatarURL    string             `bson:"avatar_url,omitempty"`
-	PublicKey    string             `bson:"public_key,omitempty"`
-	PasswordHash string             `bson:"password_hash"`
-	CreatedAt    time.Time          `bson:"created_at"`
-	UpdatedAt    time.Time          `bson:"updated_at"`
+	ID                  primitive.ObjectID `bson:"_id,omitempty"`
+	Username            string             `bson:"username"`
+	Email               string             `bson:"email,omitempty"`
+	PhoneNumber         string             `bson:"phone_number,omitempty"`
+	AvatarURL           string             `bson:"avatar_url,omitempty"`
+	PublicKey           string             `bson:"public_key,omitempty"`
+	EncryptedPrivateKey string             `bson:"encrypted_private_key,omitempty"`
+	KeyBackupSalt       string             `bson:"key_backup_salt,omitempty"`
+	PasswordHash        string             `bson:"password_hash"`
+	CreatedAt           time.Time          `bson:"created_at"`
+	UpdatedAt           time.Time          `bson:"updated_at"`
 }
 
 // UserRepository implements domain.UserRepository for MongoDB.
@@ -78,15 +80,17 @@ func NewUserRepository(db *mongo.Database) domain.UserRepository {
 // toDomain converts a mongoUser to a domain.User.
 func (r *UserRepository) toDomain(u *mongoUser) *domain.User {
 	return &domain.User{
-		ID:           u.ID.Hex(),
-		Username:     u.Username,
-		Email:        u.Email,
-		PhoneNumber:  u.PhoneNumber,
-		AvatarURL:    u.AvatarURL,
-		PublicKey:    u.PublicKey, // ← 修復：必須映射公鑰
-		PasswordHash: u.PasswordHash,
-		CreatedAt:    u.CreatedAt,
-		UpdatedAt:    u.UpdatedAt,
+		ID:                  u.ID.Hex(),
+		Username:            u.Username,
+		Email:               u.Email,
+		PhoneNumber:         u.PhoneNumber,
+		AvatarURL:           u.AvatarURL,
+		PublicKey:           u.PublicKey, // ← 修復：必須映射公鑰
+		EncryptedPrivateKey: u.EncryptedPrivateKey,
+		KeyBackupSalt:       u.KeyBackupSalt,
+		PasswordHash:        u.PasswordHash,
+		CreatedAt:           u.CreatedAt,
+		UpdatedAt:           u.UpdatedAt,
 	}
 }
 
@@ -102,14 +106,17 @@ func (r *UserRepository) fromDomain(u *domain.User) (*mongoUser, error) {
 	}
 
 	return &mongoUser{
-		ID:           id,
-		Username:     u.Username,
-		Email:        u.Email,
-		PhoneNumber:  u.PhoneNumber,
-		AvatarURL:    u.AvatarURL,
-		PasswordHash: u.PasswordHash,
-		CreatedAt:    u.CreatedAt,
-		UpdatedAt:    u.UpdatedAt,
+		ID:                  id,
+		Username:            u.Username,
+		Email:               u.Email,
+		PhoneNumber:         u.PhoneNumber,
+		AvatarURL:           u.AvatarURL,
+		PublicKey:           u.PublicKey,
+		EncryptedPrivateKey: u.EncryptedPrivateKey,
+		KeyBackupSalt:       u.KeyBackupSalt,
+		PasswordHash:        u.PasswordHash,
+		CreatedAt:           u.CreatedAt,
+		UpdatedAt:           u.UpdatedAt,
 	}, nil
 }
 
@@ -218,6 +225,30 @@ func (r *UserRepository) UpdateAvatar(ctx context.Context, id, avatarURL string)
 	if result.MatchedCount == 0 {
 		return errors.New("user not found")
 	}
+	return nil
+}
+
+// UpdateKeyBackup updates the encrypted private key and salt for E2EE cloud backup.
+func (r *UserRepository) UpdateKeyBackup(ctx context.Context, id, encryptedKey, salt string) error {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	filter := bson.M{"_id": objectID}
+	update := bson.M{
+		"$set": bson.M{
+			"encrypted_private_key": encryptedKey,
+			"key_backup_salt":       salt,
+			"updated_at":            time.Now(),
+		},
+	}
+
+	_, err = r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to update key backup: %w", err)
+	}
+
 	return nil
 }
 

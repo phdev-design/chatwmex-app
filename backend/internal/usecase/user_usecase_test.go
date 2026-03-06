@@ -62,6 +62,12 @@ func (m *MockUserRepository) UpdatePublicKey(ctx context.Context, id, publicKey 
 	return args.Error(0)
 }
 
+// UpdateKeyBackup mocks the UpdateKeyBackup method.
+func (m *MockUserRepository) UpdateKeyBackup(ctx context.Context, id, encryptedKey, salt string) error {
+	args := m.Called(ctx, id, encryptedKey, salt)
+	return args.Error(0)
+}
+
 func TestRegister(t *testing.T) {
 	mockRepo := new(MockUserRepository)
 	usecase := NewUserUsecase(mockRepo, time.Second)

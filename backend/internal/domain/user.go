@@ -7,15 +7,17 @@ import (
 
 // User represents a user in the system.
 type User struct {
-	ID           string    `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email"`
-	PhoneNumber  string    `json:"phone_number"`
-	AvatarURL    string    `json:"avatar_url,omitempty"`
-	PublicKey    string    `json:"public_key,omitempty"` // X25519 public key in Base64
-	PasswordHash string    `json:"-"`                    // PasswordHash should not be exposed in JSON
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                  string    `json:"id"`
+	Username            string    `json:"username"`
+	Email               string    `json:"email"`
+	PhoneNumber         string    `json:"phone_number"`
+	AvatarURL           string    `json:"avatar_url,omitempty"`
+	PublicKey           string    `json:"public_key,omitempty"` // X25519 public key in Base64
+	EncryptedPrivateKey string    `json:"encrypted_private_key,omitempty"`
+	KeyBackupSalt       string    `json:"key_backup_salt,omitempty"`
+	PasswordHash        string    `json:"-"` // PasswordHash should not be exposed in JSON
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // UserRepository defines the interface for user data persistence.
@@ -27,6 +29,7 @@ type UserRepository interface {
 	Update(ctx context.Context, user *User) error
 	UpdateAvatar(ctx context.Context, id, avatarURL string) error
 	UpdatePublicKey(ctx context.Context, id, publicKey string) error
+	UpdateKeyBackup(ctx context.Context, id, encryptedKey, salt string) error
 }
 
 // UserUsecase defines the interface for user business logic.
@@ -45,4 +48,8 @@ type UserUsecase interface {
 	UpdateAvatar(ctx context.Context, id, avatarURL string) error
 	// UpdatePublicKey updates the user's X25519 public key for E2EE.
 	UpdatePublicKey(ctx context.Context, id, publicKey string) error
+	// BackupE2EEKey updates the encrypted private key and salt for E2EE cloud backup.
+	BackupE2EEKey(ctx context.Context, id, encryptedKey, salt string) error
+	// GetE2EEKeyBackup retrieves the user's encrypted private key and salt.
+	GetE2EEKeyBackup(ctx context.Context, id string) (*User, error)
 }
