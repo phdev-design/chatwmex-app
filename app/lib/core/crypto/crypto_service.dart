@@ -64,6 +64,12 @@ class CryptoService {
     final storageKey = _privateKeyStorageKey(userId);
     final storedPrivateKeyBase64 = await _secureStorage.read(key: storageKey);
 
+    // 🆕 Migration: 確保舊版未隔離的金鑰被加入到歷史紀錄中，讓舊訊息仍可解密
+    final legacyKey = await _secureStorage.read(key: 'e2ee_private_key');
+    if (legacyKey != null) {
+      await _appendToHistoryPrivateKeys(legacyKey);
+    }
+
     if (storedPrivateKeyBase64 != null) {
       // 載入現有 keypair
       final privateKeyBytes = base64Decode(storedPrivateKeyBase64);
@@ -135,8 +141,13 @@ class CryptoService {
     return base64Encode(combinedBytes);
   }
 
-  /// Decrypts a base64 encoded payload using AES-GCM and the derived shared secret.
-  Future<String> decryptMessage(String encryptedOrPlainText, String senderPublicKeyBase64) async {
+Future<String> decryptMessage(String encryptedOrPlainText, String senderPublicKeyBase64) async {
+  // 🔍 DEBUG 診斷 - 確認金鑰狀態
+  final currentKey = await _secureStorage.read(key: 'e2ee_private_key');
+  final historyRaw = await _secureStorage.read(key: 'e2ee_private_key_history');
+  print('🔍 currentKey exists: ${currentKey != null}');
+  print('🔍 historyKeys raw: $historyRaw');
+  print('🔍 _keyPair initialized: $isInitialized');
     // Step 1: 先用當前金鑰解密（原有邏輯）
     try {
       final decodedBytes = base64Decode(encryptedOrPlainText);

@@ -55,6 +55,13 @@ class PublicKeyCacheService {
     _inFlightRequests[userId] = fetchFuture;
     return await fetchFuture;
   }
+
+  /// 清除所有快取的 public key（換帳號登入時呼叫，避免用舊 key 解密）
+  Future<void> clearAllCache() async {
+    _memoryCache.clear();
+    _inFlightRequests.clear();
+    await _localDbService.clearAllPublicKeys();
+  }
 }
 
 final publicKeyCacheServiceProvider = Provider<PublicKeyCacheService>((ref) {

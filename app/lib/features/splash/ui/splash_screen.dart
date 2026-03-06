@@ -6,6 +6,7 @@ import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/notification/notification_service.dart';
 import 'package:app/features/auth/repositories/auth_repository.dart';
+import 'package:app/features/chat/services/public_key_cache_service.dart';
 import 'dart:io';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -34,6 +35,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         final crypto = ref.read(cryptoServiceProvider);
         final pubKey = await crypto.initialize(userId: userId);
         await ref.read(authRepositoryProvider).updatePublicKey(pubKey);
+
+        // 確保 public key 快取是最新的
+        await ref.read(publicKeyCacheServiceProvider).clearAllCache();
 
         // Security logic: Cleanup pending unregistration
         final pendingDeviceId = await storage.read('pending_unregister_device_id');

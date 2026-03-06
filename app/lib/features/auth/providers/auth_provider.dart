@@ -7,6 +7,7 @@ import 'package:app/core/notification/notification_service.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/features/chat/services/public_key_cache_service.dart';
 
 class AuthViewModel extends Notifier<AuthState> {
   late final AuthRepository _repository;
@@ -30,6 +31,10 @@ class AuthViewModel extends Notifier<AuthState> {
       final userId = await storage.read('user_id') ?? '';
       final pubKey = await crypto.initialize(userId: userId);
       await _repository.updatePublicKey(pubKey);
+
+      // 登入後清除舊的 public key 快取，避免用錯誤的 key 解密訊息
+      await ref.read(publicKeyCacheServiceProvider).clearAllCache();
+
       try {
         await _notificationService.initOneSignal(
           "88247551-a540-4ffc-89aa-e6ea9478b7be",

@@ -258,4 +258,9 @@ class LocalDbService {
     }
     return null;
   }
+
+  Future<void> clearAllPublicKeys() async {
+    final db = await initDB();
+    await db.delete('public_keys');
+  }
 }
