@@ -46,7 +46,11 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     return 0; // '關閉'
   }
 
-  void _showDisappearingMessagesDialog(Color primaryTextColor, Color accentColor, String currentOption) {
+  void _showDisappearingMessagesDialog(
+    Color primaryTextColor,
+    Color accentColor,
+    String currentOption,
+  ) {
     String tempOption = currentOption;
 
     showModalBottomSheet(
@@ -142,6 +146,117 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     );
   }
 
+  /// 顯示靜音選項的 BottomSheet
+  void _showMuteDialog(
+    Color primaryTextColor,
+    Color accentColor,
+    int? currentMuteUntil,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 16),
+              Text(
+                '將通知靜音',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: primaryTextColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Text(
+                  '選擇靜音持續時間，期間不會收到此對話的通知。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildMuteOptionTile(
+                title: '8小時',
+                textColor: primaryTextColor,
+                onTap: () {
+                  final until = DateTime.now().add(const Duration(hours: 8));
+                  _updateMute(until.millisecondsSinceEpoch ~/ 1000);
+                  Navigator.pop(context);
+                },
+              ),
+              Divider(height: 1, color: Theme.of(context).dividerColor),
+              _buildMuteOptionTile(
+                title: '1星期',
+                textColor: primaryTextColor,
+                onTap: () {
+                  final until = DateTime.now().add(const Duration(days: 7));
+                  _updateMute(until.millisecondsSinceEpoch ~/ 1000);
+                  Navigator.pop(context);
+                },
+              ),
+              Divider(height: 1, color: Theme.of(context).dividerColor),
+              _buildMuteOptionTile(
+                title: '保持關閉',
+                textColor: primaryTextColor,
+                onTap: () {
+                  _updateMute(-1);
+                  Navigator.pop(context);
+                },
+              ),
+              if (currentMuteUntil != null) ...[
+                Divider(height: 1, color: Theme.of(context).dividerColor),
+                _buildMuteOptionTile(
+                  title: '取消靜音',
+                  textColor: Colors.red,
+                  onTap: () {
+                    _updateMute(null);
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMuteOptionTile({
+    required String title,
+    required Color textColor,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      title: Text(title, style: TextStyle(color: textColor, fontSize: 16)),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _updateMute(int? muteUntil) async {
+    try {
+      final service = ref.read(chatSettingServiceProvider);
+      await service.updateMuteUntil(widget.roomId, muteUntil);
+      ref.invalidate(chatSettingProvider(widget.roomId));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+      }
+    }
+  }
+
   Future<void> _updateTimer(String option) async {
     final timerSeconds = _parseTimerOption(option);
     try {
@@ -150,9 +265,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       ref.invalidate(chatSettingProvider(widget.roomId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('更新失敗: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
       }
     }
   }
@@ -235,10 +350,15 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SizedBox(height: 20),
-                        Hero(tag: 'avatar_${widget.roomId}', child: _buildAvatar()),
+                        Hero(
+                          tag: 'avatar_${widget.roomId}',
+                          child: _buildAvatar(),
+                        ),
                         const SizedBox(height: 12),
                         // 👉 3. 將原本寫死的電話改為顯示 email
-                        if (!widget.isRoom && widget.email != null && widget.email!.isNotEmpty)
+                        if (!widget.isRoom &&
+                            widget.email != null &&
+                            widget.email!.isNotEmpty)
                           Text(
                             widget.email!,
                             style: TextStyle(
@@ -283,7 +403,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => RoomMediaPage(roomId: widget.roomId),
+                        builder: (context) =>
+                            RoomMediaPage(roomId: widget.roomId),
                       ),
                     );
 
@@ -299,32 +420,128 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 color: surfaceColor,
                 child: Column(
                   children: [
-                    ListTile(
-                      leading: Icon(
-                        Icons.notifications_off,
-                        color: secondaryTextColor,
-                      ),
-                      title: Text(
-                        '將通知靜音',
-                        style: TextStyle(color: primaryTextColor),
-                      ),
-                      trailing: Switch(
-                        value: false,
-                        onChanged: (val) {},
-                        activeThumbColor: accentColor,
-                      ),
-                    ),
-                    Divider(height: 1, color: dividerColor),
-                    ListTile(
-                      leading: Icon(
-                        Icons.music_note,
-                        color: secondaryTextColor,
-                      ),
-                      title: Text(
-                        '自訂通知',
-                        style: TextStyle(color: primaryTextColor),
-                      ),
-                      onTap: () {},
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final settingAsync = ref.watch(
+                          chatSettingProvider(widget.roomId),
+                        );
+                        return settingAsync.when(
+                          data: (setting) {
+                            return Column(
+                              children: [
+                                ListTile(
+                                  leading: Icon(
+                                    Icons.notifications_off,
+                                    color: secondaryTextColor,
+                                  ),
+                                  title: Text(
+                                    '將通知靜音',
+                                    style: TextStyle(color: primaryTextColor),
+                                  ),
+                                  subtitle: setting.isMuted
+                                      ? Text(
+                                          setting.muteDescription,
+                                          style: TextStyle(
+                                            color: secondaryTextColor,
+                                            fontSize: 13,
+                                          ),
+                                        )
+                                      : null,
+                                  trailing: Switch(
+                                    value: setting.isMuted,
+                                    onChanged: (val) {
+                                      if (val) {
+                                        _showMuteDialog(
+                                          primaryTextColor,
+                                          accentColor,
+                                          setting.muteUntil,
+                                        );
+                                      } else {
+                                        _updateMute(null);
+                                      }
+                                    },
+                                    activeColor: accentColor,
+                                  ),
+                                ),
+                                Divider(height: 1, color: dividerColor),
+                                ListTile(
+                                  leading: Icon(
+                                    Icons.music_note,
+                                    color: secondaryTextColor,
+                                  ),
+                                  title: Text(
+                                    '自訂通知',
+                                    style: TextStyle(color: primaryTextColor),
+                                  ),
+                                  onTap: () => _showMuteDialog(
+                                    primaryTextColor,
+                                    accentColor,
+                                    setting.muteUntil,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                          loading: () => Column(
+                            children: [
+                              ListTile(
+                                leading: Icon(
+                                  Icons.notifications_off,
+                                  color: secondaryTextColor,
+                                ),
+                                title: Text(
+                                  '將通知靜音',
+                                  style: TextStyle(color: primaryTextColor),
+                                ),
+                                trailing: const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                              Divider(height: 1, color: dividerColor),
+                              ListTile(
+                                leading: Icon(
+                                  Icons.music_note,
+                                  color: secondaryTextColor,
+                                ),
+                                title: Text(
+                                  '自訂通知',
+                                  style: TextStyle(color: primaryTextColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                          error: (_, __) => Column(
+                            children: [
+                              ListTile(
+                                leading: Icon(
+                                  Icons.notifications_off,
+                                  color: secondaryTextColor,
+                                ),
+                                title: Text(
+                                  '將通知靜音',
+                                  style: TextStyle(color: primaryTextColor),
+                                ),
+                                trailing: Switch(value: false, onChanged: null),
+                              ),
+                              Divider(height: 1, color: dividerColor),
+                              ListTile(
+                                leading: Icon(
+                                  Icons.music_note,
+                                  color: secondaryTextColor,
+                                ),
+                                title: Text(
+                                  '自訂通知',
+                                  style: TextStyle(color: primaryTextColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                     Divider(height: 1, color: dividerColor),
                     ListTile(
@@ -347,15 +564,25 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                   children: [
                     Consumer(
                       builder: (context, ref, child) {
-                        final e2eeState = ref.watch(e2eeEnabledProvider(widget.roomId));
+                        final e2eeState = ref.watch(
+                          e2eeEnabledProvider(widget.roomId),
+                        );
                         final isE2EEEnabled = e2eeState.value ?? true;
 
                         return ListTile(
                           leading: Icon(Icons.lock, color: secondaryTextColor),
-                          title: Text('加密', style: TextStyle(color: primaryTextColor)),
+                          title: Text(
+                            '加密',
+                            style: TextStyle(color: primaryTextColor),
+                          ),
                           subtitle: Text(
-                            isE2EEEnabled ? '訊息和通話都受到端對端加密。點按以切換。' : '目前未加密傳輸。不建議關閉。',
-                            style: TextStyle(color: secondaryTextColor, fontSize: 13),
+                            isE2EEEnabled
+                                ? '訊息和通話都受到端對端加密。點按以切換。'
+                                : '目前未加密傳輸。不建議關閉。',
+                            style: TextStyle(
+                              color: secondaryTextColor,
+                              fontSize: 13,
+                            ),
                           ),
                           onTap: () {
                             Navigator.push(
@@ -364,38 +591,69 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 builder: (_) => EncryptionInfoPage(
                                   contactId: widget.roomId,
                                   contactName: widget.title,
-                                  currentUserId: '', // Not strictly needed for UI shown
+                                  currentUserId:
+                                      '', // Not strictly needed for UI shown
                                 ),
                               ),
                             );
                           },
                           trailing: e2eeState.isLoading
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
                               : Switch(
                                   value: isE2EEEnabled,
                                   onChanged: (val) {
                                     if (val) {
                                       // 開啟直接套用
-                                      ref.read(e2eeEnabledProvider(widget.roomId).notifier).toggle(true);
+                                      ref
+                                          .read(
+                                            e2eeEnabledProvider(
+                                              widget.roomId,
+                                            ).notifier,
+                                          )
+                                          .toggle(true);
                                     } else {
                                       // 關閉需要確認
                                       showDialog(
                                         context: context,
                                         builder: (dialogCtx) => AlertDialog(
-                                          backgroundColor: Theme.of(context).colorScheme.surface,
+                                          backgroundColor: Theme.of(
+                                            context,
+                                          ).colorScheme.surface,
                                           title: const Text('停用加密？'),
-                                          content: const Text('關閉後，與此聯絡人的訊息將不再加密傳輸，建議保持開啟以保護隱私。'),
+                                          content: const Text(
+                                            '關閉後，與此聯絡人的訊息將不再加密傳輸，建議保持開啟以保護隱私。',
+                                          ),
                                           actions: [
                                             TextButton(
-                                              onPressed: () => Navigator.pop(dialogCtx),
+                                              onPressed: () =>
+                                                  Navigator.pop(dialogCtx),
                                               child: const Text('取消'),
                                             ),
                                             TextButton(
                                               onPressed: () {
-                                                ref.read(e2eeEnabledProvider(widget.roomId).notifier).toggle(false);
+                                                ref
+                                                    .read(
+                                                      e2eeEnabledProvider(
+                                                        widget.roomId,
+                                                      ).notifier,
+                                                    )
+                                                    .toggle(false);
                                                 Navigator.pop(dialogCtx);
                                               },
-                                              child: Text('停用', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                                              child: Text(
+                                                '停用',
+                                                style: TextStyle(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.error,
+                                                ),
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -410,13 +668,20 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     Divider(height: 1, color: dividerColor),
                     Consumer(
                       builder: (context, ref, child) {
-                        final settingAsync = ref.watch(chatSettingProvider(widget.roomId));
-                        
+                        final settingAsync = ref.watch(
+                          chatSettingProvider(widget.roomId),
+                        );
+
                         return settingAsync.when(
                           data: (setting) {
-                            final currentOption = _formatTimerOption(setting.disappearingTimer);
+                            final currentOption = _formatTimerOption(
+                              setting.disappearingTimer,
+                            );
                             return ListTile(
-                              leading: Icon(Icons.av_timer, color: secondaryTextColor),
+                              leading: Icon(
+                                Icons.av_timer,
+                                color: secondaryTextColor,
+                              ),
                               title: Text(
                                 '自動刪除的訊息',
                                 style: TextStyle(color: primaryTextColor),
@@ -429,20 +694,40 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 ),
                               ),
                               onTap: () {
-                                _showDisappearingMessagesDialog(primaryTextColor, accentColor, currentOption);
+                                _showDisappearingMessagesDialog(
+                                  primaryTextColor,
+                                  accentColor,
+                                  currentOption,
+                                );
                               },
                             );
                           },
                           loading: () => ListTile(
-                            leading: Icon(Icons.av_timer, color: secondaryTextColor),
-                            title: Text('自動刪除的訊息', style: TextStyle(color: primaryTextColor)),
+                            leading: Icon(
+                              Icons.av_timer,
+                              color: secondaryTextColor,
+                            ),
+                            title: Text(
+                              '自動刪除的訊息',
+                              style: TextStyle(color: primaryTextColor),
+                            ),
                             subtitle: const LinearProgressIndicator(),
                           ),
                           error: (err, stack) => ListTile(
-                            leading: Icon(Icons.av_timer, color: secondaryTextColor),
-                            title: Text('自動刪除的訊息', style: TextStyle(color: primaryTextColor)),
-                            subtitle: Text('載入失敗', style: TextStyle(color: dangerColor)),
-                            onTap: () => ref.refresh(chatSettingProvider(widget.roomId)),
+                            leading: Icon(
+                              Icons.av_timer,
+                              color: secondaryTextColor,
+                            ),
+                            title: Text(
+                              '自動刪除的訊息',
+                              style: TextStyle(color: primaryTextColor),
+                            ),
+                            subtitle: Text(
+                              '載入失敗',
+                              style: TextStyle(color: dangerColor),
+                            ),
+                            onTap: () =>
+                                ref.refresh(chatSettingProvider(widget.roomId)),
                           ),
                         );
                       },
@@ -492,7 +777,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     return ChatAvatar(
       avatarUrl: widget.avatarUrl,
       radius: 60,
-      fallbackText: widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '?',
+      fallbackText: widget.title.isNotEmpty
+          ? widget.title[0].toUpperCase()
+          : '?',
       logTag: 'contact_info',
     );
   }

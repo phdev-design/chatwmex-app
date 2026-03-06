@@ -20,6 +20,7 @@ type mongoChatSetting struct {
 	ID                primitive.ObjectID `bson:"_id,omitempty"`
 	ChatID            string             `bson:"chat_id"`
 	DisappearingTimer int                `bson:"disappearing_timer"` // Seconds
+	MuteUntil         *int64             `bson:"mute_until"`
 	UpdatedAt         time.Time          `bson:"updated_at"`
 }
 
@@ -49,6 +50,7 @@ func (r *ChatSettingRepository) toDomain(m *mongoChatSetting) *domain.ChatSettin
 		ID:                m.ID.Hex(),
 		ChatID:            m.ChatID,
 		DisappearingTimer: m.DisappearingTimer,
+		MuteUntil:         m.MuteUntil,
 		UpdatedAt:         m.UpdatedAt,
 	}
 }
@@ -75,6 +77,7 @@ func (r *ChatSettingRepository) UpsertSetting(ctx context.Context, setting *doma
 	update := bson.M{
 		"$set": bson.M{
 			"disappearing_timer": setting.DisappearingTimer,
+			"mute_until":         setting.MuteUntil,
 			"updated_at":         time.Now(),
 		},
 	}

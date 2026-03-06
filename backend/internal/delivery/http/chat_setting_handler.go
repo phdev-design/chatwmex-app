@@ -57,7 +57,7 @@ func (h *ChatSettingHandler) GetSettings(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, setting)
+	c.JSON(http.StatusOK, gin.H{"data": setting})
 }
 
 func (h *ChatSettingHandler) UpdateSettings(c *gin.Context) {
@@ -79,7 +79,8 @@ func (h *ChatSettingHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	var req struct {
-		DisappearingTimer int `json:"disappearing_timer"` // Seconds
+		DisappearingTimer *int   `json:"disappearing_timer"`
+		MuteUntil         *int64 `json:"mute_until"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -87,11 +88,22 @@ func (h *ChatSettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
-	setting, err := h.usecase.UpdateDisappearingTimer(c.Request.Context(), chatID, req.DisappearingTimer)
+	var setting *domain.ChatSetting
+	var err error
+
+	if req.MuteUntil != nil {
+		setting, err = h.usecase.UpdateMuteUntil(c.Request.Context(), chatID, req.MuteUntil)
+	} else if req.DisappearingTimer != nil {
+		setting, err = h.usecase.UpdateDisappearingTimer(c.Request.Context(), chatID, *req.DisappearingTimer)
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no valid field to update"})
+		return
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, setting)
+	c.JSON(http.StatusOK, gin.H{"data": setting})
 }

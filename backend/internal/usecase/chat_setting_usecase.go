@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"time"
 
 	"chatwmex_backend/internal/domain"
 )
@@ -28,6 +29,19 @@ func (u *chatSettingUsecase) UpdateDisappearingTimer(ctx context.Context, chatID
 	}
 	err := u.repo.UpsertSetting(ctx, setting)
 	if err != nil {
+		return nil, err
+	}
+	return u.repo.GetSetting(ctx, chatID)
+}
+
+func (u *chatSettingUsecase) UpdateMuteUntil(ctx context.Context, chatID string, muteUntil *int64) (*domain.ChatSetting, error) {
+	setting, err := u.repo.GetSetting(ctx, chatID)
+	if err != nil || setting == nil {
+		setting = &domain.ChatSetting{ChatID: chatID}
+	}
+	setting.MuteUntil = muteUntil
+	setting.UpdatedAt = time.Now()
+	if err := u.repo.UpsertSetting(ctx, setting); err != nil {
 		return nil, err
 	}
 	return u.repo.GetSetting(ctx, chatID)

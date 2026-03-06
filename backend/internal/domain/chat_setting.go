@@ -11,6 +11,7 @@ type ChatSetting struct {
 	ID                string    `json:"id"`
 	ChatID            string    `json:"chat_id"`
 	DisappearingTimer int       `json:"disappearing_timer"` // Timer in seconds (e.g., 86400 for 24h, 0 for off)
+	MuteUntil         *int64    `json:"mute_until"`         // 新增：Unix timestamp，nil=不靜音，-1=永久靜音
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
@@ -24,4 +25,5 @@ type ChatSettingRepository interface {
 type ChatSettingUsecase interface {
 	GetChatSetting(ctx context.Context, chatID string) (*ChatSetting, error)
 	UpdateDisappearingTimer(ctx context.Context, chatID string, timerSeconds int) (*ChatSetting, error)
+	UpdateMuteUntil(ctx context.Context, chatID string, muteUntil *int64) (*ChatSetting, error) // 新增
 }
