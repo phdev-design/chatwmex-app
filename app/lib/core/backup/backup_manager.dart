@@ -60,6 +60,8 @@ class BackupManager extends StateNotifier<BackupState>
     super.dispose();
   }
 
+  bool _isAuthenticating = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -68,6 +70,7 @@ class BackupManager extends StateNotifier<BackupState>
   }
 
   Future<void> _checkAutoBackup() async {
+    if (_isAuthenticating) return;
     if (!state.autoBackupEnabled) return;
 
     // Auto backup once a day
@@ -96,7 +99,16 @@ class BackupManager extends StateNotifier<BackupState>
   }
 
   Future<bool> signIn() async {
-    return await _googleDriveService.signIn();
+    if (_isAuthenticating) return false;
+    _isAuthenticating = true;
+    print('[BackupManager] signIn called');
+    try {
+      final result = await _googleDriveService.signIn();
+      print('[BackupManager] signIn result: $result');
+      return result;
+    } finally {
+      _isAuthenticating = false;
+    }
   }
 
   Future<bool> signInSilently() async {

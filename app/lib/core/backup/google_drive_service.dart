@@ -66,18 +66,31 @@ class GoogleDriveService {
   /// Sign in interactively (must be called from user gesture).
   /// Step 1: authenticate (Google account) → Step 2: authorize Drive scope.
   Future<bool> signIn() async {
+    debugPrint('[GoogleDrive] signIn() START');
     await ensureInitialized();
     try {
-      _currentUser = await _signIn.authenticate();
-      debugPrint('[GoogleDrive] signIn user: ${_currentUser?.email}');
-      if (_currentUser == null) return false;
+      debugPrint('[GoogleDrive] checking lightweight auth first...');
+      _currentUser = await _signIn.attemptLightweightAuthentication();
+      debugPrint('[GoogleDrive] lightweight auth returned: ${_currentUser?.email}');
 
-      // Request Drive scope authorization (shows consent screen).
-      await _currentUser!.authorizationClient.authorizeScopes(_driveScopes);
-      debugPrint('[GoogleDrive] signIn Drive scope authorized');
-      return true;
+      if (_currentUser == null) {
+        debugPrint('[GoogleDrive] calling authenticate()...');
+        _currentUser = await _signIn.authenticate();
+        debugPrint('[GoogleDrive] authenticate() returned: ${_currentUser?.email}');
+      }
+
+      if (_currentUser == null) {
+        debugPrint('[GoogleDrive] authenticate() returned null, aborting');
+        return false;
+      }
+
+      debugPrint('[GoogleDrive] calling authorizeScopes()...');
+      final auth = await _currentUser!.authorizationClient
+          .authorizeScopes(_driveScopes);
+      debugPrint('[GoogleDrive] authorizeScopes() done, token: ${auth.accessToken.isNotEmpty}');
+      return auth.accessToken.isNotEmpty;
     } catch (e, st) {
-      debugPrint('[GoogleDrive] signIn error: $e\n$st');
+      debugPrint('[GoogleDrive] signIn EXCEPTION: $e\n$st');
       _currentUser = null;
       return false;
     }

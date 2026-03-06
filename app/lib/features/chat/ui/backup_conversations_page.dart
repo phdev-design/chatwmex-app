@@ -38,6 +38,7 @@ class _BackupConversationsPageState
   Future<void> _handleSignIn() async {
     try {
       final success = await ref.read(backupManagerProvider.notifier).signIn();
+      print('[BackupPage] signIn result: $success');  // 加這行
       debugPrint('[BackupPage] signIn result: $success');
       if (mounted) setState(() => _isAuthenticated = success);
     } catch (e, st) {
