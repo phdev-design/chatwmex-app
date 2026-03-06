@@ -31,7 +31,7 @@ class FriendState {
 }
 
 class FriendViewModel extends Notifier<FriendState> {
-  late final FriendRepository _repository;
+  late FriendRepository _repository;
 
   @override
   FriendState build() {

@@ -64,8 +64,8 @@ class ProfileState {
 }
 
 class ProfileViewModel extends Notifier<ProfileState> {
-  late final ProfileRepository _repository;
-  late final StorageService _storage;
+  late ProfileRepository _repository;
+  late StorageService _storage;
 
   @override
   ProfileState build() {

@@ -7,6 +7,11 @@ import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/profile/ui/edit_profile_page.dart';
 import 'package:app/features/profile/ui/settings_page.dart';
 import 'package:app/features/profile/providers/profile_provider.dart';
+import 'package:app/core/websocket/websocket_service.dart';
+import 'package:app/features/chat/providers/room_list_provider.dart';
+import 'package:app/features/friend/providers/friend_provider.dart';
+import 'package:app/features/auth/providers/auth_provider.dart';
+import 'package:app/features/chat/services/public_key_cache_service.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -25,19 +30,33 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     });
   }
 
-  void _logout() async {
-    // ✅ 清記憶體中的 crypto 狀態
-    await ref.read(cryptoServiceProvider).clearKeys();
-    // ✅ 只刪認證相關資料，保留 E2EE 私鑰
-    final storage = ref.read(storageServiceProvider);
-    await storage.delete('jwt_token');
-    await storage.delete('user_id');
-    await storage.delete('username');
-    await storage.delete('email');
-    await storage.delete('phone_number');
-    await storage.delete('avatar_url');
-    if (mounted) context.go('/login');
-  }
+void _logout() async {
+  // ✅ 清 WebSocket 連線
+  ref.read(webSocketServiceProvider).disconnect();
+
+  // ✅ 清記憶體中的 crypto 狀態
+  await ref.read(cryptoServiceProvider).clearKeys();
+
+  // ✅ 清 public key 快取
+  await ref.read(publicKeyCacheServiceProvider).clearAllCache();
+
+  // ✅ 只刪認證相關資料，保留 E2EE 私鑰
+  final storage = ref.read(storageServiceProvider);
+  await storage.delete('jwt_token');
+  await storage.delete('user_id');
+  await storage.delete('username');
+  await storage.delete('email');
+  await storage.delete('phone_number');
+  await storage.delete('avatar_url');
+
+  // ✅ 重置所有 providers 的 in-memory state（關鍵修復！）
+  ref.invalidate(roomListViewModelProvider);
+  ref.invalidate(profileViewModelProvider);
+  ref.invalidate(friendViewModelProvider);
+  ref.invalidate(authViewModelProvider);
+
+  if (mounted) context.go('/login');
+}
 
   @override
   Widget build(BuildContext context) {

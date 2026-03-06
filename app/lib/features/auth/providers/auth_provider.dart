@@ -8,11 +8,12 @@ import 'package:app/core/network/network_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
+import 'package:app/features/chat/providers/room_list_provider.dart';
 
 class AuthViewModel extends Notifier<AuthState> {
-  late final AuthRepository _repository;
-  late final NotificationService _notificationService;
-  late final NetworkService _networkService;
+  late AuthRepository _repository;
+  late NotificationService _notificationService;
+  late NetworkService _networkService;
 
   @override
   AuthState build() {
@@ -35,6 +36,9 @@ class AuthViewModel extends Notifier<AuthState> {
       // 登入後清除舊的 public key 快取，避免用錯誤的 key 解密訊息
       await ref.read(publicKeyCacheServiceProvider).clearAllCache();
 
+    // ✅ 新增：確保 room list 是全新的（防止切換帳號時看到舊對話）
+    ref.invalidate(roomListViewModelProvider);
+    
       try {
         await _notificationService.initOneSignal(
           "88247551-a540-4ffc-89aa-e6ea9478b7be",

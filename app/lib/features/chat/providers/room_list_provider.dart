@@ -38,7 +38,7 @@ class RoomListState {
 }
 
 class RoomListViewModel extends Notifier<RoomListState> {
-  late final ChatRepository _repository;
+  late ChatRepository _repository;
   final Map<String, int> _unreadOverrides = {};
   String? _currentUserId;
 
