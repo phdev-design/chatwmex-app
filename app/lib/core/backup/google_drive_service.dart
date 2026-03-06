@@ -257,6 +257,18 @@ class GoogleDriveService {
       // Ignore cleanup errors
     }
   }
+  Future<bool> deleteBackup(String fileId) async {
+    try {
+      final driveApi = await getDriveApi();
+      if (driveApi == null) throw GoogleDriveException.notAuthenticated();
+
+      await driveApi.files.delete(fileId);
+      return true;
+    } catch (e) {
+      debugPrint('[GoogleDrive] delete error: $e');
+      return false;
+    }
+  }
 }
 
 final googleDriveServiceProvider = Provider((ref) => GoogleDriveService());

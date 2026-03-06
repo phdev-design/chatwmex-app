@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:app/core/backup/backup_manager.dart';
+import 'package:app/core/crypto/crypto_service.dart';
 
 class BackupHistoryPage extends ConsumerStatefulWidget {
   const BackupHistoryPage({super.key});
@@ -97,14 +98,62 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
           .restoreBackup(fileId);
       if (mounted) {
         if (result != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '還原成功！共匯入 ${result.importedCount} 則對話，跳過 ${result.skippedCount} 則重複對話。',
+          if (result.encryptedPrivateKey != null && result.privateKeySalt != null) {
+            final password = await showDialog<String>(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const _RestorePasswordDialog(),
+            );
+
+            if (password != null && password.isNotEmpty) {
+              try {
+                final cryptoService = ref.read(cryptoServiceProvider);
+                final rawKey = await cryptoService.decryptPrivateKeyFromBackup(
+                  result.encryptedPrivateKey!,
+                  result.privateKeySalt!,
+                  password,
+                );
+                await cryptoService.restorePrivateKey(rawKey);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ 金鑰還原成功，訊息現在可以正常解密'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('❌ 密碼錯誤，請重試'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⚠️ 已跳過金鑰還原，舊訊息可能無法解密'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+            }
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '還原成功！共匯入 ${result.importedCount} 則對話，跳過 ${result.skippedCount} 則重複對話。',
+                ),
+                backgroundColor: Colors.green,
               ),
-              backgroundColor: Colors.green,
-            ),
-          );
+            );
+          }
         } else {
           final error = ref.read(backupManagerProvider).error ?? '還原失敗';
           ScaffoldMessenger.of(context).showSnackBar(
@@ -140,7 +189,7 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
         scaffold,
         if (state.isBackingUp)
           Container(
-            color: Colors.black87,
+            color: Colors.black54,
             child: const Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -199,31 +248,169 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
         final String date = _formatDate(backup['date'] ?? '');
         final String size = _formatSize(backup['size'] ?? '');
 
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
-            borderRadius: BorderRadius.circular(12),
+        return Dismissible(
+          key: Key(backup['id'] ?? index.toString()),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            child: const Icon(Icons.delete, color: Colors.white),
           ),
-          child: ListTile(
-            leading: const Icon(Icons.history, color: Colors.blueAccent),
-            title: Text(
-              name,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-            ),
-            subtitle: Text(
-              '$date • $size',
-              style: TextStyle(color: Colors.grey[400], fontSize: 12),
-            ),
-            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () {
-              if (backup['id'] != null) {
-                _showRestoreConfirmation(backup['id'] as String, date);
+          confirmDismiss: (direction) async {
+            return await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                backgroundColor: const Color(0xFF1C1C1E),
+                title: const Text('刪除備份？', style: TextStyle(color: Colors.white)),
+                content: const Text(
+                  '您確定要刪除這筆備份嗎？此操作無法還原。',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('取消', style: TextStyle(color: Colors.grey)),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('刪除', style: TextStyle(color: Colors.redAccent)),
+                  ),
+                ],
+              ),
+            );
+          },
+          onDismissed: (direction) async {
+            if (backup['id'] != null) {
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              // 1. Optimistically remove from UI to satisfy Dismissible's synchronous requirement
+              setState(() {
+                _backups.removeAt(index);
+              });
+
+              // 2. Perform the async deletion
+              final success = await ref
+                  .read(backupManagerProvider.notifier)
+                  .deleteBackup(backup['id'] as String);
+
+              if (mounted) {
+                if (success) {
+                  scaffoldMessenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('備份已刪除'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } else {
+                  // 3. If failed, restore the item and show error
+                  setState(() {
+                    _backups.insert(index, backup);
+                  });
+                  scaffoldMessenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('刪除失敗'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
-            },
+            }
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.history, color: Colors.blueAccent),
+              title: Text(
+                name,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              subtitle: Text(
+                '$date • $size',
+                style: TextStyle(color: Colors.grey[400], fontSize: 12),
+              ),
+              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              onTap: () {
+                if (backup['id'] != null) {
+                  _showRestoreConfirmation(backup['id'] as String, date);
+                }
+              },
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+class _RestorePasswordDialog extends StatefulWidget {
+  const _RestorePasswordDialog();
+
+  @override
+  State<_RestorePasswordDialog> createState() => _RestorePasswordDialogState();
+}
+
+class _RestorePasswordDialogState extends State<_RestorePasswordDialog> {
+  final _pwdController = TextEditingController();
+  bool _obscurePwd = true;
+
+  void _submit() {
+    final pwd = _pwdController.text;
+    if (pwd.isEmpty) return;
+    Navigator.of(context).pop(pwd);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1C1C1E),
+      title: const Text('此備份包含 E2EE 金鑰', style: TextStyle(color: Colors.white)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '輸入備份時設定的密碼來還原您的加密金鑰，這樣才能正常讀取訊息。',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _pwdController,
+              obscureText: _obscurePwd,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: '密碼',
+                labelStyle: const TextStyle(color: Colors.white54),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePwd ? Icons.visibility : Icons.visibility_off,
+                    color: Colors.white54,
+                  ),
+                  onPressed: () => setState(() => _obscurePwd = !_obscurePwd),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null), // return null for skip
+          child: const Text('略過', style: TextStyle(color: Colors.grey)),
+        ),
+        TextButton(
+          onPressed: _submit,
+          child: const Text('還原金鑰', style: TextStyle(color: Colors.blueAccent)),
+        ),
+      ],
     );
   }
 }

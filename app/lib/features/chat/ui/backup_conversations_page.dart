@@ -52,6 +52,18 @@ class _BackupConversationsPageState
     }
   }
 
+  Future<void> _handleBackupNow() async {
+    final password = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _BackupPasswordDialog(),
+    );
+
+    if (password != null && password.isEmpty) return; // user cancelled without skipping
+
+    ref.read(backupManagerProvider.notifier).backupNow(backupPassword: password);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(backupManagerProvider);
@@ -215,11 +227,7 @@ class _BackupConversationsPageState
                   child: ElevatedButton(
                     onPressed: state.isBackingUp
                         ? null
-                        : () {
-                            ref
-                                .read(backupManagerProvider.notifier)
-                                .backupNow();
-                          },
+                        : _handleBackupNow,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       foregroundColor: Colors.white,
@@ -266,7 +274,6 @@ class _BackupConversationsPageState
       ),
     );
   }
-
   String _formatLastBackup(String? isoDate) {
     if (isoDate == null || isoDate.isEmpty) return '未曾備份';
     try {
@@ -275,5 +282,102 @@ class _BackupConversationsPageState
     } catch (_) {
       return '未曾備份';
     }
+  }
+}
+
+class _BackupPasswordDialog extends StatefulWidget {
+  const _BackupPasswordDialog();
+
+  @override
+  State<_BackupPasswordDialog> createState() => _BackupPasswordDialogState();
+}
+
+class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
+  final _pwdController = TextEditingController();
+  final _confirmController = TextEditingController();
+  bool _obscurePwd = true;
+  bool _obscureConfirm = true;
+  String? _error;
+
+  void _submit() {
+    final pwd = _pwdController.text;
+    final confirm = _confirmController.text;
+
+    if (pwd.length < 8) {
+      setState(() => _error = '密碼長度至少需要 8 個字元');
+      return;
+    }
+    if (pwd != confirm) {
+      setState(() => _error = '兩次輸入的密碼不一致');
+      return;
+    }
+    Navigator.of(context).pop(pwd);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1C1C1E),
+      title: const Text('設定備份密碼', style: TextStyle(color: Colors.white)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '此密碼用於加密您的 E2EE 金鑰，還原時需要輸入相同密碼才能解密訊息。請妥善保存此密碼。',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _pwdController,
+              obscureText: _obscurePwd,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: '密碼',
+                labelStyle: const TextStyle(color: Colors.white54),
+                errorText: _error,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePwd ? Icons.visibility : Icons.visibility_off,
+                    color: Colors.white54,
+                  ),
+                  onPressed: () => setState(() => _obscurePwd = !_obscurePwd),
+                ),
+              ),
+              onChanged: (_) => setState(() => _error = null),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _confirmController,
+              obscureText: _obscureConfirm,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: '確認密碼',
+                labelStyle: const TextStyle(color: Colors.white54),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureConfirm ? Icons.visibility : Icons.visibility_off,
+                    color: Colors.white54,
+                  ),
+                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                ),
+              ),
+              onChanged: (_) => setState(() => _error = null),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null), // return null for skip
+          child: const Text('略過（不備份金鑰）', style: TextStyle(color: Colors.grey)),
+        ),
+        TextButton(
+          onPressed: _submit,
+          child: const Text('確認', style: TextStyle(color: Colors.blueAccent)),
+        ),
+      ],
+    );
   }
 }

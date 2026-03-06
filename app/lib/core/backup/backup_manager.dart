@@ -4,14 +4,22 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/widgets.dart';
 import 'package:app/core/backup/google_drive_service.dart';
+import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/storage/local_db_service.dart';
 import 'package:app/models/message.dart';
 
 class RestoreResult {
   final int importedCount;
   final int skippedCount;
+  final String? encryptedPrivateKey;
+  final String? privateKeySalt;
 
-  RestoreResult({required this.importedCount, required this.skippedCount});
+  RestoreResult({
+    required this.importedCount,
+    required this.skippedCount,
+    this.encryptedPrivateKey,
+    this.privateKeySalt,
+  });
 }
 
 class BackupState {
@@ -47,9 +55,13 @@ class BackupManager extends StateNotifier<BackupState>
     with WidgetsBindingObserver {
   final GoogleDriveService _googleDriveService;
   final LocalDbService _localDbService;
+  final CryptoService _cryptoService;
 
-  BackupManager(this._googleDriveService, this._localDbService)
-    : super(BackupState()) {
+  BackupManager(
+    this._googleDriveService,
+    this._localDbService,
+    this._cryptoService,
+  ) : super(BackupState()) {
     _loadSettings();
     WidgetsBinding.instance.addObserver(this);
   }
@@ -131,11 +143,29 @@ class BackupManager extends StateNotifier<BackupState>
 
   /// Exports all local SQLite messages (conversations) to a JSON string
   /// mirroring the requested structure.
-  Future<String> exportAllConversationsToJSON() async {
+  Future<String> exportAllConversationsToJSON({String? backupPassword}) async {
     final messages = await _localDbService.getAllMessages();
+    Map<String, String>? keyBackupData;
+
+    try {
+      if (backupPassword != null && backupPassword.isNotEmpty) {
+        final rawKey = await _cryptoService.getRawPrivateKey();
+        if (rawKey != null) {
+          keyBackupData = await _cryptoService.encryptPrivateKeyForBackup(
+            rawKey,
+            backupPassword,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[BackupManager] Error encrypting private key backup: $e');
+      // Continue anyway, worst case we backup without the key
+    }
+
     final payload = {
       'backup_date': DateTime.now().toIso8601String(),
       'app_version': "1.0.0", // Hardcoded app version for now
+      if (keyBackupData != null) 'e2ee_key_backup': keyBackupData,
       'conversations': messages.map((m) => m.toMap()).toList(),
     };
     return jsonEncode(payload);
@@ -163,6 +193,14 @@ class BackupManager extends StateNotifier<BackupState>
         }
       }
 
+      String? encryptedPrivateKey;
+      String? privateKeySalt;
+      if (decoded.containsKey('e2ee_key_backup')) {
+        final keyBackup = decoded['e2ee_key_backup'] as Map<String, dynamic>;
+        encryptedPrivateKey = keyBackup['encrypted_private_key']?.toString();
+        privateKeySalt = keyBackup['salt']?.toString();
+      }
+
       if (toInsert.isNotEmpty) {
         // Here we just insert missing messages without deleting existing ones
         final updatedList = [...currentMessages, ...toInsert];
@@ -172,6 +210,8 @@ class BackupManager extends StateNotifier<BackupState>
       return RestoreResult(
         importedCount: toInsert.length,
         skippedCount: skippedCount,
+        encryptedPrivateKey: encryptedPrivateKey,
+        privateKeySalt: privateKeySalt,
       );
     } catch (e) {
       state = state.copyWith(error: '還原 JSON 錯誤：$e', clearError: false);
@@ -215,12 +255,30 @@ class BackupManager extends StateNotifier<BackupState>
     state = state.copyWith(autoBackupEnabled: enabled);
   }
 
-  Future<void> backupNow() async {
+  Future<bool> deleteBackup(String fileId) async {
+    state = state.copyWith(isBackingUp: true, clearError: true);
+    try {
+      final success = await _googleDriveService.deleteBackup(fileId);
+      state = state.copyWith(isBackingUp: false);
+      return success;
+    } catch (e) {
+      state = state.copyWith(
+        isBackingUp: false,
+        error: '刪除備份失敗：$e',
+        clearError: false,
+      );
+      return false;
+    }
+  }
+
+  Future<void> backupNow({String? backupPassword}) async {
     state = state.copyWith(isBackingUp: true, clearError: true);
 
     try {
       // 1. Export JSON using the new helper
-      final jsonString = await exportAllConversationsToJSON();
+      final jsonString = await exportAllConversationsToJSON(
+        backupPassword: backupPassword,
+      );
 
       // 2. Upload
       final formatter = DateFormat('yyyy-MM-dd_HH-mm-ss');
@@ -256,7 +314,8 @@ class BackupManager extends StateNotifier<BackupState>
 final backupManagerProvider = StateNotifierProvider<BackupManager, BackupState>(
   (ref) {
     final driveService = ref.watch(googleDriveServiceProvider);
+    final cryptoService = ref.watch(cryptoServiceProvider);
     final localDb = LocalDbService();
-    return BackupManager(driveService, localDb);
+    return BackupManager(driveService, localDb, cryptoService);
   },
 );
