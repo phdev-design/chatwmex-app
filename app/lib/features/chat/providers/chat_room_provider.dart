@@ -64,12 +64,13 @@ class ChatRoomState {
     Map<String, String>? userAvatarUrls,
     String? roomAvatarUrl,
     bool clearReplyingTo = false,
+    bool clearError = false,
   }) {
     return ChatRoomState(
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       isSending: isSending ?? this.isSending,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
       typingUsers: typingUsers ?? this.typingUsers,
       isConnected: isConnected ?? this.isConnected,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
@@ -112,7 +113,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   late final PublicKeyCacheService _publicKeyCacheService; // 👉 替換舊 cache 變數
   Timer? _typingTimer;
   bool _typingSent = false;
-  
+
   // 👉 針對單人對話的批次已讀 (_markConversationAsRead) 狀態變數
   Timer? _markConversationReadTimer;
   DateTime? _lastMarkConversationReadTime;
@@ -163,7 +164,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                       (message.senderId == arg.roomId ||
                           message.receiverId == arg.roomId))) {
                 _addMessage(message);
-                Future(() => LocalDbService().insertMessages([rawMessage])); // Store encrypted locally
+                Future(
+                  () => LocalDbService().insertMessages([rawMessage]),
+                ); // Store encrypted locally
                 if (message.senderId != arg.currentUserId) {
                   if (arg.isRoom) {
                     markAsRead(message.id);
@@ -175,6 +178,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             });
           } catch (e) {
             print('Error parsing message: $e');
+          }
+        } else if (event == 'error') {
+          if (payload is Map && payload['message'] == 'cannot_send_blocked') {
+            state = state.copyWith(error: '無法傳送訊息，你已被對方封鎖或已封鎖對方');
+          } else if (payload is Map && payload['message'] != null) {
+            state = state.copyWith(error: payload['message'].toString());
           }
         } else if (event == 'message_ack') {
           if (payload is Map) {
@@ -482,10 +491,13 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     if (m.isUnsent || m.content.isEmpty) return m;
 
     // 👉 判斷 E2EE 開關，若為 false 直接跳過解密，以明文顯示
-    final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+    final isE2EEEnabled =
+        ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
     if (!isE2EEEnabled) return m;
 
-    final opponentId = (m.senderId == arg.currentUserId) ? m.receiverId : m.senderId;
+    final opponentId = (m.senderId == arg.currentUserId)
+        ? m.receiverId
+        : m.senderId;
     if (opponentId == null) return m;
 
     final pubKey = await _getPublicKey(opponentId);
@@ -511,7 +523,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
   // 判斷字串是否看起來像我們的 E2EE 密文格式（base64，且長度 > 28bytes 對應的 base64 長度）
   bool _looksLikeE2EECiphertext(String content) {
-    if (content.length < 40) return false; // < 28 bytes base64 encoded 約 40 chars
+    if (content.length < 40)
+      return false; // < 28 bytes base64 encoded 約 40 chars
     final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
     return base64Regex.hasMatch(content.trim());
   }
@@ -633,8 +646,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _addMessage(tempMessage);
 
     String payloadContent = content;
-    final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
-    
+    final isE2EEEnabled =
+        ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+
     // 👉 判斷 E2EE 開關，若為 false 則直接傳送明文
     if (!arg.isRoom && isE2EEEnabled) {
       final pubKey = await _getPublicKey(arg.roomId);
@@ -674,14 +688,18 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _updateMessageStatus(clientMsgId, MessageStatus.sending);
 
     String payloadContent = message.content;
-    final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+    final isE2EEEnabled =
+        ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
     // 👉 判斷 E2EE 開關，若為 false 則直接傳送明文
     if (!arg.isRoom && isE2EEEnabled) {
       final pubKey = await _getPublicKey(arg.roomId);
       if (pubKey != null) {
         try {
-          payloadContent = await _cryptoService.encryptMessage(message.content, pubKey);
+          payloadContent = await _cryptoService.encryptMessage(
+            message.content,
+            pubKey,
+          );
         } catch (e) {
           print('Failed to encrypt retry: $e');
         }
@@ -763,14 +781,15 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       _addMessage(tempMessage);
 
       String payloadContent = url;
-      final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+      final isE2EEEnabled =
+          ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
       if (!arg.isRoom && isE2EEEnabled) {
         final pubKey = await _getPublicKey(arg.roomId);
         if (pubKey != null) {
           try {
             payloadContent = await _cryptoService.encryptMessage(url, pubKey);
-          } catch(e) {}
+          } catch (e) {}
         }
       }
 
@@ -945,6 +964,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  void clearError() {
+    state = state.copyWith(clearError: true);
+  }
+
   Map<String, List<String>> _toggleReactions(
     Map<String, List<String>>? current,
     String emoji,
@@ -1026,24 +1049,29 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
 
     _markConversationReadTimer?.cancel();
-    _markConversationReadTimer = Timer(const Duration(milliseconds: 800), () async {
-      // 2 秒冷卻時間：如果短時間內針對同一個對話已經送過，跳過不送
-      final now = DateTime.now();
-      if (_lastMarkConversationReadTime != null &&
-          now.difference(_lastMarkConversationReadTime!).inSeconds < 2) {
-        return;
-      }
-      _lastMarkConversationReadTime = now;
+    _markConversationReadTimer = Timer(
+      const Duration(milliseconds: 800),
+      () async {
+        // 2 秒冷卻時間：如果短時間內針對同一個對話已經送過，跳過不送
+        final now = DateTime.now();
+        if (_lastMarkConversationReadTime != null &&
+            now.difference(_lastMarkConversationReadTime!).inSeconds < 2) {
+          return;
+        }
+        _lastMarkConversationReadTime = now;
 
-      final payload = {'conversation_id': arg.roomId, 'is_room': arg.isRoom};
-      _wsService.send('mark_read', payload);
-      try {
-        await _network.client.post('/messages/read', data: payload);
-        ref.read(roomListViewModelProvider.notifier).clearUnreadCount(arg.roomId);
-      } catch (e) {
-        state = state.copyWith(error: e.toString());
-      }
-    });
+        final payload = {'conversation_id': arg.roomId, 'is_room': arg.isRoom};
+        _wsService.send('mark_read', payload);
+        try {
+          await _network.client.post('/messages/read', data: payload);
+          ref
+              .read(roomListViewModelProvider.notifier)
+              .clearUnreadCount(arg.roomId);
+        } catch (e) {
+          state = state.copyWith(error: e.toString());
+        }
+      },
+    );
   }
 
   void markAsRead(String messageId) {
@@ -1052,7 +1080,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       return;
     }
     _pendingReadMessageIds.add(messageId);
-    
+
     _readBatchTimer?.cancel();
     _readBatchTimer = Timer(const Duration(milliseconds: 800), () async {
       if (_pendingReadMessageIds.isEmpty) return;

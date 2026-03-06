@@ -64,6 +64,15 @@ func (u *friendUsecase) SendFriendRequest(c context.Context, senderID, receiverU
 		return errors.New("already friends")
 	}
 
+	// === Block validation added here ===
+	blocked, err := u.friendRepo.IsBlocked(ctx, senderID, receiver.ID)
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return errors.New("cannot send friend request")
+	}
+
 	// Create Request
 	req := &domain.FriendRequest{
 		SenderID:   senderID,
@@ -151,4 +160,28 @@ func (u *friendUsecase) UnfriendUser(c context.Context, currentUserID, targetUse
 		return errors.New("not friends")
 	}
 	return u.friendRepo.RemoveFriend(ctx, currentUserID, targetUserID)
+}
+
+func (u *friendUsecase) BlockUser(c context.Context, blockerID, blockedTargetID string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	if blockerID == blockedTargetID {
+		return errors.New("cannot block yourself")
+	}
+	return u.friendRepo.BlockUser(ctx, blockerID, blockedTargetID)
+}
+
+func (u *friendUsecase) UnblockUser(c context.Context, blockerID, blockedTargetID string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	return u.friendRepo.UnblockUser(ctx, blockerID, blockedTargetID)
+}
+
+func (u *friendUsecase) IsBlocked(c context.Context, userA, userB string) (bool, error) {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	return u.friendRepo.IsBlocked(ctx, userA, userB)
 }

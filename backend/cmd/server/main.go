@@ -152,7 +152,7 @@ func main() {
 	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService)
 
 	// Create SocketController
-	socketController := websocket.NewSocketController(hub, messageUsecase)
+	socketController := websocket.NewSocketController(hub, messageUsecase, friendRepo)
 
 	go hub.Run()
 

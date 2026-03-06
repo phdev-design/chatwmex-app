@@ -2,11 +2,17 @@ class ChatSetting {
   final String chatId;
   final int disappearingTimer;
   final int? muteUntil; // 新增：Unix timestamp（秒），null=不靜音，-1=永久靜音
+  final int saveToCameraRoll; // 0=依全域設定, 1=永遠開啟, 2=永遠關閉
+  final int autoDownload; // 0=依全域設定, 1=永遠, 2=僅Wi-Fi, 3=永不
+  final int mediaQuality; // 0=依全域設定, 1=高畫質HD, 2=節省數據
 
   const ChatSetting({
     required this.chatId,
     required this.disappearingTimer,
     this.muteUntil,
+    this.saveToCameraRoll = 0,
+    this.autoDownload = 0,
+    this.mediaQuality = 0,
   });
 
   factory ChatSetting.fromJson(Map<String, dynamic> json) {
@@ -14,6 +20,9 @@ class ChatSetting {
       chatId: json['chat_id'] ?? '',
       disappearingTimer: json['disappearing_timer'] ?? 0,
       muteUntil: json['mute_until'] as int?,
+      saveToCameraRoll: json['save_to_camera_roll'] ?? 0,
+      autoDownload: json['auto_download'] ?? 0,
+      mediaQuality: json['media_quality'] ?? 0,
     );
   }
 

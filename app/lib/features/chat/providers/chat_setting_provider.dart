@@ -22,9 +22,10 @@ class ChatSettingService {
   }
 
   Future<ChatSetting> updateChatSetting(String chatID, int timerSeconds) async {
-    final res = await _network.client.put('/chats/$chatID/settings', data: {
-      'disappearing_timer': timerSeconds,
-    });
+    final res = await _network.client.put(
+      '/chats/$chatID/settings',
+      data: {'disappearing_timer': timerSeconds},
+    );
     final data = res.data;
     if (data is Map<String, dynamic> && data.containsKey('data')) {
       return ChatSetting.fromJson(data['data']);
@@ -37,9 +38,31 @@ class ChatSettingService {
   /// [muteUntil] = -1  表示永久靜音
   /// [muteUntil] = Unix timestamp（秒）表示定時靜音
   Future<ChatSetting> updateMuteUntil(String chatID, int? muteUntil) async {
-    final res = await _network.client.put('/chats/$chatID/settings', data: {
-      'mute_until': muteUntil,
-    });
+    final res = await _network.client.put(
+      '/chats/$chatID/settings',
+      data: {'mute_until': muteUntil},
+    );
+    final data = res.data;
+    if (data is Map<String, dynamic> && data.containsKey('data')) {
+      return ChatSetting.fromJson(data['data']);
+    }
+    return ChatSetting.fromJson(data);
+  }
+
+  Future<ChatSetting> updateMediaSettings(
+    String chatID,
+    int saveToCameraRoll,
+    int autoDownload,
+    int mediaQuality,
+  ) async {
+    final res = await _network.client.put(
+      '/chats/$chatID/settings',
+      data: {
+        'save_to_camera_roll': saveToCameraRoll,
+        'auto_download': autoDownload,
+        'media_quality': mediaQuality,
+      },
+    );
     final data = res.data;
     if (data is Map<String, dynamic> && data.containsKey('data')) {
       return ChatSetting.fromJson(data['data']);
@@ -48,7 +71,10 @@ class ChatSettingService {
   }
 }
 
-final chatSettingProvider = FutureProvider.family<ChatSetting, String>((ref, chatID) async {
+final chatSettingProvider = FutureProvider.family<ChatSetting, String>((
+  ref,
+  chatID,
+) async {
   final service = ref.watch(chatSettingServiceProvider);
   return service.getChatSetting(chatID);
 });

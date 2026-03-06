@@ -28,6 +28,10 @@ func NewFriendHandler(r *gin.Engine, fus domain.FriendUsecase, jwtSecret string)
 		api.GET("/requests", handler.GetRequests)
 		api.GET("/list", handler.GetFriends)
 		api.DELETE("/unfriend/:id", handler.Unfriend)
+		// Block routes
+		api.POST("/block", handler.BlockUser)
+		api.POST("/unblock", handler.UnblockUser)
+		api.GET("/block/check", handler.CheckIsBlocked)
 	}
 }
 
@@ -114,4 +118,61 @@ func (h *FriendHandler) Unfriend(c *gin.Context) {
 		return
 	}
 	response.Success(c, "Unfriended successfully")
+}
+
+func (h *FriendHandler) BlockUser(c *gin.Context) {
+	var body map[string]string
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	targetID, ok := body["target_id"]
+	if !ok || targetID == "" {
+		response.Error(c, http.StatusBadRequest, "target_id is required")
+		return
+	}
+
+	blockerID := c.GetString(middleware.ContextUserIDKey)
+	if err := h.FriendUsecase.BlockUser(c.Request.Context(), blockerID, targetID); err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, "Blocked successfully")
+}
+
+func (h *FriendHandler) UnblockUser(c *gin.Context) {
+	var body map[string]string
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	targetID, ok := body["target_id"]
+	if !ok || targetID == "" {
+		response.Error(c, http.StatusBadRequest, "target_id is required")
+		return
+	}
+
+	blockerID := c.GetString(middleware.ContextUserIDKey)
+	if err := h.FriendUsecase.UnblockUser(c.Request.Context(), blockerID, targetID); err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, "Unblocked successfully")
+}
+
+func (h *FriendHandler) CheckIsBlocked(c *gin.Context) {
+	targetID := c.Query("target_id")
+	if targetID == "" {
+		response.Error(c, http.StatusBadRequest, "target_id is required")
+		return
+	}
+
+	userID := c.GetString(middleware.ContextUserIDKey)
+	isBlocked, err := h.FriendUsecase.IsBlocked(c.Request.Context(), userID, targetID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, map[string]bool{"is_blocked": isBlocked})
 }

@@ -314,6 +314,18 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
 
     ref.listen(chatRoomProvider(_params), (prev, next) {
       if (!mounted) return;
+
+      // 監聽錯誤訊息
+      if (next.error != null && next.error != prev?.error) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(next.error!)));
+        // 顯示後清除錯誤狀態，避免重複觸發
+        Future.microtask(
+          () => ref.read(chatRoomProvider(_params).notifier).clearError(),
+        );
+      }
+
       final prevCount = prev?.messages.length ?? 0;
       final nextCount = next.messages.length;
       if (nextCount > prevCount) {

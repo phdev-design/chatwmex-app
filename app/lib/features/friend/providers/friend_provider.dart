@@ -87,6 +87,20 @@ class FriendViewModel extends Notifier<FriendState> {
       throw e;
     }
   }
+
+  Future<void> blockUser(String targetId) async {
+    await _repository.blockUser(targetId);
+    await loadAll(); // 重新整理好友列表
+  }
+
+  Future<void> unblockUser(String targetId) async {
+    await _repository.unblockUser(targetId);
+    await loadAll();
+  }
+
+  Future<bool> isBlocked(String targetId) async {
+    return await _repository.isBlocked(targetId);
+  }
 }
 
 final friendViewModelProvider = NotifierProvider<FriendViewModel, FriendState>(FriendViewModel.new);

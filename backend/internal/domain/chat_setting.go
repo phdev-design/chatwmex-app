@@ -10,8 +10,11 @@ import (
 type ChatSetting struct {
 	ID                string    `json:"id"`
 	ChatID            string    `json:"chat_id"`
-	DisappearingTimer int       `json:"disappearing_timer"` // Timer in seconds (e.g., 86400 for 24h, 0 for off)
-	MuteUntil         *int64    `json:"mute_until"`         // 新增：Unix timestamp，nil=不靜音，-1=永久靜音
+	DisappearingTimer int       `json:"disappearing_timer"`  // Timer in seconds (e.g., 86400 for 24h, 0 for off)
+	MuteUntil         *int64    `json:"mute_until"`          // 新增：Unix timestamp，nil=不靜音，-1=永久靜音
+	SaveToCameraRoll  *int      `json:"save_to_camera_roll"` // 0=Global, 1=Always, 2=Never
+	AutoDownload      *int      `json:"auto_download"`       // 0=Global, 1=Always, 2=Wi-Fi Only, 3=Never
+	MediaQuality      *int      `json:"media_quality"`       // 0=Global, 1=HD, 2=Data Saver
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
@@ -25,5 +28,6 @@ type ChatSettingRepository interface {
 type ChatSettingUsecase interface {
 	GetChatSetting(ctx context.Context, chatID string) (*ChatSetting, error)
 	UpdateDisappearingTimer(ctx context.Context, chatID string, timerSeconds int) (*ChatSetting, error)
-	UpdateMuteUntil(ctx context.Context, chatID string, muteUntil *int64) (*ChatSetting, error) // 新增
+	UpdateMuteUntil(ctx context.Context, chatID string, muteUntil *int64) (*ChatSetting, error)
+	UpdateMediaSettings(ctx context.Context, chatID string, saveToCameraRoll, autoDownload, mediaQuality *int) (*ChatSetting, error)
 }

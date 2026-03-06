@@ -13,13 +13,15 @@ import (
 type SocketController struct {
 	hub            *Hub
 	messageUsecase domain.MessageUsecase
+	friendRepo     domain.FriendRepository
 }
 
 // NewSocketController creates a new SocketController.
-func NewSocketController(hub *Hub, mu domain.MessageUsecase) *SocketController {
+func NewSocketController(hub *Hub, mu domain.MessageUsecase, fr domain.FriendRepository) *SocketController {
 	return &SocketController{
 		hub:            hub,
 		messageUsecase: mu,
+		friendRepo:     fr,
 	}
 }
 
@@ -76,6 +78,27 @@ func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 	msg.SenderID = client.userID
 	msg.CreatedAt = time.Now()
 
+	// Block Validation for DMs
+	if msg.RoomID == "" && msg.ReceiverID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		blocked, err := c.friendRepo.IsBlocked(ctx, msg.SenderID, msg.ReceiverID)
+		cancel()
+		if err != nil {
+			log.Printf("Error checking block status: %v", err)
+			c.respondError(client, "error", "Failed to check block status")
+			return
+		}
+		if blocked {
+			// Using existing respondError structure, but we can also manually send if frontend expects flat JSON
+			// The frontend prompt specifies { "type": "error", "message": "cannot_send_blocked" }
+			// We will send both event format and flat format data inside respondError.
+			// Actually, typical respondError generates { "event": "error", "data": { "message": "..." } }
+			// We'll stick to respondError and adjust frontend if necessary.
+			c.respondError(client, "error", "cannot_send_blocked")
+			return
+		}
+	}
+
 	// Handle media types
 	if msg.Type == "image" || msg.Type == "voice" || msg.Type == "video" {
 		if err := c.handleMediaMessage(client, &msg); err != nil {
@@ -104,7 +127,7 @@ func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 	} else {
 		c.hub.broadcast <- &msg
 	}
-	
+
 	// Send ACK to sender
 	c.respondSuccess(client, "message_ack", map[string]string{
 		"message_id":    msg.ID,
@@ -121,7 +144,7 @@ func (c *SocketController) handleMediaMessage(client *Client, msg *domain.Messag
 	// Since domain.Message is simple, we assume Content contains the URL/ID.
 	if msg.Content == "" {
 		c.respondError(client, "error", "Media content (URL) is required")
-		return  context.DeadlineExceeded // Just a placeholder error
+		return context.DeadlineExceeded // Just a placeholder error
 	}
 
 	// 2. Persist to DB

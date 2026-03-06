@@ -6,8 +6,10 @@ import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/chat/ui/room_media_page.dart';
 import 'package:app/features/chat/providers/chat_setting_provider.dart';
 import 'package:app/features/chat/providers/e2ee_provider.dart';
-import 'package:app/features/chat/ui/encryption_info_page.dart'; // 👉 匯入 EncryptionInfoPage
+import 'package:app/features/chat/ui/encryption_info_page.dart';
+import 'package:app/features/chat/ui/media_visibility_settings_page.dart'; // 👉 匯入媒體設定頁面
 import 'package:app/features/friend/providers/friend_provider.dart';
+import 'package:app/features/friend/repositories/friend_repository.dart';
 
 class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -32,6 +34,27 @@ class ContactInfoPage extends ConsumerStatefulWidget {
 }
 
 class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
+  bool _isBlocked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBlockStatus();
+  }
+
+  Future<void> _checkBlockStatus() async {
+    try {
+      final isBlocked = await ref
+          .read(friendRepositoryProvider)
+          .isBlocked(widget.roomId);
+      if (mounted) {
+        setState(() => _isBlocked = isBlocked);
+      }
+    } catch (e) {
+      debugPrint('檢查封鎖狀態失敗: $e');
+    }
+  }
+
   String _formatTimerOption(int seconds) {
     if (seconds == 0) return '關閉';
     if (seconds == 86400) return '24小時';
@@ -593,7 +616,16 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         '媒體瀏覽設定',
                         style: TextStyle(color: primaryTextColor),
                       ),
-                      onTap: () {},
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => MediaVisibilitySettingsPage(
+                              roomId: widget.roomId,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -804,10 +836,84 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     ListTile(
                       leading: Icon(Icons.block, color: dangerColor),
                       title: Text(
-                        '封鎖 ${widget.title}',
+                        _isBlocked
+                            ? '解除封鎖 ${widget.title}'
+                            : '封鎖 ${widget.title}',
                         style: TextStyle(color: dangerColor),
                       ),
-                      onTap: () {},
+                      onTap: () async {
+                        // 1. 根據目前狀態決定動作
+                        final action = _isBlocked ? '解除封鎖' : '封鎖';
+
+                        // 2. 顯示確認 Dialog
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.surface,
+                            title: Text('$action ${widget.title}？'),
+                            content: _isBlocked
+                                ? const Text('解除封鎖後，對方可以再次傳訊息給你和發送好友申請。')
+                                : const Text(
+                                    '封鎖後，對方無法傳訊息給你，也無法發送好友申請，直至你解除封鎖。',
+                                  ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                ),
+                                child: Text(action),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmed != true) return;
+
+                        // 3. 執行封鎖 / 解封
+                        try {
+                          if (_isBlocked) {
+                            await ref
+                                .read(friendViewModelProvider.notifier)
+                                .unblockUser(widget.roomId);
+                          } else {
+                            await ref
+                                .read(friendViewModelProvider.notifier)
+                                .blockUser(widget.roomId);
+                          }
+                          setState(() => _isBlocked = !_isBlocked);
+
+                          // 4. 顯示成功 SnackBar
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  _isBlocked
+                                      ? '已封鎖 ${widget.title}'
+                                      : '已解除封鎖 ${widget.title}',
+                                ),
+                              ),
+                            );
+                          }
+
+                          // 5. 若是封鎖，返回上一頁
+                          if (_isBlocked && mounted) {
+                            context.pop();
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
+                          }
+                        }
+                      },
                     ),
                     Divider(height: 1, color: dividerColor),
                     ListTile(

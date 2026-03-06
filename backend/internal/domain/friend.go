@@ -29,6 +29,13 @@ type Friend struct {
 	Email    string `json:"email"`
 }
 
+type BlockRecord struct {
+	ID        string    `json:"id"`
+	BlockerID string    `json:"blocker_id"`
+	BlockedID string    `json:"blocked_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type FriendRepository interface {
 	CreateRequest(ctx context.Context, req *FriendRequest) error
 	GetRequestByID(ctx context.Context, id string) (*FriendRequest, error)
@@ -39,6 +46,10 @@ type FriendRepository interface {
 	GetFriends(ctx context.Context, userID string) ([]*Friend, error)
 	IsFriend(ctx context.Context, userID, friendID string) (bool, error)
 	RemoveFriend(ctx context.Context, userID, friendID string) error
+	BlockUser(ctx context.Context, blockerID, blockedID string) error
+	UnblockUser(ctx context.Context, blockerID, blockedID string) error
+	IsBlocked(ctx context.Context, blockerID, blockedID string) (bool, error)
+	GetBlockedUsers(ctx context.Context, userID string) ([]*Friend, error)
 }
 
 type FriendUsecase interface {
@@ -48,4 +59,7 @@ type FriendUsecase interface {
 	GetPendingRequests(ctx context.Context, userID string) ([]*FriendRequest, error)
 	GetFriends(ctx context.Context, userID string) ([]*Friend, error)
 	UnfriendUser(ctx context.Context, currentUserID, targetUserID string) error
+	BlockUser(ctx context.Context, blockerID, blockedTargetID string) error
+	UnblockUser(ctx context.Context, blockerID, blockedTargetID string) error
+	IsBlocked(ctx context.Context, userA, userB string) (bool, error)
 }

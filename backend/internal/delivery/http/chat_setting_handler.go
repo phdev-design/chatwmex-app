@@ -81,6 +81,9 @@ func (h *ChatSettingHandler) UpdateSettings(c *gin.Context) {
 	var req struct {
 		DisappearingTimer *int   `json:"disappearing_timer"`
 		MuteUntil         *int64 `json:"mute_until"`
+		SaveToCameraRoll  *int   `json:"save_to_camera_roll"`
+		AutoDownload      *int   `json:"auto_download"`
+		MediaQuality      *int   `json:"media_quality"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -91,7 +94,9 @@ func (h *ChatSettingHandler) UpdateSettings(c *gin.Context) {
 	var setting *domain.ChatSetting
 	var err error
 
-	if req.MuteUntil != nil {
+	if req.SaveToCameraRoll != nil || req.AutoDownload != nil || req.MediaQuality != nil {
+		setting, err = h.usecase.UpdateMediaSettings(c.Request.Context(), chatID, req.SaveToCameraRoll, req.AutoDownload, req.MediaQuality)
+	} else if req.MuteUntil != nil {
 		setting, err = h.usecase.UpdateMuteUntil(c.Request.Context(), chatID, req.MuteUntil)
 	} else if req.DisappearingTimer != nil {
 		setting, err = h.usecase.UpdateDisappearingTimer(c.Request.Context(), chatID, *req.DisappearingTimer)

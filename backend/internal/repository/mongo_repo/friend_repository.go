@@ -14,6 +14,7 @@ import (
 )
 
 const friendRequestCollectionName = "friend_requests"
+const userBlocksCollectionName = "user_blocks"
 
 type mongoFriendRequest struct {
 	ID         primitive.ObjectID         `bson:"_id,omitempty"`
@@ -25,8 +26,9 @@ type mongoFriendRequest struct {
 }
 
 type FriendRepository struct {
-	collection     *mongo.Collection
-	userCollection *mongo.Collection
+	collection      *mongo.Collection
+	userCollection  *mongo.Collection
+	blockCollection *mongo.Collection
 }
 
 func NewFriendRepository(db *mongo.Database) domain.FriendRepository {
@@ -47,9 +49,17 @@ func NewFriendRepository(db *mongo.Database) domain.FriendRepository {
 	defer cancel()
 	collection.Indexes().CreateOne(ctx, model)
 
+	blockCollection := db.Collection(userBlocksCollectionName)
+	blockModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "blocker_id", Value: 1}, {Key: "blocked_id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	}
+	blockCollection.Indexes().CreateOne(ctx, blockModel)
+
 	return &FriendRepository{
-		collection:     collection,
-		userCollection: userCollection,
+		collection:      collection,
+		userCollection:  userCollection,
+		blockCollection: blockCollection,
 	}
 }
 

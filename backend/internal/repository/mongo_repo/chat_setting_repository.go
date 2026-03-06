@@ -21,6 +21,9 @@ type mongoChatSetting struct {
 	ChatID            string             `bson:"chat_id"`
 	DisappearingTimer int                `bson:"disappearing_timer"` // Seconds
 	MuteUntil         *int64             `bson:"mute_until"`
+	SaveToCameraRoll  *int               `bson:"save_to_camera_roll"`
+	AutoDownload      *int               `bson:"auto_download"`
+	MediaQuality      *int               `bson:"media_quality"`
 	UpdatedAt         time.Time          `bson:"updated_at"`
 }
 
@@ -51,6 +54,9 @@ func (r *ChatSettingRepository) toDomain(m *mongoChatSetting) *domain.ChatSettin
 		ChatID:            m.ChatID,
 		DisappearingTimer: m.DisappearingTimer,
 		MuteUntil:         m.MuteUntil,
+		SaveToCameraRoll:  m.SaveToCameraRoll,
+		AutoDownload:      m.AutoDownload,
+		MediaQuality:      m.MediaQuality,
 		UpdatedAt:         m.UpdatedAt,
 	}
 }
@@ -76,9 +82,12 @@ func (r *ChatSettingRepository) UpsertSetting(ctx context.Context, setting *doma
 	filter := bson.M{"chat_id": setting.ChatID}
 	update := bson.M{
 		"$set": bson.M{
-			"disappearing_timer": setting.DisappearingTimer,
-			"mute_until":         setting.MuteUntil,
-			"updated_at":         time.Now(),
+			"disappearing_timer":  setting.DisappearingTimer,
+			"mute_until":          setting.MuteUntil,
+			"save_to_camera_roll": setting.SaveToCameraRoll,
+			"auto_download":       setting.AutoDownload,
+			"media_quality":       setting.MediaQuality,
+			"updated_at":          time.Now(),
 		},
 	}
 	opts := options.Update().SetUpsert(true)

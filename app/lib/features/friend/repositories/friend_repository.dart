@@ -36,6 +36,22 @@ class FriendRepository {
   Future<void> unfriend(String targetUserId) async {
     await _networkService.client.delete('/friends/unfriend/$targetUserId');
   }
+
+  Future<void> blockUser(String targetId) async {
+    await _networkService.client.post('/friends/block', data: {'target_id': targetId});
+  }
+
+  Future<void> unblockUser(String targetId) async {
+    await _networkService.client.post('/friends/unblock', data: {'target_id': targetId});
+  }
+
+  Future<bool> isBlocked(String targetId) async {
+    final response = await _networkService.client.get(
+      '/friends/block/check',
+      queryParameters: {'target_id': targetId},
+    );
+    return response.data['data']['is_blocked'] == true;
+  }
 }
 
 final friendRepositoryProvider = Provider<FriendRepository>((ref) {
