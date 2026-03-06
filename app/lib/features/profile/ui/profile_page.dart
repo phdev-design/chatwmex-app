@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/profile/ui/edit_profile_page.dart';
 import 'package:app/features/profile/ui/settings_page.dart';
@@ -25,7 +26,16 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   void _logout() async {
-    await ref.read(storageServiceProvider).deleteAll();
+    // ✅ 清記憶體中的 crypto 狀態
+    await ref.read(cryptoServiceProvider).clearKeys();
+    // ✅ 只刪認證相關資料，保留 E2EE 私鑰
+    final storage = ref.read(storageServiceProvider);
+    await storage.delete('jwt_token');
+    await storage.delete('user_id');
+    await storage.delete('username');
+    await storage.delete('email');
+    await storage.delete('phone_number');
+    await storage.delete('avatar_url');
     if (mounted) context.go('/login');
   }
 

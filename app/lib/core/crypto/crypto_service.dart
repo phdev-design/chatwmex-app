@@ -16,8 +16,9 @@ class CryptoService {
   SimpleKeyPair? _keyPair;
   String? _publicKeyBase64;
 
-  static const String _privateKeyStorageKey = 'e2ee_private_key';
-  static const String _privateKeyHistoryStorageKey = 'e2ee_private_key_history'; // 新增
+  String? _currentUserId;
+  String _privateKeyStorageKey(String userId) => 'e2ee_private_key_$userId';
+  static const String _privateKeyHistoryStorageKey = 'e2ee_private_key_history';
 
   bool get isInitialized => _keyPair != null;
   String? get publicKeyBase64 => _publicKeyBase64;
@@ -48,42 +49,45 @@ class CryptoService {
     }
   }
 
-  /// Initialize the keypair. Loads from secure storage or generates a new one.
-  Future<String> initialize() async {
-    if (isInitialized) {
+  /// Initialize the keypair. Requires userId to isolate keys per account.
+  Future<String> initialize({required String userId}) async {
+    // 已初始化且是同一個 user，直接返回
+    if (isInitialized && _currentUserId == userId) {
       return _publicKeyBase64!;
     }
 
-    final storedPrivateKeyBase64 = await _secureStorage.read(key: _privateKeyStorageKey);
-    
+    // 切換帳號：重置記憶體狀態
+    _keyPair = null;
+    _publicKeyBase64 = null;
+    _currentUserId = userId;
+
+    final storageKey = _privateKeyStorageKey(userId);
+    final storedPrivateKeyBase64 = await _secureStorage.read(key: storageKey);
+
     if (storedPrivateKeyBase64 != null) {
-      // Load existing keypair
+      // 載入現有 keypair
       final privateKeyBytes = base64Decode(storedPrivateKeyBase64);
       final keyPair = await _x25519.newKeyPairFromSeed(privateKeyBytes);
       _keyPair = keyPair;
       final pubKey = await keyPair.extractPublicKey();
       _publicKeyBase64 = base64Encode(pubKey.bytes);
+      // ✅ Fix: 確保現有 key 也進入 history（原本漏掉了）
+      await _appendToHistoryPrivateKeys(storedPrivateKeyBase64);
       return _publicKeyBase64!;
     }
 
-    // Generate new keypair
-    if (storedPrivateKeyBase64 != null) {
-      await _appendToHistoryPrivateKeys(storedPrivateKeyBase64);
-    }
-    
+    // 生成新 keypair
     final newKeyPair = await _x25519.newKeyPair();
     final extractedPrivateKey = await newKeyPair.extractPrivateKeyBytes();
-    
-    // Store private key securely
-    await _secureStorage.write(
-      key: _privateKeyStorageKey,
-      value: base64Encode(extractedPrivateKey),
-    );
-    
+    final privateKeyBase64 = base64Encode(extractedPrivateKey);
+
+    await _secureStorage.write(key: storageKey, value: privateKeyBase64);
+    await _appendToHistoryPrivateKeys(privateKeyBase64); // ✅ 新 key 也存入 history
+
     _keyPair = newKeyPair;
     final pubKey = await newKeyPair.extractPublicKey();
     _publicKeyBase64 = base64Encode(pubKey.bytes);
-    
+
     return _publicKeyBase64!;
   }
 
@@ -260,13 +264,15 @@ class CryptoService {
 
   /// 取得當前本機的私鑰 (供加密備份時使用)
   Future<String?> getRawPrivateKey() async {
-    return await _secureStorage.read(key: _privateKeyStorageKey);
+    if (_currentUserId == null) return null;
+    return await _secureStorage.read(key: _privateKeyStorageKey(_currentUserId!));
   }
 
   /// 如果從雲端還原了私鑰，手動覆寫本地儲存的私鑰
   Future<void> restorePrivateKey(String rawPrivateKeyBase64) async {
+    if (_currentUserId == null) return;
     await _secureStorage.write(
-      key: _privateKeyStorageKey,
+      key: _privateKeyStorageKey(_currentUserId!),
       value: rawPrivateKeyBase64,
     );
     // 重新載入 KeyPair
@@ -277,12 +283,12 @@ class CryptoService {
     _publicKeyBase64 = base64Encode(pubKey.bytes);
   }
 
-  // Clear keys for logout
+  // Clear keys for logout — 只清記憶體，保留 SecureStorage 讓舊訊息可繼續解密
   Future<void> clearKeys() async {
     _keyPair = null;
     _publicKeyBase64 = null;
-    await _secureStorage.delete(key: _privateKeyStorageKey);
-    await _secureStorage.delete(key: _privateKeyHistoryStorageKey); // 新增
+    _currentUserId = null;
+    // ✅ 不刪除 SecureStorage，各帳號的 key 和 history 永久保留
   }
 }
 

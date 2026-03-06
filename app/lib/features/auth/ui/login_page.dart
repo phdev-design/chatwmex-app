@@ -64,6 +64,29 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (next.isAuthenticated) {
         context.go('/chat-list');
       }
+      
+      if (next.isRegistered && !(prev?.isRegistered ?? false)) {
+        // Reset registered state to avoid repeating
+        ref.read(authViewModelProvider.notifier).resetRegistered();
+        
+        // Switch back to login mode
+        setState(() => _isRegister = false);
+        
+        // Clear input fields
+        _usernameController.clear();
+        _passwordController.clear();
+        _emailController.clear();
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully! Please sign in.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      
       if (next.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(next.error!)),

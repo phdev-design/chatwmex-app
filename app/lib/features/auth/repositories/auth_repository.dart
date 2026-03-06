@@ -55,16 +55,42 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
+    String? pendingDeviceId;
     try {
       // Unregister Device
       final deviceId = await _notificationService.getSubscriptionId();
       if (deviceId != null) {
-        await _networkService.client.delete('/devices/$deviceId');
+        bool success = false;
+        for (int i = 0; i < 3; i++) {
+          try {
+            await _networkService.client.delete('/devices/$deviceId');
+            success = true;
+            break;
+          } catch (e) {
+            print('Failed to unregister device (Attempt ${i + 1}): $e');
+            if (i < 2) {
+              await Future.delayed(const Duration(seconds: 1));
+            }
+          }
+        }
+        if (!success) {
+          pendingDeviceId = deviceId;
+        }
       }
     } catch (e) {
-      print('Failed to unregister device: $e');
+      print('Error during logout device unregistration: $e');
     } finally {
-      await _storageService.deleteAll();
+      // ✅ 只刪認證相關資料，不要 deleteAll()，避免清除 E2EE 私鑰
+      await _storageService.delete('jwt_token');
+      await _storageService.delete('user_id');
+      await _storageService.delete('username');
+      await _storageService.delete('email');
+      await _storageService.delete('phone_number');
+      await _storageService.delete('avatar_url');
+      // Restore pending unregister if failed
+      if (pendingDeviceId != null) {
+        await _storageService.save('pending_unregister_device_id', pendingDeviceId);
+      }
     }
   }
 }

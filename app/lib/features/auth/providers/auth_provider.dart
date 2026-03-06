@@ -6,6 +6,7 @@ import 'package:app/features/auth/models/auth_state.dart';
 import 'package:app/core/notification/notification_service.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
+import 'package:app/core/storage/storage_service.dart';
 
 class AuthViewModel extends Notifier<AuthState> {
   late final AuthRepository _repository;
@@ -25,36 +26,51 @@ class AuthViewModel extends Notifier<AuthState> {
     try {
       await _repository.login(username, password);
       final crypto = ref.read(cryptoServiceProvider);
-      final pubKey = await crypto.initialize();
+      final storage = ref.read(storageServiceProvider);
+      final userId = await storage.read('user_id') ?? '';
+      final pubKey = await crypto.initialize(userId: userId);
       await _repository.updatePublicKey(pubKey);
-      await _notificationService.initOneSignal(
-        "88247551-a540-4ffc-89aa-e6ea9478b7be",
-      );
-      final subscriptionId = await _notificationService.getSubscriptionId();
-      if (subscriptionId != null) {
-        await _networkService.client.post(
-          '/devices/register',
-          data: {
-            'device_id': subscriptionId,
-            'platform': Platform.isAndroid ? 'android' : 'ios',
-          },
+      try {
+        await _notificationService.initOneSignal(
+          "88247551-a540-4ffc-89aa-e6ea9478b7be",
+        );
+        final subscriptionId = await _notificationService.getSubscriptionId();
+        if (subscriptionId != null) {
+          await _networkService.client.post(
+            '/devices/register',
+            data: {
+              'device_id': subscriptionId,
+              'platform': Platform.isAndroid ? 'android' : 'ios',
+            },
+          );
+        }
+        await _notificationService.handlePendingNavigation();
+        state = state.copyWith(isLoading: false, isAuthenticated: true);
+      } catch (e) {
+        print('Post-login device registration warning: $e');
+        state = state.copyWith(
+          isLoading: false,
+          isAuthenticated: true,
+          error: '登入成功，但推播通知註冊失敗，可能無法收到通知：${_parseError(e)}'
         );
       }
-      await _notificationService.handlePendingNavigation();
-      state = state.copyWith(isLoading: false, isAuthenticated: true);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _parseError(e));
     }
   }
 
   Future<void> register(String username, String password, String email) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, error: null, isRegistered: false);
     try {
       await _repository.register(username, password, email);
-      state = state.copyWith(isLoading: false);
+      state = state.copyWith(isLoading: false, isRegistered: true);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _parseError(e));
     }
+  }
+
+  void resetRegistered() {
+    state = state.copyWith(isRegistered: false);
   }
 
   String _parseError(Object e) {
