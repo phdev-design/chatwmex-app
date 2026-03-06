@@ -15,6 +15,7 @@ import 'package:equatable/equatable.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
+import 'package:app/features/chat/providers/e2ee_provider.dart'; // 👉 新增
 
 // State for the Chat Room
 class ChatRoomState {
@@ -480,6 +481,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     if (arg.isRoom) return m;
     if (m.isUnsent || m.content.isEmpty) return m;
 
+    // 👉 判斷 E2EE 開關，若為 false 直接跳過解密，以明文顯示
+    final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+    if (!isE2EEEnabled) return m;
+
     final opponentId = (m.senderId == arg.currentUserId) ? m.receiverId : m.senderId;
     if (opponentId == null) return m;
 
@@ -628,7 +633,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _addMessage(tempMessage);
 
     String payloadContent = content;
-    if (!arg.isRoom) {
+    final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+    
+    // 👉 判斷 E2EE 開關，若為 false 則直接傳送明文
+    if (!arg.isRoom && isE2EEEnabled) {
       final pubKey = await _getPublicKey(arg.roomId);
       if (pubKey != null) {
         try {
@@ -666,7 +674,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _updateMessageStatus(clientMsgId, MessageStatus.sending);
 
     String payloadContent = message.content;
-    if (!arg.isRoom) {
+    final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+
+    // 👉 判斷 E2EE 開關，若為 false 則直接傳送明文
+    if (!arg.isRoom && isE2EEEnabled) {
       final pubKey = await _getPublicKey(arg.roomId);
       if (pubKey != null) {
         try {
@@ -752,7 +763,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       _addMessage(tempMessage);
 
       String payloadContent = url;
-      if (!arg.isRoom) {
+      final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+
+      if (!arg.isRoom && isE2EEEnabled) {
         final pubKey = await _getPublicKey(arg.roomId);
         if (pubKey != null) {
           try {

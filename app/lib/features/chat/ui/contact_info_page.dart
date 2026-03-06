@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
-import 'package:app/features/chat/ui/room_media_page.dart'; // 1. 引入剛剛寫好的媒體庫頁面
+import 'package:app/features/chat/ui/room_media_page.dart';
 import 'package:app/features/chat/providers/chat_setting_provider.dart';
+import 'package:app/features/chat/providers/e2ee_provider.dart';
+import 'package:app/features/chat/ui/encryption_info_page.dart'; // 👉 匯入 EncryptionInfoPage
 
 class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -343,20 +345,67 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 color: surfaceColor,
                 child: Column(
                   children: [
-                    ListTile(
-                      leading: Icon(Icons.lock, color: secondaryTextColor),
-                      title: Text(
-                        '加密',
-                        style: TextStyle(color: primaryTextColor),
-                      ),
-                      subtitle: Text(
-                        '訊息和通話都受到端對端加密。點按以確認。',
-                        style: TextStyle(
-                          color: secondaryTextColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                      onTap: () {},
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final e2eeState = ref.watch(e2eeEnabledProvider(widget.roomId));
+                        final isE2EEEnabled = e2eeState.value ?? true;
+
+                        return ListTile(
+                          leading: Icon(Icons.lock, color: secondaryTextColor),
+                          title: Text('加密', style: TextStyle(color: primaryTextColor)),
+                          subtitle: Text(
+                            isE2EEEnabled ? '訊息和通話都受到端對端加密。點按以切換。' : '目前未加密傳輸。不建議關閉。',
+                            style: TextStyle(color: secondaryTextColor, fontSize: 13),
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EncryptionInfoPage(
+                                  contactId: widget.roomId,
+                                  contactName: widget.title,
+                                  currentUserId: '', // Not strictly needed for UI shown
+                                ),
+                              ),
+                            );
+                          },
+                          trailing: e2eeState.isLoading
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                              : Switch(
+                                  value: isE2EEEnabled,
+                                  onChanged: (val) {
+                                    if (val) {
+                                      // 開啟直接套用
+                                      ref.read(e2eeEnabledProvider(widget.roomId).notifier).toggle(true);
+                                    } else {
+                                      // 關閉需要確認
+                                      showDialog(
+                                        context: context,
+                                        builder: (dialogCtx) => AlertDialog(
+                                          backgroundColor: Theme.of(context).colorScheme.surface,
+                                          title: const Text('停用加密？'),
+                                          content: const Text('關閉後，與此聯絡人的訊息將不再加密傳輸，建議保持開啟以保護隱私。'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(dialogCtx),
+                                              child: const Text('取消'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                ref.read(e2eeEnabledProvider(widget.roomId).notifier).toggle(false);
+                                                Navigator.pop(dialogCtx);
+                                              },
+                                              child: Text('停用', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  activeThumbColor: accentColor,
+                                ),
+                        );
+                      },
                     ),
                     Divider(height: 1, color: dividerColor),
                     Consumer(
