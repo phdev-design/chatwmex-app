@@ -114,8 +114,8 @@ func (u *userUsecase) GetUserProfile(c context.Context, id string) (*domain.User
 	return user, nil
 }
 
-// UpdateProfile updates the user's email and phone number.
-func (u *userUsecase) UpdateProfile(c context.Context, id, email, phoneNumber string) error {
+// UpdateProfile updates the user's profile details.
+func (u *userUsecase) UpdateProfile(c context.Context, id, email, phoneNumber, firstName, lastName, bio string) error {
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
 
@@ -129,17 +129,25 @@ func (u *userUsecase) UpdateProfile(c context.Context, id, email, phoneNumber st
 		return errors.New("invalid phone number format")
 	}
 
-	// 3. Get User
+	// 3. Validate Bio length max 150
+	if len(bio) > 150 {
+		return errors.New("bio cannot exceed 150 characters")
+	}
+
+	// 4. Get User
 	user, err := u.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// 4. Update Fields
+	// 5. Update Fields
 	user.Email = email
 	user.PhoneNumber = phoneNumber
+	user.FirstName = firstName
+	user.LastName = lastName
+	user.Bio = bio
 
-	// 5. Save
+	// 6. Save
 	return u.userRepo.Update(ctx, user)
 }
 

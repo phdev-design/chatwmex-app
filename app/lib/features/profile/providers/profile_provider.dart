@@ -14,6 +14,9 @@ class ProfileState {
   final String username;
   final String email;
   final String phoneNumber;
+  final String firstName;
+  final String lastName;
+  final String bio;
   final String avatarUrl;
 
   const ProfileState({
@@ -23,6 +26,9 @@ class ProfileState {
     this.username = '',
     this.email = '',
     this.phoneNumber = '',
+    this.firstName = '',
+    this.lastName = '',
+    this.bio = '',
     this.avatarUrl = '',
   });
 
@@ -33,6 +39,9 @@ class ProfileState {
     String? username,
     String? email,
     String? phoneNumber,
+    String? firstName,
+    String? lastName,
+    String? bio,
     String? avatarUrl,
     bool clearError = false,
     bool clearSuccessMessage = false,
@@ -46,6 +55,9 @@ class ProfileState {
       username: username ?? this.username,
       email: email ?? this.email,
       phoneNumber: phoneNumber ?? this.phoneNumber,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      bio: bio ?? this.bio,
       avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
@@ -74,12 +86,18 @@ class ProfileViewModel extends Notifier<ProfileState> {
       await _storage.save('username', user.username);
       await _storage.save('email', user.email);
       await _storage.save('phone_number', user.phoneNumber ?? '');
+      await _storage.save('first_name', user.firstName ?? '');
+      await _storage.save('last_name', user.lastName ?? '');
+      await _storage.save('bio', user.bio ?? '');
       await _storage.save('avatar_url', user.avatarUrl ?? '');
       state = state.copyWith(
         isLoading: false,
         username: user.username,
         email: user.email,
         phoneNumber: user.phoneNumber ?? '',
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        bio: user.bio ?? '',
         avatarUrl: user.avatarUrl ?? '',
       );
     } catch (e) {
@@ -91,20 +109,38 @@ class ProfileViewModel extends Notifier<ProfileState> {
     }
   }
 
-  Future<void> updateProfile(String email, String phoneNumber) async {
+  Future<void> updateProfile(
+    String email,
+    String phoneNumber,
+    String firstName,
+    String lastName,
+    String bio,
+  ) async {
     state = state.copyWith(
       isLoading: true,
       clearError: true,
       clearSuccessMessage: true,
     );
     try {
-      await _repository.updateProfile(email, phoneNumber);
+      await _repository.updateProfile(
+        email,
+        phoneNumber,
+        firstName,
+        lastName,
+        bio,
+      );
       await _storage.save('email', email);
       await _storage.save('phone_number', phoneNumber);
+      await _storage.save('first_name', firstName);
+      await _storage.save('last_name', lastName);
+      await _storage.save('bio', bio);
       state = state.copyWith(
         isLoading: false,
         email: email,
         phoneNumber: phoneNumber,
+        firstName: firstName,
+        lastName: lastName,
+        bio: bio,
         successMessage: "Profile updated successfully",
       );
     } catch (e) {

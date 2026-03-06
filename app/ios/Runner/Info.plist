@@ -77,5 +77,21 @@
     <string>需要相簿權限以上傳頭像</string>
     <key>NSCameraUsageDescription</key>
     <string>需要相機權限以拍攝頭像</string>
+
+    <!-- Google Sign-in Section -->
+    <key>GIDClientID</key>
+    <string>YOUR_IOS_CLIENT_ID</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>YOUR_REVERSED_IOS_CLIENT_ID</string>
+            </array>
+        </dict>
+    </array>
+    <!-- End of the Google Sign-in Section -->
 </dict>
 </plist>

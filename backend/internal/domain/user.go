@@ -11,6 +11,9 @@ type User struct {
 	Username            string    `json:"username"`
 	Email               string    `json:"email"`
 	PhoneNumber         string    `json:"phone_number"`
+	FirstName           string    `json:"first_name,omitempty"`
+	LastName            string    `json:"last_name,omitempty"`
+	Bio                 string    `json:"bio,omitempty"`
 	AvatarURL           string    `json:"avatar_url,omitempty"`
 	PublicKey           string    `json:"public_key,omitempty"` // X25519 public key in Base64
 	EncryptedPrivateKey string    `json:"encrypted_private_key,omitempty"`
@@ -42,8 +45,8 @@ type UserUsecase interface {
 	Login(ctx context.Context, usernameOrEmail, password string) (string, error)
 	// GetUserProfile retrieves the user profile by ID.
 	GetUserProfile(ctx context.Context, id string) (*User, error)
-	// UpdateProfile updates the user's email and phone number.
-	UpdateProfile(ctx context.Context, id, email, phoneNumber string) error
+	// UpdateProfile updates the user's profile details.
+	UpdateProfile(ctx context.Context, id, email, phoneNumber, firstName, lastName, bio string) error
 	// UpdateAvatar updates the user's avatar URL.
 	UpdateAvatar(ctx context.Context, id, avatarURL string) error
 	// UpdatePublicKey updates the user's X25519 public key for E2EE.

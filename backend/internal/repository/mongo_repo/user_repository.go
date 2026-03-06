@@ -23,6 +23,9 @@ type mongoUser struct {
 	Username            string             `bson:"username"`
 	Email               string             `bson:"email,omitempty"`
 	PhoneNumber         string             `bson:"phone_number,omitempty"`
+	FirstName           string             `bson:"first_name,omitempty"`
+	LastName            string             `bson:"last_name,omitempty"`
+	Bio                 string             `bson:"bio,omitempty"`
 	AvatarURL           string             `bson:"avatar_url,omitempty"`
 	PublicKey           string             `bson:"public_key,omitempty"`
 	EncryptedPrivateKey string             `bson:"encrypted_private_key,omitempty"`
@@ -84,6 +87,9 @@ func (r *UserRepository) toDomain(u *mongoUser) *domain.User {
 		Username:            u.Username,
 		Email:               u.Email,
 		PhoneNumber:         u.PhoneNumber,
+		FirstName:           u.FirstName,
+		LastName:            u.LastName,
+		Bio:                 u.Bio,
 		AvatarURL:           u.AvatarURL,
 		PublicKey:           u.PublicKey, // ← 修復：必須映射公鑰
 		EncryptedPrivateKey: u.EncryptedPrivateKey,
@@ -110,6 +116,9 @@ func (r *UserRepository) fromDomain(u *domain.User) (*mongoUser, error) {
 		Username:            u.Username,
 		Email:               u.Email,
 		PhoneNumber:         u.PhoneNumber,
+		FirstName:           u.FirstName,
+		LastName:            u.LastName,
+		Bio:                 u.Bio,
 		AvatarURL:           u.AvatarURL,
 		PublicKey:           u.PublicKey,
 		EncryptedPrivateKey: u.EncryptedPrivateKey,

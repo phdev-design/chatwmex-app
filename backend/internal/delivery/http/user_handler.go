@@ -80,6 +80,9 @@ type LoginResponse struct {
 type UpdateProfileRequest struct {
 	Email       string `json:"email" binding:"omitempty,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
+	FirstName   string `json:"first_name" binding:"omitempty"`
+	LastName    string `json:"last_name" binding:"omitempty"`
+	Bio         string `json:"bio" binding:"omitempty"`
 }
 
 // UpdatePublicKeyRequest defines the request body for uploading public key.
@@ -244,9 +247,9 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	err := h.UserUsecase.UpdateProfile(ctx, userID, req.Email, req.PhoneNumber)
+	err := h.UserUsecase.UpdateProfile(ctx, userID, req.Email, req.PhoneNumber, req.FirstName, req.LastName, req.Bio)
 	if err != nil {
-		if err.Error() == "invalid email format" || err.Error() == "invalid phone number format" {
+		if err.Error() == "invalid email format" || err.Error() == "invalid phone number format" || err.Error() == "bio cannot exceed 150 characters" {
 			response.Error(c, http.StatusBadRequest, err.Error())
 			return
 		}

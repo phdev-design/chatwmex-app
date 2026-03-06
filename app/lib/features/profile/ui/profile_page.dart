@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/profile/ui/edit_profile_page.dart';
+import 'package:app/features/profile/ui/settings_page.dart';
 import 'package:app/features/profile/providers/profile_provider.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -109,7 +110,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ListTile(
               leading: const Icon(Icons.person_outline),
               title: const Text('Edit Profile'),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const EditProfilePage()),
@@ -128,9 +129,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               leading: const Icon(Icons.settings_outlined),
               title: const Text('Settings'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                // TODO: Navigate to Settings
-              },
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsPage())),
             ),
             const Divider(),
             ListTile(

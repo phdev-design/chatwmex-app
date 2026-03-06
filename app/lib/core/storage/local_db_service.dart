@@ -211,6 +211,26 @@ class LocalDbService {
     return rows.map(Message.fromMap).toList();
   }
 
+  Future<List<Message>> getAllMessages() async {
+    final db = await initDB();
+    final rows = await db.query('messages', orderBy: 'created_at ASC');
+    return rows.map(Message.fromMap).toList();
+  }
+
+  Future<void> restoreMessages(List<Message> messages) async {
+    final db = await initDB();
+    final batch = db.batch();
+    batch.delete('messages');
+    for (final message in messages) {
+      batch.insert(
+        'messages',
+        message.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<void> deleteMessageLocal(String messageId) async {
     if (messageId.isEmpty) return;
     final db = await initDB();
@@ -228,7 +248,11 @@ class LocalDbService {
 
   Future<String?> getPublicKey(String userId) async {
     final db = await initDB();
-    final result = await db.query('public_keys', where: 'user_id = ?', whereArgs: [userId]);
+    final result = await db.query(
+      'public_keys',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
     if (result.isNotEmpty) {
       return result.first['public_key'] as String?;
     }

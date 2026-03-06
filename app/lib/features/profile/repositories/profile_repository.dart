@@ -21,14 +21,26 @@ class ProfileRepository {
       }
       throw Exception('Invalid profile response format');
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
-  Future<void> updateProfile(String email, String phoneNumber) async {
+  Future<void> updateProfile(
+    String email,
+    String phoneNumber,
+    String firstName,
+    String lastName,
+    String bio,
+  ) async {
     await _networkService.client.put(
       '/users/profile',
-      data: {'email': email, 'phone_number': phoneNumber},
+      data: {
+        'email': email,
+        'phone_number': phoneNumber,
+        'first_name': firstName,
+        'last_name': lastName,
+        'bio': bio,
+      },
     );
   }
 

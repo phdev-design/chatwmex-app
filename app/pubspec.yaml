@@ -64,6 +64,12 @@ dependencies:
   shared_preferences: ^2.5.4
   qr_flutter: ^4.1.0
   crypto: ^3.0.7
+  http: ^1.2.2
+  google_sign_in: ^7.0.0
+  googleapis: ^13.2.0
+  googleapis_auth: ^1.6.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+
 
 dev_dependencies:
   flutter_test:

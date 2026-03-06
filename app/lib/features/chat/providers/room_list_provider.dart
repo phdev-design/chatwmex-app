@@ -7,6 +7,7 @@ import 'package:app/core/websocket/websocket_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
+import 'package:app/core/backup/backup_manager.dart';
 
 class RoomListState {
   final List<Room> rooms;
@@ -55,6 +56,15 @@ class RoomListViewModel extends Notifier<RoomListState> {
 
     // Connect WebSocket
     wsService.connect();
+
+    // Listen to BackupManager to automatically reload rooms when restore completes
+    ref.listen(backupManagerProvider, (previous, next) {
+      if (previous?.isBackingUp == true && next.isBackingUp == false) {
+        // If a backup or restore just finished without throwing an error
+        // we conservatively refresh the room list to show imported conversations
+        Future.microtask(() => fetchRooms());
+      }
+    });
 
     // Listen to WS events
     final subscription = wsService.events.listen((data) {
