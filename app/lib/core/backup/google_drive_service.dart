@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
@@ -52,17 +53,32 @@ class GoogleDriveService {
   /// Call once at app start. Safe to call multiple times.
   Future<void> ensureInitialized() async {
     if (_initialized) return;
-    _initialized = true;
-    await _signIn.initialize();
+    try {
+      await _signIn.initialize();
+      _initialized = true;
+      debugPrint('[GoogleDrive] initialized successfully');
+    } catch (e, st) {
+      debugPrint('[GoogleDrive] initialize error: $e\n$st');
+      rethrow;
+    }
   }
 
   /// Sign in interactively (must be called from user gesture).
+  /// Step 1: authenticate (Google account) → Step 2: authorize Drive scope.
   Future<bool> signIn() async {
     await ensureInitialized();
     try {
       _currentUser = await _signIn.authenticate();
-      return _currentUser != null;
-    } catch (e) {
+      debugPrint('[GoogleDrive] signIn user: ${_currentUser?.email}');
+      if (_currentUser == null) return false;
+
+      // Request Drive scope authorization (shows consent screen).
+      await _currentUser!.authorizationClient.authorizeScopes(_driveScopes);
+      debugPrint('[GoogleDrive] signIn Drive scope authorized');
+      return true;
+    } catch (e, st) {
+      debugPrint('[GoogleDrive] signIn error: $e\n$st');
+      _currentUser = null;
       return false;
     }
   }
@@ -73,19 +89,22 @@ class GoogleDriveService {
     await ensureInitialized();
     try {
       final account = await _signIn.attemptLightweightAuthentication();
+      debugPrint('[GoogleDrive] attemptLightweightAuthentication: ${account?.email}');
       if (account == null) return false;
       _currentUser = account;
 
       // Verify Drive scope is already authorized (silent only, no UI prompt).
       final auth = await account.authorizationClient
           .authorizationForScopes(_driveScopes);
+      debugPrint('[GoogleDrive] authorizationForScopes result: $auth');
       if (auth == null) {
         // Account exists but Drive was never authorized → show Connect button.
         _currentUser = null;
         return false;
       }
       return true;
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[GoogleDrive] signInSilently error: $e\n$st');
       _currentUser = null;
       return false;
     }

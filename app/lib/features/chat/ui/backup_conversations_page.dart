@@ -23,18 +23,31 @@ class _BackupConversationsPageState
   }
 
   Future<void> _checkSignIn() async {
-    final success = await ref
-        .read(backupManagerProvider.notifier)
-        .signInSilently();
-    if (mounted) {
-      setState(() => _isAuthenticated = success);
+    try {
+      final success = await ref
+          .read(backupManagerProvider.notifier)
+          .signInSilently();
+      debugPrint('[BackupPage] signInSilently result: $success');
+      if (mounted) setState(() => _isAuthenticated = success);
+    } catch (e, st) {
+      debugPrint('[BackupPage] signInSilently error: $e\n$st');
+      if (mounted) setState(() => _isAuthenticated = false);
     }
   }
 
   Future<void> _handleSignIn() async {
-    final success = await ref.read(backupManagerProvider.notifier).signIn();
-    if (mounted) {
-      setState(() => _isAuthenticated = success);
+    try {
+      final success = await ref.read(backupManagerProvider.notifier).signIn();
+      debugPrint('[BackupPage] signIn result: $success');
+      if (mounted) setState(() => _isAuthenticated = success);
+    } catch (e, st) {
+      debugPrint('[BackupPage] signIn error: $e\n$st');
+      if (mounted) {
+        setState(() => _isAuthenticated = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('登入失敗：$e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 

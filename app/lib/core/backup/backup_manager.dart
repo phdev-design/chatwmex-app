@@ -96,13 +96,11 @@ class BackupManager extends StateNotifier<BackupState>
   }
 
   Future<bool> signIn() async {
-    final account = await _googleDriveService.signIn();
-    return account != null;
+    return await _googleDriveService.signIn();
   }
 
   Future<bool> signInSilently() async {
-    final account = await _googleDriveService.signInSilently();
-    return account != null;
+    return await _googleDriveService.signInSilently();
   }
 
   Future<List<dynamic>> fetchBackupHistory() async {
