@@ -105,7 +105,9 @@ class RoomListViewModel extends Notifier<RoomListState> {
               final isCipher = _looksLikeCiphertext(messageContent);
               if (previewTitle == null && isCipher) {
                 // Async decrypt
-                _getDecryptedPreview(messageContent, targetRoomId).then((decrypted) {
+                _getDecryptedPreview(messageContent, targetRoomId).then((
+                  decrypted,
+                ) {
                   updateRoomLastMessage(
                     targetRoomId,
                     _buildLastMessagePreview(
@@ -159,6 +161,16 @@ class RoomListViewModel extends Notifier<RoomListState> {
               updateRoomAvatar(userId, avatarUrl);
             }
           }
+        } else if (event == 'room_updated') {
+          final payload = eventData['data'];
+          if (payload is Map) {
+            final roomId = payload['room_id'];
+            final avatarUrl = payload['avatar_url'];
+            final name = payload['name'];
+            if (roomId is String) {
+              updateRoomDetails(roomId, avatarUrl, name);
+            }
+          }
         }
       }
     });
@@ -173,17 +185,21 @@ class RoomListViewModel extends Notifier<RoomListState> {
     return const RoomListState();
   }
 
-Future<void> fetchRooms({String query = ''}) async {
+  Future<void> fetchRooms({String query = ''}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final rooms = await _repository.getMyRooms(query: query);
-      
+
       final updated = <Room>[];
       for (var room in rooms) {
         Room r = room;
         final lm = room.lastMessage;
         final lmType = room.lastMessageType;
-        if (lm != null && lmType != 'image' && lmType != 'audio' && lmType != 'file' && lmType != 'document') {
+        if (lm != null &&
+            lmType != 'image' &&
+            lmType != 'audio' &&
+            lmType != 'file' &&
+            lmType != 'document') {
           if (_looksLikeCiphertext(lm)) {
             // For group rooms, getPublicKey will likely fail and fallback to "🔒 加密訊息"
             final decryptedLM = await _getDecryptedPreview(lm, room.id);
@@ -197,13 +213,13 @@ Future<void> fetchRooms({String query = ''}) async {
         }
         updated.add(r);
       }
-      
+
       for (final room in rooms) {
         if (room.unreadCount == 0) {
           _unreadOverrides.remove(room.id);
         }
       }
-      
+
       state = state.copyWith(isLoading: false, rooms: updated);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -280,6 +296,23 @@ Future<void> fetchRooms({String query = ''}) async {
     state = state.copyWith(rooms: updated);
   }
 
+  void updateRoomDetails(String roomId, String? avatarUrl, String? name) {
+    final updated = state.rooms.map((room) {
+      if (room.id == roomId) {
+        Room r = room;
+        if (avatarUrl != null) {
+          r = r.copyWith(avatarUrl: avatarUrl);
+        }
+        if (name != null) {
+          r = r.copyWith(name: name);
+        }
+        return r;
+      }
+      return room;
+    }).toList();
+    state = state.copyWith(rooms: updated);
+  }
+
   List<Map<String, dynamic>> _decodeWsEvents(dynamic data) {
     if (data is Map) {
       return [Map<String, dynamic>.from(data)];
@@ -350,11 +383,14 @@ Future<void> fetchRooms({String query = ''}) async {
       }
 
       final cryptoService = ref.read(cryptoServiceProvider);
-      final decrypted = await cryptoService.decryptMessage(content, opponentPublicKey);
-      
+      final decrypted = await cryptoService.decryptMessage(
+        content,
+        opponentPublicKey,
+      );
+
       // 解密成功且內容改變
       if (decrypted != content) return decrypted;
-      
+
       // 看起來是密文但解密失敗
       final looksLikeCiphertext = _looksLikeCiphertext(content);
       return looksLikeCiphertext ? '🔒 加密訊息' : content;

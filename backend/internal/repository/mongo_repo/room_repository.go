@@ -179,3 +179,17 @@ func (r *RoomRepository) GetUserRooms(ctx context.Context, userID string) ([]*do
 	}
 	return rooms, nil
 }
+
+func (r *RoomRepository) UpdateRoom(ctx context.Context, roomID string, update map[string]interface{}) error {
+	oid, err := primitive.ObjectIDFromHex(roomID)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	update["updated_at"] = time.Now()
+	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": update})
+	if err != nil {
+		return fmt.Errorf("failed to update room: %w", err)
+	}
+	return nil
+}

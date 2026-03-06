@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/chat/ui/room_media_page.dart';
@@ -10,6 +12,7 @@ import 'package:app/features/chat/ui/encryption_info_page.dart';
 import 'package:app/features/chat/ui/media_visibility_settings_page.dart'; // 👉 匯入媒體設定頁面
 import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/friend/repositories/friend_repository.dart';
+import 'package:app/features/chat/repositories/chat_repository.dart';
 
 class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -18,6 +21,8 @@ class ContactInfoPage extends ConsumerStatefulWidget {
   final String? avatarUrl;
   final int mediaCount; // 👉 1. 新增這行
   final String? email; // 👉 1. 新增 email 參數
+  final String currentUserId; // 👉 新增 currentUserId 參數
+  final String? ownerId; // 👉 新增 ownerId 參數
 
   const ContactInfoPage({
     super.key,
@@ -27,6 +32,8 @@ class ContactInfoPage extends ConsumerStatefulWidget {
     this.avatarUrl,
     this.mediaCount = 0, // 👉 2. 設定預設值
     this.email, // 👉 2. 加入建構子
+    required this.currentUserId, // 👉 加入建構子
+    this.ownerId, // 👉 加入建構子
   });
 
   @override
@@ -35,10 +42,13 @@ class ContactInfoPage extends ConsumerStatefulWidget {
 
 class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
   bool _isBlocked = false;
+  String? _localAvatarUrl;
+  bool _isUploadingAvatar = false;
 
   @override
   void initState() {
     super.initState();
+    _localAvatarUrl = widget.avatarUrl;
     _checkBlockStatus();
   }
 
@@ -812,6 +822,32 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
               ),
               const SizedBox(height: 12),
 
+              // === 群組管理區塊 ===
+              if (widget.isRoom) ...[
+                Container(
+                  color: surfaceColor,
+                  child: ListTile(
+                    leading: Icon(Icons.group, color: secondaryTextColor),
+                    title: Text(
+                      '群組成員',
+                      style: TextStyle(color: primaryTextColor),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      context.push(
+                        '/group-members',
+                        extra: {
+                          'roomId': widget.roomId,
+                          'ownerId': widget.ownerId,
+                          'currentUserId': widget.currentUserId,
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               // === 解除好友區塊（只在非群組時顯示）===
               if (!widget.isRoom) ...[
                 Container(
@@ -938,14 +974,80 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     );
   }
 
+  Future<void> _pickAndUploadGroupIcon() async {
+    if (!widget.isRoom) return;
+
+    // 只有群組管理員才能修改頭像
+    if (widget.currentUserId != widget.ownerId) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('只有管理員可以修改群組頭像')));
+      return;
+    }
+
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile == null) return;
+
+      if (mounted) setState(() => _isUploadingAvatar = true);
+
+      final file = File(pickedFile.path);
+      final chatRepo = ref.read(chatRepositoryProvider);
+
+      // 上傳圖片取得 URL
+      final uploadedUrl = await chatRepo.uploadMedia(file, 'image');
+
+      if (uploadedUrl.isNotEmpty) {
+        // 呼叫更新頭像 API
+        await chatRepo.updateRoom(widget.roomId, avatarUrl: uploadedUrl);
+
+        if (mounted) {
+          setState(() {
+            _localAvatarUrl = uploadedUrl;
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('群組頭像已更新')));
+        }
+      }
+    } catch (e) {
+      debugPrint('上傳群組頭像失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('上傳失敗：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingAvatar = false);
+    }
+  }
+
   Widget _buildAvatar() {
-    return ChatAvatar(
-      avatarUrl: widget.avatarUrl,
+    final avatarWidget = ChatAvatar(
+      avatarUrl: _localAvatarUrl,
       radius: 60,
       fallbackText: widget.title.isNotEmpty
           ? widget.title[0].toUpperCase()
           : '?',
       logTag: 'contact_info',
     );
+
+    if (widget.isRoom && widget.currentUserId == widget.ownerId) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          InkWell(
+            onTap: _isUploadingAvatar ? null : _pickAndUploadGroupIcon,
+            customBorder: const CircleBorder(),
+            child: avatarWidget,
+          ),
+          if (_isUploadingAvatar)
+            const CircularProgressIndicator(color: Color(0xFF00A884)),
+        ],
+      );
+    }
+
+    return avatarWidget;
   }
 }

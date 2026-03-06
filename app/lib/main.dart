@@ -10,6 +10,7 @@ import 'package:app/features/friend/ui/add_friend_page.dart';
 import 'package:app/features/friend/ui/friend_requests_page.dart';
 import 'package:app/features/friend/ui/new_chat_page.dart';
 import 'package:app/features/friend/ui/create_group_page.dart';
+import 'package:app/features/chat/ui/group_members_page.dart'; // 👉 匯入群組成員管理頁面
 import 'package:app/features/profile/ui/profile_page.dart';
 import 'package:app/core/theme/theme.dart';
 import 'package:app/core/notification/notification_service.dart';
@@ -94,6 +95,19 @@ class _MyAppState extends ConsumerState<MyApp> {
               avatarUrl: extra['avatarUrl'],
               mediaCount: extra['mediaCount'] ?? 0,
               email: extra['email'], // 👉 新增這行：從路由參數接收 email
+              currentUserId: extra['currentUserId'] ?? '',
+              ownerId: extra['ownerId'],
+            );
+          },
+        ),
+        GoRoute(
+          path: '/group-members',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            return GroupMembersPage(
+              roomId: extra['roomId'] ?? '',
+              ownerId: extra['ownerId'],
+              currentUserId: extra['currentUserId'] ?? '',
             );
           },
         ),

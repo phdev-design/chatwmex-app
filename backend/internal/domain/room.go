@@ -32,6 +32,7 @@ type RoomRepository interface {
 	GetMembers(ctx context.Context, roomID string) ([]string, error)
 	// GetUserRooms retrieves all rooms a user is a member of.
 	GetUserRooms(ctx context.Context, userID string) ([]*Room, error)
+	UpdateRoom(ctx context.Context, roomID string, update map[string]interface{}) error
 }
 
 // RoomUsecase defines the interface for room business logic.
@@ -44,4 +45,5 @@ type RoomUsecase interface {
 	GetRoomMembers(ctx context.Context, roomID string) ([]string, error)
 	GetUserRooms(ctx context.Context, userID string, keyword string) ([]*Room, error)
 	GetRoomMedia(ctx context.Context, userID, roomID, reqType, cursor string, limit int) ([]Message, bool, error)
+	UpdateRoom(ctx context.Context, roomID string, ownerID string, name *string, avatarURL *string) error
 }

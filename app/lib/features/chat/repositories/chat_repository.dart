@@ -24,13 +24,13 @@ class ChatRepository {
 
   ChatRepository(this._networkService, this._localDb);
 
-Future<List<Room>> getMyRooms({String query = ''}) async {
+  Future<List<Room>> getMyRooms({String query = ''}) async {
     try {
       final Map<String, dynamic> queryParams = {};
       if (query.isNotEmpty) {
         queryParams['q'] = query;
       }
-      
+
       final response = await _networkService.client.get(
         '/rooms/my',
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
@@ -73,6 +73,39 @@ Future<List<Room>> getMyRooms({String query = ''}) async {
 
   Future<String> uploadMedia(File file, String type) async {
     return await _networkService.uploadFile(file, type);
+  }
+
+  Future<void> updateRoom(
+    String roomId, {
+    String? name,
+    String? avatarUrl,
+  }) async {
+    if (roomId.isEmpty) return;
+    try {
+      final Map<String, dynamic> data = {};
+      if (name != null) data['name'] = name;
+      if (avatarUrl != null) data['avatar_url'] = avatarUrl;
+
+      if (data.isEmpty) return;
+
+      await _networkService.client.patch(
+        '/rooms/$roomId',
+        data: data,
+      );
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  Future<void> kickMember(String roomId, String memberId) async {
+    if (roomId.isEmpty || memberId.isEmpty) return;
+    try {
+      await _networkService.client.delete(
+        '/rooms/$roomId/members/$memberId',
+      );
+    } catch (e) {
+      throw e;
+    }
   }
 
   Future<PaginatedMessages> getRoomResources(
@@ -276,7 +309,9 @@ Future<List<Room>> getMyRooms({String query = ''}) async {
 
   Future<String?> getUserPublicKey(String userId) async {
     try {
-      final response = await _networkService.client.get('/users/$userId/public_key');
+      final response = await _networkService.client.get(
+        '/users/$userId/public_key',
+      );
       return response.data['data']['public_key'] as String?;
     } catch (e) {
       print('Failed to get user public key: $e');

@@ -239,3 +239,30 @@ func (u *roomUsecase) GetRoomMedia(c context.Context, userID, roomID, reqType, c
 	}
 	return messages, hasMore, nil
 }
+
+func (u *roomUsecase) UpdateRoom(c context.Context, roomID string, ownerID string, name *string, avatarURL *string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	room, err := u.roomRepo.GetByID(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if room.OwnerID != ownerID {
+		return errors.New("forbidden")
+	}
+
+	update := make(map[string]interface{})
+	if name != nil {
+		update["name"] = *name
+	}
+	if avatarURL != nil {
+		update["avatar_url"] = *avatarURL
+	}
+
+	if len(update) == 0 {
+		return nil
+	}
+
+	return u.roomRepo.UpdateRoom(ctx, roomID, update)
+}

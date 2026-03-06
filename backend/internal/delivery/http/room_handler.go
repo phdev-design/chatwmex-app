@@ -29,6 +29,7 @@ func NewRoomHandler(r *gin.Engine, ru domain.RoomUsecase, uu domain.UserUsecase,
 		api.POST("", handler.CreateRoom)
 		api.POST("/:id/join", handler.JoinRoom)
 		api.POST("/:id/leave", handler.LeaveRoom)
+		api.PATCH("/:id", handler.UpdateRoom)
 		api.DELETE("/:id/members/:memberId", handler.KickMember)
 		api.DELETE("/:id", handler.DeleteRoom)
 		api.GET("/my", handler.GetUserRooms)
@@ -328,4 +329,80 @@ func (h *RoomHandler) GetRoomMemberProfiles(c *gin.Context) {
 	}
 
 	response.Success(c, profiles)
+}
+
+type UpdateRoomRequest struct {
+	Name      *string `json:"name"`
+	AvatarURL *string `json:"avatar_url"`
+}
+
+func (h *RoomHandler) UpdateRoom(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	roomID := c.Param("id")
+	if roomID == "" {
+		response.Error(c, http.StatusBadRequest, "Room ID is required")
+		return
+	}
+
+	ownerID, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+
+	var req UpdateRoomRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+	err := h.RoomUsecase.UpdateRoom(ctx, roomID, ownerID, req.Name, req.AvatarURL)
+	if err != nil {
+		if err.Error() == "forbidden" {
+			response.Error(c, http.StatusForbidden, "Only owner can update room")
+			return
+		}
+		if err.Error() == "room not found" {
+			response.Error(c, http.StatusNotFound, "Room not found")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// 成功後取得最新資訊，為了發送 WebSocket Event
+	updatedRoom, err := h.RoomUsecase.GetUserRooms(ctx, ownerID, "") // Workaround to get Room Info since we updated it. A better way is pulling GetByID, but the usecase does not export GetByID.
+	var targetRoom *domain.Room
+	// Simple traversal to locate it amongst user rooms.
+	if err == nil {
+		for _, r := range updatedRoom {
+			if r.ID == roomID {
+				targetRoom = r
+				break
+			}
+		}
+	}
+
+	if targetRoom != nil {
+		hubValues, exists := c.Get("hub")
+		if exists {
+			if hub, ok := hubValues.(interface {
+				BroadcastRoomEvent(roomID string, eventType string, data interface{})
+			}); ok {
+				hub.BroadcastRoomEvent(roomID, "room_updated", gin.H{
+					"room_id":    roomID,
+					"name":       targetRoom.Name,
+					"avatar_url": targetRoom.AvatarURL,
+				})
+			}
+		}
+	}
+
+	response.Success(c, "Room updated successfully")
 }
