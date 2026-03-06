@@ -17,9 +17,36 @@ class CryptoService {
   String? _publicKeyBase64;
 
   static const String _privateKeyStorageKey = 'e2ee_private_key';
+  static const String _privateKeyHistoryStorageKey = 'e2ee_private_key_history'; // 新增
 
   bool get isInitialized => _keyPair != null;
   String? get publicKeyBase64 => _publicKeyBase64;
+
+  /// 從 SecureStorage 讀取歷史私鑰列表（JSON 陣列格式）
+  Future<List<String>> _loadHistoryPrivateKeys() async {
+    final raw = await _secureStorage.read(key: _privateKeyHistoryStorageKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.cast<String>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// 將一把私鑰（base64）加入歷史清單並儲存
+  Future<void> _appendToHistoryPrivateKeys(String privateKeyBase64) async {
+    final history = await _loadHistoryPrivateKeys();
+    if (!history.contains(privateKeyBase64)) {
+      history.add(privateKeyBase64);
+      // 最多保留 20 把歷史金鑰，防止無限增長
+      final trimmed = history.length > 20 ? history.sublist(history.length - 20) : history;
+      await _secureStorage.write(
+        key: _privateKeyHistoryStorageKey,
+        value: jsonEncode(trimmed),
+      );
+    }
+  }
 
   /// Initialize the keypair. Loads from secure storage or generates a new one.
   Future<String> initialize() async {
@@ -40,6 +67,10 @@ class CryptoService {
     }
 
     // Generate new keypair
+    if (storedPrivateKeyBase64 != null) {
+      await _appendToHistoryPrivateKeys(storedPrivateKeyBase64);
+    }
+    
     final newKeyPair = await _x25519.newKeyPair();
     final extractedPrivateKey = await newKeyPair.extractPrivateKeyBytes();
     
@@ -101,44 +132,57 @@ class CryptoService {
   }
 
   /// Decrypts a base64 encoded payload using AES-GCM and the derived shared secret.
- Future<String> decryptMessage(String encryptedOrPlainText, String senderPublicKeyBase64) async {
+  Future<String> decryptMessage(String encryptedOrPlainText, String senderPublicKeyBase64) async {
+    // Step 1: 先用當前金鑰解密（原有邏輯）
     try {
-      // 1. 嘗試進行 Base64 解碼
       final decodedBytes = base64Decode(encryptedOrPlainText);
-      
-      // 2. AES-GCM 格式檢查：nonce(12) + mac(16) = 最少 28 bytes
-      // 如果連這個長度都達不到，代表這絕對不是我們加密的封包，直接當作舊明文回傳
-      if (decodedBytes.length < 28) {
-        return encryptedOrPlainText; 
-      }
+      if (decodedBytes.length < 28) return encryptedOrPlainText;
 
-      // 3. 正常解密流程
       final nonce = decodedBytes.sublist(0, 12);
       final macBytes = decodedBytes.sublist(12, 28);
       final cipherText = decodedBytes.sublist(28);
-
       final sharedSecret = await _deriveSharedSecret(senderPublicKeyBase64);
-      
-      final secretBox = SecretBox(
-        cipherText,
-        nonce: nonce,
-        mac: Mac(macBytes),
-      );
-
-      final plainTextBytes = await _aesGcm.decrypt(
-        secretBox,
-        secretKey: sharedSecret,
-      );
-
+      final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes));
+      final plainTextBytes = await _aesGcm.decrypt(secretBox, secretKey: sharedSecret);
       return utf8.decode(plainTextBytes);
-      
-    } catch (e) {
-      // 4. 關鍵備用機制 (Fallback)：
-      // 如果 Base64 解碼失敗 (因為本來就是普通文字)，或解密過程發生任何錯誤，
-      // 就把它當作「舊版未加密」的訊息，直接回傳原始文字。
-      print('⚠️ 解密判定：此為舊版明文訊息或解密失敗，直接顯示原文。');
-      return encryptedOrPlainText;
+    } catch (_) {
+      // 當前金鑰解密失敗，繼續嘗試歷史金鑰
     }
+
+    // Step 2: 嘗試所有歷史私鑰
+    try {
+      final decodedBytes = base64Decode(encryptedOrPlainText);
+      if (decodedBytes.length >= 28) {
+        final nonce = decodedBytes.sublist(0, 12);
+        final macBytes = decodedBytes.sublist(12, 28);
+        final cipherText = decodedBytes.sublist(28);
+
+        final historyKeys = await _loadHistoryPrivateKeys();
+        final targetPubKeyBytes = base64Decode(senderPublicKeyBase64);
+        final targetPublicKey = SimplePublicKey(targetPubKeyBytes, type: KeyPairType.x25519);
+
+        for (final histPrivKeyBase64 in historyKeys.reversed) {
+          try {
+            final histPrivKeyBytes = base64Decode(histPrivKeyBase64);
+            final histKeyPair = await _x25519.newKeyPairFromSeed(histPrivKeyBytes);
+            final sharedSecret = await _x25519.sharedSecretKey(
+              keyPair: histKeyPair,
+              remotePublicKey: targetPublicKey,
+            );
+            final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes));
+            final plainTextBytes = await _aesGcm.decrypt(secretBox, secretKey: sharedSecret);
+            print('✅ 歷史金鑰解密成功');
+            return utf8.decode(plainTextBytes);
+          } catch (_) {
+            continue; // 這把歷史金鑰也不對，試下一把
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Step 3: 所有金鑰都失敗
+    print('⚠️ 解密判定：此為舊版明文訊息或解密失敗，直接顯示原文。');
+    return encryptedOrPlainText;
   }
 
   // --- 備份機制：私鑰雲端加密與還原 ---
@@ -238,6 +282,7 @@ class CryptoService {
     _keyPair = null;
     _publicKeyBase64 = null;
     await _secureStorage.delete(key: _privateKeyStorageKey);
+    await _secureStorage.delete(key: _privateKeyHistoryStorageKey); // 新增
   }
 }
 
