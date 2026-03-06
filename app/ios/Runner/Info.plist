@@ -80,7 +80,7 @@
 
     <!-- Google Sign-in Section -->
     <key>GIDClientID</key>
-    <string>YOUR_IOS_CLIENT_ID</string>
+    <string>977205411708-4kldupeb1u6sle4f9csl5crpn6b6t9ab.apps.googleusercontent.com</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
@@ -88,7 +88,7 @@
             <string>Editor</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>YOUR_REVERSED_IOS_CLIENT_ID</string>
+                <string>com.googleusercontent.apps.977205411708-4kldupeb1u6sle4f9csl5crpn6b6t9ab</string>
             </array>
         </dict>
     </array>
