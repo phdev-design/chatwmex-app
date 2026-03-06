@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:app/features/chat/ui/conversations_settings_page.dart';
+import 'package:app/features/chat/ui/room_labels_settings_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -31,6 +32,15 @@ class SettingsPage extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (_) => const ConversationsSettingsPage(),
                 ),
+              ),
+            ),
+            const Divider(height: 1, color: Colors.white24),
+            ListTile(
+              leading: const Icon(Icons.label_outline, color: Colors.white),
+              title: const Text('分類名單', style: TextStyle(color: Colors.white)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RoomLabelsSettingsPage()),
               ),
             ),
           ]),

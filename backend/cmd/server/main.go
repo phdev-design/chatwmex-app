@@ -70,12 +70,14 @@ func main() {
 	deviceRepo := mongo_repo.NewDeviceRepository(db)
 	onlineRepo := redis_repo.NewOnlineRepository(redisClient)
 	chatSettingRepo := mongo_repo.NewChatSettingRepository(db) // 👉 新增
+	roomLabelRepo := mongo_repo.NewRoomLabelRepository(db)
 
 	// 4. Initialize Usecases
 	// Set a default timeout for usecase operations
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
 	chatSettingUsecase := usecase.NewChatSettingUsecase(chatSettingRepo) // 👉 新增
+	roomLabelUsecase := usecase.NewRoomLabelUsecase(roomLabelRepo, timeout)
 	// Initialize Notification Service
 	// If OneSignal config is missing, use a mock or nil.
 	// We require it for "Push Notification" feature.
@@ -184,6 +186,7 @@ func main() {
 	delivery.NewFriendHandler(r, friendUsecase, cfg.JWTSecret)
 	delivery.NewDeviceHandler(r, deviceUsecase, authMiddleware)
 	delivery.NewChatSettingHandler(r, chatSettingUsecase, authMiddleware) // 👉 新增設定的 Handler
+	delivery.NewRoomLabelHandler(r, roomLabelUsecase, authMiddleware)
 
 	// Register WebSocket Route
 	r.GET("/ws", func(c *gin.Context) {

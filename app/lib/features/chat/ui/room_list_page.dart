@@ -8,8 +8,10 @@ import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
+import 'package:app/features/chat/models/room_label.dart';
+import 'package:app/features/chat/providers/room_label_provider.dart';
 import 'dart:async'; // 👉 1. 新增這個 import
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
 class RoomListPage extends ConsumerStatefulWidget {
   const RoomListPage({super.key});
@@ -24,6 +26,8 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
   String? _currentUserId;
   String _currentUsername = '';
   String? _currentAvatarUrl;
+  String _selectedFilter = '全部'; // 預設顯示全部
+  Set<String> _favoriteRoomIds = {};
 
   @override
   void initState() {
@@ -36,6 +40,8 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     final userId = await storage.read('user_id');
     final username = await storage.read('username');
     final avatarUrl = await storage.read('avatar_url');
+    final favoriteIdsJson = await storage.read('favorite_room_ids');
+
     if (mounted) {
       if (userId == null) {
         // Should not happen if logged in, but safe to redirect
@@ -46,6 +52,14 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         _currentUserId = userId;
         _currentUsername = username ?? '';
         _currentAvatarUrl = avatarUrl;
+        if (favoriteIdsJson != null) {
+          try {
+            final List<dynamic> parsed = jsonDecode(favoriteIdsJson);
+            _favoriteRoomIds = parsed.map((e) => e.toString()).toSet();
+          } catch (_) {
+            _favoriteRoomIds = {};
+          }
+        }
       });
     }
   }
@@ -55,6 +69,28 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     _debounce?.cancel(); // 👉 3. 記得在 dispose 時取消 timer 避免 memory leak
     _searchController.dispose();
     super.dispose();
+  }
+
+  List<Room> _filterRooms(List<Room> rooms, List<RoomLabel> customLabels) {
+    switch (_selectedFilter) {
+      case '未讀':
+        return rooms.where((r) => r.unreadCount > 0).toList();
+      case '最愛':
+        return rooms.where((r) => _favoriteRoomIds.contains(r.id)).toList();
+      case '群組':
+        return rooms.where((r) => r.type == 'group').toList();
+      case '私訊':
+        return rooms.where((r) => r.type == 'dm').toList();
+      default:
+        // Check for custom layout matching name
+        final matchedLabel = customLabels
+            .where((l) => l.name == _selectedFilter)
+            .firstOrNull;
+        if (matchedLabel != null) {
+          return rooms.where((r) => matchedLabel.roomIds.contains(r.id)).toList();
+        }
+        return rooms;
+    }
   }
 
   void _onSearchChanged(String query) {
@@ -80,6 +116,14 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     //     _searchController.text.toLowerCase(),
     //   );
     // }).toList();
+
+    final labelsAsync = ref.watch(roomLabelProvider);
+    final customLabels = labelsAsync.valueOrNull
+        ?.where((l) => l.isEnabled)
+        .toList() ?? [];
+
+    final allTabs = ['全部', '未讀', '最愛', '群組', '私訊', 
+        ...customLabels.map((l) => l.name)];
 
     return Scaffold(
       appBar: AppBar(
@@ -115,8 +159,25 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
               onChanged: _onSearchChanged,
             ),
           ),
-          // 👉 6. 直接傳入 state.rooms，因為現在列表是由後端過濾的了
-          Expanded(child: _buildRoomList(state.rooms, _currentUserId!)),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: allTabs.map((label) {
+                final isSelected = _selectedFilter == label;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(label),
+                    selected: isSelected,
+                    onSelected: (_) => setState(() => _selectedFilter = label),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          // 👉 6. 直接傳入過濾後的 state.rooms
+          Expanded(child: _buildRoomList(_filterRooms(state.rooms, customLabels), _currentUserId!)),
         ],
       ),
     );
@@ -176,6 +237,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         final isRoom = room.type == 'group';
         final hasUnread = room.unreadCount > 0;
         return ListTile(
+          onLongPress: () => _showRoomOptions(context, room),
           leading: Stack(
             children: [
               _buildRoomAvatar(room),
@@ -280,6 +342,8 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     String? avatarUrl,
   ) async {
     final token = await ref.read(storageServiceProvider).read('jwt_token');
+    if (!context.mounted) return;
+    
     if (mounted && token != null) {
       ref.read(roomListViewModelProvider.notifier).markRoomRead(roomId);
       context.push(
@@ -294,5 +358,38 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         },
       );
     }
+  }
+
+  void _showRoomOptions(BuildContext context, Room room) {
+    final isFav = _favoriteRoomIds.contains(room.id);
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(isFav ? Icons.star_border : Icons.star),
+              title: Text(isFav ? '移除最愛' : '加入最愛'),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  if (isFav) {
+                    _favoriteRoomIds.remove(room.id);
+                  } else {
+                    _favoriteRoomIds.add(room.id);
+                  }
+                });
+                // 寫入本地儲存
+                ref.read(storageServiceProvider).save(
+                  'favorite_room_ids',
+                  jsonEncode(_favoriteRoomIds.toList()),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
