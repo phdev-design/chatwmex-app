@@ -19,7 +19,7 @@ type DeviceRepository struct {
 
 func NewDeviceRepository(db *mongo.Database) domain.DeviceRepository {
 	collection := db.Collection(deviceCollectionName)
-	
+
 	// Ensure index on user_id
 	model := mongo.IndexModel{
 		Keys:    bson.D{{Key: "user_id", Value: 1}},
@@ -28,7 +28,7 @@ func NewDeviceRepository(db *mongo.Database) domain.DeviceRepository {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	collection.Indexes().CreateOne(ctx, model)
-	
+
 	return &DeviceRepository{collection: collection}
 }
 

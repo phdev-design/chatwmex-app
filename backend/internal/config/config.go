@@ -9,15 +9,15 @@ import (
 )
 
 type Config struct {
-	AppEnv        string `mapstructure:"APP_ENV"`
-	MongoURI      string `mapstructure:"MONGO_URI"`
-	MongoDBName   string `mapstructure:"MONGO_DB_NAME"`
-	RedisAddr     string `mapstructure:"REDIS_ADDR"`
-	RedisPassword string `mapstructure:"REDIS_PASSWORD"`
-	RabbitMQURL   string `mapstructure:"RABBITMQ_URL"`
-	EncryptionKey string `mapstructure:"ENCRYPTION_KEY"`
-	JWTSecret     string `mapstructure:"JWT_SECRET"`
-	OneSignalAppID string `mapstructure:"ONESIGNAL_APP_ID"`
+	AppEnv          string `mapstructure:"APP_ENV"`
+	MongoURI        string `mapstructure:"MONGO_URI"`
+	MongoDBName     string `mapstructure:"MONGO_DB_NAME"`
+	RedisAddr       string `mapstructure:"REDIS_ADDR"`
+	RedisPassword   string `mapstructure:"REDIS_PASSWORD"`
+	RabbitMQURL     string `mapstructure:"RABBITMQ_URL"`
+	EncryptionKey   string `mapstructure:"ENCRYPTION_KEY"`
+	JWTSecret       string `mapstructure:"JWT_SECRET"`
+	OneSignalAppID  string `mapstructure:"ONESIGNAL_APP_ID"`
 	OneSignalAPIKey string `mapstructure:"ONESIGNAL_API_KEY"`
 }
 
@@ -40,7 +40,7 @@ func LoadConfig() (*Config, error) {
 	// 2. Set config file name based on environment
 	v.SetConfigName(".env." + env) // e.g., .env.dev or .env.release
 	v.SetConfigType("env")
-	
+
 	// 3. Add search paths
 	v.AddConfigPath("configs")       // Look in configs/ relative to binary execution
 	v.AddConfigPath("./configs")     // Look in ./configs

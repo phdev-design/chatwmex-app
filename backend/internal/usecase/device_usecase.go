@@ -29,7 +29,7 @@ func (u *deviceUsecase) RegisterDevice(c context.Context, deviceID, userID, plat
 		Platform: platform,
 	}
 
-	// Upsert handles the logic: 
+	// Upsert handles the logic:
 	// 1. If ID doesn't exist, create new mapping to UserID
 	// 2. If ID exists (was mapped to OldUser), update to NewUser
 	// This ensures OldUser no longer receives notifications for this device.

@@ -27,14 +27,14 @@ func NewOneSignalService(appID, apiKey string) domain.NotificationService {
 func (s *OneSignalService) SendNotification(userID, event string, data interface{}) {
 	// If UserID is provided, target that user.
 	// OneSignal uses "external_user_id" to map to our DB IDs.
-	
+
 	// Payload construction
-	// We map "event" to a title or subtitle? 
+	// We map "event" to a title or subtitle?
 	// Or just send data payload?
 	// For chat apps, we usually want: Title: "New Message", Body: "User: Content"
-	
+
 	var heading, content string
-	
+
 	switch event {
 	case "chat_message":
 		if msg, ok := data.(*domain.Message); ok {
@@ -62,11 +62,11 @@ func (s *OneSignalService) SendNotification(userID, event string, data interface
 	}
 
 	payload := map[string]interface{}{
-		"app_id":             s.AppID,
+		"app_id":                    s.AppID,
 		"include_external_user_ids": []string{userID},
-		"headings":           map[string]string{"en": heading},
-		"contents":           map[string]string{"en": content},
-		"data":               map[string]interface{}{"event": event, "payload": data},
+		"headings":                  map[string]string{"en": heading},
+		"contents":                  map[string]string{"en": content},
+		"data":                      map[string]interface{}{"event": event, "payload": data},
 		// "ios_badgeType": "Increase",
 		// "ios_badgeCount": 1,
 	}
@@ -83,7 +83,7 @@ func (s *OneSignalService) SendNotification(userID, event string, data interface
 			return
 		}
 		defer resp.Body.Close()
-		
+
 		if resp.StatusCode >= 400 {
 			log.Printf("OneSignal Error: %s", resp.Status)
 		}
@@ -96,11 +96,11 @@ func (s *OneSignalService) SendNotificationToDevices(playerIDs []string, title s
 	}
 
 	payload := map[string]interface{}{
-		"app_id":            s.AppID,
+		"app_id":             s.AppID,
 		"include_player_ids": playerIDs,
-		"headings":          map[string]string{"en": title},
-		"contents":          map[string]string{"en": content},
-		"data":              data,
+		"headings":           map[string]string{"en": title},
+		"contents":           map[string]string{"en": content},
+		"data":               data,
 	}
 
 	body, err := json.Marshal(payload)

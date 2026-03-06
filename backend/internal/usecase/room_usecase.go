@@ -121,6 +121,17 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string, keyword str
 		if err == nil {
 			room.UnreadCount = count
 		}
+
+		lastMsg, err := u.messageRepo.GetLastRoomMessage(ctx, room.ID)
+		if err == nil && lastMsg != nil {
+			content := lastMsg.Content
+			if lastMsg.LinkPreview != nil && lastMsg.LinkPreview.Title != "" {
+				content = lastMsg.LinkPreview.Title
+			}
+			room.LastMessage = content
+			room.LastMessageType = string(lastMsg.Type)
+			room.LastMessageTime = lastMsg.CreatedAt
+		}
 	}
 
 	// 2. Get DM Conversations

@@ -543,6 +543,21 @@ func (r *MessageRepository) CountUnreadInRoomAfter(ctx context.Context, roomID, 
 	return int(count), nil
 }
 
+func (r *MessageRepository) GetLastRoomMessage(ctx context.Context, roomID string) (*domain.Message, error) {
+	filter := bson.M{"room_id": roomID}
+	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+	var msg mongoMessage
+	if err := r.collection.FindOne(ctx, filter, opts).Decode(&msg); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil // Return nil, nil if no message exists
+		}
+		return nil, fmt.Errorf("failed to fetch last room message: %w", err)
+	}
+
+	return r.toDomain(&msg)
+}
+
 func (r *MessageRepository) MarkMessageAsReadBy(ctx context.Context, messageID string, userID string) error {
 	oid, err := primitive.ObjectIDFromHex(messageID)
 	if err != nil {

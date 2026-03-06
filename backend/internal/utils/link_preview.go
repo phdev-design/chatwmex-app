@@ -46,7 +46,7 @@ func FetchLinkPreview(input string) (*domain.LinkPreview, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 【重要修正】加上常見的 User-Agent，避免被目標網站當成爬蟲阻擋
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -88,13 +88,13 @@ func FetchLinkPreview(input string) (*domain.LinkPreview, error) {
 		// 解析標題
 		if property == "og:title" || name == "twitter:title" {
 			preview.Title = content
-		} 
+		}
 		// 解析描述 (og:description 優先度高於一般 description)
 		if property == "og:description" || name == "twitter:description" || name == "description" {
 			if preview.Description == "" || strings.HasPrefix(property, "og:") {
 				preview.Description = content
 			}
-		} 
+		}
 		// 解析圖片
 		if property == "og:image" || name == "twitter:image" {
 			if preview.ImageURL == "" || strings.HasPrefix(property, "og:") {

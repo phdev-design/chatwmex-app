@@ -47,24 +47,24 @@ func (r *OnlineRepository) GetOnlineUsers(ctx context.Context, userIDs []string)
 	// For small lists, we can use SMISMEMBER (available in Redis 6.2+).
 	// If not available, we can use pipeline with SISMEMBER.
 	// Let's use Pipeline for compatibility.
-	
+
 	pipe := r.client.Pipeline()
 	cmds := make([]*redis.BoolCmd, len(userIDs))
-	
+
 	for i, id := range userIDs {
 		cmds[i] = pipe.SIsMember(ctx, onlineUsersSetKey, id)
 	}
-	
+
 	_, err := pipe.Exec(ctx)
 	if err != nil && err != redis.Nil {
 		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
 	}
-	
+
 	result := make(map[string]bool)
 	for i, cmd := range cmds {
 		isOnline, _ := cmd.Result() // Ignore individual errors, treat as offline
 		result[userIDs[i]] = isOnline
 	}
-	
+
 	return result, nil
 }

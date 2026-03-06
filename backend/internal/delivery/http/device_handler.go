@@ -65,7 +65,7 @@ func (h *DeviceHandler) Unregister(c *gin.Context) {
 	// but unregistering usually implies "forget this device token".
 	// The repo delete just deletes by ID.
 	// For extra security, we could verify ownership, but if the user has the ID, they can delete it.
-	
+
 	err := h.DeviceUsecase.UnregisterDevice(c.Request.Context(), deviceID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())

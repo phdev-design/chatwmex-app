@@ -54,8 +54,9 @@ type MessageRepository interface {
 	UnsendMessage(ctx context.Context, messageID string, userID string) (*Message, error)
 	SoftDeleteMessage(ctx context.Context, messageID string, userID string) error
 
-	// GetConversations retrieves DM conversations for a user.
 	GetConversations(ctx context.Context, userID string) ([]*Conversation, error)
+
+	GetLastRoomMessage(ctx context.Context, roomID string) (*Message, error)
 
 	// MarkAsRead marks all messages in a conversation (room or DM) as read by userID
 	MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error

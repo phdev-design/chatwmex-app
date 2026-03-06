@@ -133,7 +133,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
               }
             }
           }
-          Future.microtask(() => fetchRooms());
+          // 修復1：移除 Future.microtask(() => fetchRooms());，由 updateRoomLastMessage 管理即時畫面
         } else if (event == 'read_receipt') {
           final payload = eventData['data'];
           if (payload is Map && payload['conversation_id'] != null) {
@@ -211,6 +211,22 @@ class RoomListViewModel extends Notifier<RoomListState> {
         if (override != null) {
           r = r.copyWith(unreadCount: override);
         }
+
+        // 修復3：如果 API 回來的 lastMessage 是空的，但 state 裡已有值，保留 state 的值
+        final existingRoom = state.rooms.firstWhere(
+          (existing) => existing.id == room.id,
+          orElse: () => room,
+        );
+        if ((r.lastMessage == null || r.lastMessage!.isEmpty) &&
+            existingRoom.lastMessage != null &&
+            existingRoom.lastMessage!.isNotEmpty) {
+          r = r.copyWith(
+            lastMessage: existingRoom.lastMessage,
+            lastMessageType: existingRoom.lastMessageType,
+            lastMessageTime: existingRoom.lastMessageTime,
+          );
+        }
+
         updated.add(r);
       }
 

@@ -6,9 +6,9 @@ import (
 )
 
 type Device struct {
-	ID        string    `json:"id" bson:"_id"` // Push Token or Subscription ID
-	UserID    string    `json:"user_id" bson:"user_id"`
-	Platform  string    `json:"platform" bson:"platform"` // ios, android
+	ID         string    `json:"id" bson:"_id"` // Push Token or Subscription ID
+	UserID     string    `json:"user_id" bson:"user_id"`
+	Platform   string    `json:"platform" bson:"platform"` // ios, android
 	LastActive time.Time `json:"last_active" bson:"last_active"`
 }
 

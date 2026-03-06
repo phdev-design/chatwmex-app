@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	AuthorizationHeaderKey = "Authorization"
+	AuthorizationHeaderKey  = "Authorization"
 	AuthorizationTypeBearer = "Bearer"
-	ContextUserIDKey       = "userID"
+	ContextUserIDKey        = "userID"
 )
 
 // AuthMiddleware creates a gin middleware for JWT authentication.
