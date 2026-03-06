@@ -5,6 +5,8 @@ import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/core/websocket/websocket_service.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/core/crypto/crypto_service.dart';
+import 'package:app/features/chat/services/public_key_cache_service.dart';
 
 class RoomListState {
   final List<Room> rooms;
@@ -90,17 +92,33 @@ class RoomListViewModel extends Notifier<RoomListState> {
               }
             }
             if (targetRoomId.isNotEmpty) {
-              updateRoomLastMessage(
-                targetRoomId,
-                _buildLastMessagePreview(
-                  messageType,
-                  messageContent,
-                  previewTitle: previewTitle,
-                ),
-                // 👉 修改這裡：如果有 previewTitle，強制將類型標記為 'link'
-                lastMessageType: previewTitle != null ? 'link' : messageType,
-                lastMessageTime: createdAt ?? DateTime.now(),
-              );
+              final isCipher = _looksLikeCiphertext(messageContent);
+              if (previewTitle == null && isCipher) {
+                // Async decrypt
+                _getDecryptedPreview(messageContent, targetRoomId).then((decrypted) {
+                  updateRoomLastMessage(
+                    targetRoomId,
+                    _buildLastMessagePreview(
+                      messageType,
+                      decrypted,
+                      previewTitle: previewTitle,
+                    ),
+                    lastMessageType: messageType,
+                    lastMessageTime: createdAt ?? DateTime.now(),
+                  );
+                });
+              } else {
+                updateRoomLastMessage(
+                  targetRoomId,
+                  _buildLastMessagePreview(
+                    messageType,
+                    messageContent,
+                    previewTitle: previewTitle,
+                  ),
+                  lastMessageType: previewTitle != null ? 'link' : messageType,
+                  lastMessageTime: createdAt ?? DateTime.now(),
+                );
+              }
             }
           }
           Future.microtask(() => fetchRooms());
@@ -150,23 +168,25 @@ Future<void> fetchRooms({String query = ''}) async {
     try {
       final rooms = await _repository.getMyRooms(query: query);
       
-      final updated = rooms.map((room) {
-        // 過濾密文的 lastMessage
+      final updated = <Room>[];
+      for (var room in rooms) {
         Room r = room;
         final lm = room.lastMessage;
         final lmType = room.lastMessageType;
         if (lm != null && lmType != 'image' && lmType != 'audio' && lmType != 'file' && lmType != 'document') {
           if (_looksLikeCiphertext(lm)) {
-            r = r.copyWith(lastMessage: '🔒 加密訊息');
+            // For group rooms, getPublicKey will likely fail and fallback to "🔒 加密訊息"
+            final decryptedLM = await _getDecryptedPreview(lm, room.id);
+            r = r.copyWith(lastMessage: decryptedLM);
           }
         }
 
         final override = _unreadOverrides[room.id];
         if (override != null) {
-          return r.copyWith(unreadCount: override);
+          r = r.copyWith(unreadCount: override);
         }
-        return r;
-      }).toList();
+        updated.add(r);
+      }
       
       for (final room in rooms) {
         if (room.unreadCount == 0) {
@@ -308,6 +328,29 @@ Future<void> fetchRooms({String query = ''}) async {
     if (content.length < 40) return false;
     final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
     return base64Regex.hasMatch(content.trim());
+  }
+
+  Future<String> _getDecryptedPreview(String content, String opponentId) async {
+    try {
+      final cacheService = ref.read(publicKeyCacheServiceProvider);
+      final opponentPublicKey = await cacheService.getPublicKey(opponentId);
+
+      if (opponentPublicKey == null || opponentPublicKey.isEmpty) {
+        return '🔒 加密訊息';
+      }
+
+      final cryptoService = ref.read(cryptoServiceProvider);
+      final decrypted = await cryptoService.decryptMessage(content, opponentPublicKey);
+      
+      // 解密成功且內容改變
+      if (decrypted != content) return decrypted;
+      
+      // 看起來是密文但解密失敗
+      final looksLikeCiphertext = _looksLikeCiphertext(content);
+      return looksLikeCiphertext ? '🔒 加密訊息' : content;
+    } catch (_) {
+      return '🔒 加密訊息';
+    }
   }
 } // ← 這裡才是正確的 Class 結尾
 
