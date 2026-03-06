@@ -9,6 +9,7 @@ import 'package:app/features/splash/ui/splash_screen.dart';
 import 'package:app/features/friend/ui/add_friend_page.dart';
 import 'package:app/features/friend/ui/friend_requests_page.dart';
 import 'package:app/features/friend/ui/new_chat_page.dart';
+import 'package:app/features/friend/ui/create_group_page.dart';
 import 'package:app/features/profile/ui/profile_page.dart';
 import 'package:app/core/theme/theme.dart';
 import 'package:app/core/notification/notification_service.dart';
@@ -49,6 +50,10 @@ class _MyAppState extends ConsumerState<MyApp> {
         GoRoute(
           path: '/new-chat',
           builder: (context, state) => const NewChatPage(),
+        ),
+        GoRoute(
+          path: '/create-group',
+          builder: (context, state) => const CreateGroupPage(),
         ),
         GoRoute(
           path: '/add-friend',

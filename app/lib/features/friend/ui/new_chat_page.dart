@@ -16,6 +16,11 @@ class NewChatPage extends ConsumerWidget {
         title: const Text('New Chat'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.group_add),
+            tooltip: '建立群組',
+            onPressed: () => context.push('/create-group'),
+          ),
+          IconButton(
             icon: const Icon(Icons.person_add),
             onPressed: () => context.push('/add-friend'),
           ),
