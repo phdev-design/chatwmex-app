@@ -42,7 +42,7 @@ func NewFriendRepository(db *mongo.Database) domain.FriendRepository {
 		Keys:    bson.D{{Key: "sender_id", Value: 1}, {Key: "receiver_id", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	}
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	collection.Indexes().CreateOne(ctx, model)
@@ -119,9 +119,9 @@ func (r *FriendRepository) GetRequestsByReceiverID(ctx context.Context, receiver
 		if err := cursor.Decode(&mReq); err != nil {
 			continue
 		}
-		
+
 		req := r.toDomain(&mReq)
-		
+
 		// Fetch sender username
 		senderOID, err := primitive.ObjectIDFromHex(mReq.SenderID)
 		if err == nil {
@@ -130,7 +130,7 @@ func (r *FriendRepository) GetRequestsByReceiverID(ctx context.Context, receiver
 				req.SenderUsername = mUser.Username
 			}
 		}
-		
+
 		requests = append(requests, req)
 	}
 	return requests, nil
@@ -200,14 +200,14 @@ func (r *FriendRepository) GetFriends(ctx context.Context, userID string) ([]*do
 		if err := cursor.Decode(&mReq); err != nil {
 			continue
 		}
-		
+
 		var fid string
 		if mReq.SenderID == userID {
 			fid = mReq.ReceiverID
 		} else {
 			fid = mReq.SenderID
 		}
-		
+
 		oid, _ := primitive.ObjectIDFromHex(fid)
 		friendIDs = append(friendIDs, oid)
 	}
@@ -249,4 +249,16 @@ func (r *FriendRepository) IsFriend(ctx context.Context, userID, friendID string
 	}
 	count, err := r.collection.CountDocuments(ctx, filter)
 	return count > 0, err
+}
+
+func (r *FriendRepository) RemoveFriend(ctx context.Context, userID, friendID string) error {
+	filter := bson.M{
+		"status": domain.FriendRequestAccepted,
+		"$or": []bson.M{
+			{"sender_id": userID, "receiver_id": friendID},
+			{"sender_id": friendID, "receiver_id": userID},
+		},
+	}
+	_, err := r.collection.DeleteMany(ctx, filter)
+	return err
 }

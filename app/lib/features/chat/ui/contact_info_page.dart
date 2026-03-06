@@ -7,6 +7,7 @@ import 'package:app/features/chat/ui/room_media_page.dart';
 import 'package:app/features/chat/providers/chat_setting_provider.dart';
 import 'package:app/features/chat/providers/e2ee_provider.dart';
 import 'package:app/features/chat/ui/encryption_info_page.dart'; // 👉 匯入 EncryptionInfoPage
+import 'package:app/features/friend/providers/friend_provider.dart';
 
 class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -255,6 +256,48 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
         ).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
       }
     }
+  }
+
+  void _confirmUnfriend(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text('解除好友'),
+        content: Text('確定要與 ${widget.title} 解除好友關係嗎？解除後對方將無法繼續傳訊息，但歷史記錄將保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                // widget.roomId 在私訊中等於對方的 userId
+                await ref
+                    .read(friendViewModelProvider.notifier)
+                    .unfriend(widget.roomId);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('已解除與 ${widget.title} 的好友關係')),
+                  );
+                  // 返回到聊天頁，聊天頁會偵測到非好友狀態
+                  context.pop();
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('解除失敗：$e')));
+                }
+              }
+            },
+            child: const Text('解除好友', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _updateTimer(String option) async {
@@ -736,6 +779,22 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 ),
               ),
               const SizedBox(height: 12),
+
+              // === 解除好友區塊（只在非群組時顯示）===
+              if (!widget.isRoom) ...[
+                Container(
+                  color: surfaceColor,
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.person_remove_outlined,
+                      color: dangerColor,
+                    ),
+                    title: Text('解除好友', style: TextStyle(color: dangerColor)),
+                    onTap: () => _confirmUnfriend(context),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // === 封鎖與檢舉區塊 ===
               Container(

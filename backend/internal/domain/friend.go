@@ -38,6 +38,7 @@ type FriendRepository interface {
 	AddFriend(ctx context.Context, userID, friendID string) error
 	GetFriends(ctx context.Context, userID string) ([]*Friend, error)
 	IsFriend(ctx context.Context, userID, friendID string) (bool, error)
+	RemoveFriend(ctx context.Context, userID, friendID string) error
 }
 
 type FriendUsecase interface {
@@ -46,4 +47,5 @@ type FriendUsecase interface {
 	RejectFriendRequest(ctx context.Context, requestID string) error
 	GetPendingRequests(ctx context.Context, userID string) ([]*FriendRequest, error)
 	GetFriends(ctx context.Context, userID string) ([]*Friend, error)
+	UnfriendUser(ctx context.Context, currentUserID, targetUserID string) error
 }

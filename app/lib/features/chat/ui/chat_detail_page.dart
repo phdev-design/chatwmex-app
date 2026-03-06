@@ -43,6 +43,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   bool _showNewMessageBanner = false;
   int _unreadCount = 0;
   bool _isAtBottom = true;
+  bool _isFriend = true;
   late final AnimationController _arrowController;
   late final Animation<Offset> _arrowOffset;
 
@@ -56,6 +57,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   @override
   void initState() {
     super.initState();
+    _checkFriendStatus();
     _scrollController = AutoScrollController(
       axis: Axis.vertical,
       suggestedRowHeight: 76,
@@ -84,7 +86,18 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     super.dispose();
   }
 
-Future<void> _navigateToContactInfo() async {
+  Future<void> _checkFriendStatus() async {
+    if (widget.isRoom) return;
+    final friends = ref.read(friendViewModelProvider).friends;
+    final stillFriend = friends.any((f) => f.id == widget.roomId);
+    if (mounted) {
+      if (_isFriend != stillFriend) {
+        setState(() => _isFriend = stillFriend);
+      }
+    }
+  }
+
+  Future<void> _navigateToContactInfo() async {
     final state = ref.read(chatRoomProvider(_params));
     final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
         ? state.roomAvatarUrl
@@ -137,7 +150,9 @@ Future<void> _navigateToContactInfo() async {
         // 方法 C：如果還是沒有，才嘗試調用 search API (目前後端可能無此 API 返回 404)
         if (contactEmail == null) {
           try {
-            final users = await ref.read(chatRepositoryProvider).searchUsers(widget.title);
+            final users = await ref
+                .read(chatRepositoryProvider)
+                .searchUsers(widget.title);
             for (final u in users) {
               if (u.id == widget.roomId) {
                 contactEmail = u.email;
@@ -167,7 +182,7 @@ Future<void> _navigateToContactInfo() async {
           'title': widget.title,
           'isRoom': widget.isRoom,
           'avatarUrl': effectiveAvatarUrl,
-          'mediaCount': mediaCount, 
+          'mediaCount': mediaCount,
           'email': contactEmail, // 成功帶入 Email
         },
       );
@@ -223,7 +238,7 @@ Future<void> _navigateToContactInfo() async {
 
   Widget _buildE2EEBanner(BuildContext context) {
     if (widget.isRoom) return const SizedBox.shrink();
-    
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -249,7 +264,9 @@ Future<void> _navigateToContactInfo() async {
                 '訊息和通話都受到端對端加密。點擊以了解更多。',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isDark ? const Color(0xFFFFD43B) : const Color(0xFF866700),
+                  color: isDark
+                      ? const Color(0xFFFFD43B)
+                      : const Color(0xFF866700),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -290,6 +307,10 @@ Future<void> _navigateToContactInfo() async {
     final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
         ? state.roomAvatarUrl
         : widget.avatarUrl;
+
+    ref.listen(friendViewModelProvider, (prev, next) {
+      _checkFriendStatus();
+    });
 
     ref.listen(chatRoomProvider(_params), (prev, next) {
       if (!mounted) return;
@@ -382,12 +403,37 @@ Future<void> _navigateToContactInfo() async {
                       ),
               ),
               if (state.typingUsers.isNotEmpty) const ChatTypingIndicator(),
-              ChatInputBar(
-                params: _params,
-                isRoom: widget.isRoom,
-                title: widget.title,
-                currentUserId: widget.currentUserId,
-              ),
+              if (!widget.isRoom && !_isFriend)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  color: Theme.of(context).colorScheme.surface,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '你們已不再是好友，請重新發送交友申請才能繼續對話。',
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 13,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ChatInputBar(
+                  params: _params,
+                  isRoom: widget.isRoom,
+                  title: widget.title,
+                  currentUserId: widget.currentUserId,
+                ),
             ],
           ),
           if (_showNewMessageBanner && !_isAtBottom)

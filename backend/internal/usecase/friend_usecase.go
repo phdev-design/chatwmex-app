@@ -31,7 +31,7 @@ func (u *friendUsecase) SendFriendRequest(c context.Context, senderID, receiverU
 	// Find receiver
 	var receiver *domain.User
 	var err error
-	
+
 	// Basic check if email
 	isEmail := false
 	for _, char := range receiverUsernameOrEmail {
@@ -69,7 +69,7 @@ func (u *friendUsecase) SendFriendRequest(c context.Context, senderID, receiverU
 		SenderID:   senderID,
 		ReceiverID: receiver.ID,
 	}
-	
+
 	if err := u.friendRepo.CreateRequest(ctx, req); err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func (u *friendUsecase) AcceptFriendRequest(c context.Context, requestID string)
 		// We don't have ReceiverID in context here easily without passing it.
 		// But req has ReceiverID.
 		// We want to notify req.SenderID that req.ReceiverID accepted.
-		
+
 		// Ideally we send the updated request or a "friend_accepted" event with friend info.
 		// Let's send the request object with status Accepted.
 		req.Status = domain.FriendRequestAccepted
@@ -137,4 +137,18 @@ func (u *friendUsecase) GetFriends(c context.Context, userID string) ([]*domain.
 	defer cancel()
 
 	return u.friendRepo.GetFriends(ctx, userID)
+}
+
+func (u *friendUsecase) UnfriendUser(c context.Context, currentUserID, targetUserID string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	isFriend, err := u.friendRepo.IsFriend(ctx, currentUserID, targetUserID)
+	if err != nil {
+		return err
+	}
+	if !isFriend {
+		return errors.New("not friends")
+	}
+	return u.friendRepo.RemoveFriend(ctx, currentUserID, targetUserID)
 }

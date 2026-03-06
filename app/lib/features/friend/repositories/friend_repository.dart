@@ -32,6 +32,10 @@ class FriendRepository {
     final List<dynamic> list = response.data['data'] ?? [];
     return list.map((e) => Friend.fromJson(e)).toList();
   }
+
+  Future<void> unfriend(String targetUserId) async {
+    await _networkService.client.delete('/friends/unfriend/$targetUserId');
+  }
 }
 
 final friendRepositoryProvider = Provider<FriendRepository>((ref) {

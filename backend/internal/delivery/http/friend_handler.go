@@ -27,6 +27,7 @@ func NewFriendHandler(r *gin.Engine, fus domain.FriendUsecase, jwtSecret string)
 		api.POST("/reject/:id", handler.RejectRequest)
 		api.GET("/requests", handler.GetRequests)
 		api.GET("/list", handler.GetFriends)
+		api.DELETE("/unfriend/:id", handler.Unfriend)
 	}
 }
 
@@ -97,4 +98,20 @@ func (h *FriendHandler) GetFriends(c *gin.Context) {
 		return
 	}
 	response.Success(c, friends)
+}
+
+func (h *FriendHandler) Unfriend(c *gin.Context) {
+	targetUserID := c.Param("id") // target user's ID
+	currentUserID := c.GetString(middleware.ContextUserIDKey)
+
+	err := h.FriendUsecase.UnfriendUser(c.Request.Context(), currentUserID, targetUserID)
+	if err != nil {
+		if err.Error() == "not friends" {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, "Unfriended successfully")
 }

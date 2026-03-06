@@ -78,6 +78,15 @@ class FriendViewModel extends Notifier<FriendState> {
       throw e;
     }
   }
+
+  Future<void> unfriend(String targetUserId) async {
+    try {
+      await _repository.unfriend(targetUserId);
+      await loadAll(); // 重新整理好友清單
+    } catch (e) {
+      throw e;
+    }
+  }
 }
 
 final friendViewModelProvider = NotifierProvider<FriendViewModel, FriendState>(FriendViewModel.new);
