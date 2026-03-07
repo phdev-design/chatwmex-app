@@ -185,3 +185,10 @@ func (u *friendUsecase) IsBlocked(c context.Context, userA, userB string) (bool,
 
 	return u.friendRepo.IsBlocked(ctx, userA, userB)
 }
+
+func (u *friendUsecase) GetBlockedUsers(c context.Context, userID string) ([]*domain.Friend, error) {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	return u.friendRepo.GetBlockedUsers(ctx, userID)
+}

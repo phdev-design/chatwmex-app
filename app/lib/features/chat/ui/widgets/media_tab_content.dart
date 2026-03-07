@@ -50,16 +50,59 @@ class _MediaTabContentState extends ConsumerState<MediaTabContent> {
     final state = ref.watch(roomMediaProvider(arg));
     final notifier = ref.read(roomMediaProvider(arg).notifier);
     final grouped = notifier.groupedMessages;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // ── Initial loading ──────────────────────────────────────────────────────
     if (state.isLoading && state.messages.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // ── Empty state ───────────────────────────────────────────────────────────
     if (grouped.isEmpty) {
-      return const Center(child: Text('No media yet'));
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cs.onSurface.withValues(alpha: 0.06),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.photo_library_outlined,
+                size: 48,
+                color: cs.onSurface.withValues(alpha: 0.35),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '尚無媒體',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface.withValues(alpha: 0.75),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '此聊天室傳送的照片和影片\n會顯示在這裡',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                color: cs.onSurface.withValues(alpha: 0.45),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
+    // ── Grid ──────────────────────────────────────────────────────────────────
     final slivers = <Widget>[];
+
     for (final entry in grouped.entries) {
       final mediaMessages = entry.value
           .where(
@@ -67,85 +110,169 @@ class _MediaTabContentState extends ConsumerState<MediaTabContent> {
           )
           .toList();
       if (mediaMessages.isEmpty) continue;
+
+      // Section header
       slivers.add(
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
             child: Text(
               entry.key,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.3,
+                color: cs.onSurface.withValues(alpha: 0.55),
+              ),
             ),
           ),
         ),
       );
+
+      // Grid
       slivers.add(
         SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
+              mainAxisSpacing: 2,
+              crossAxisSpacing: 2,
             ),
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final message = mediaMessages[index];
-              final url = resolveFullUrl(message.content);
-              final heroTag = message.id; // 取 message.id 作為唯一的 hero tag
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final message = mediaMessages[index];
+                final url = resolveFullUrl(message.content);
+                final heroTag = message.id;
+                final isVideo = message.type == MessageType.video;
 
-              if (url.isEmpty) {
-                return Container(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                );
-              }
-              
-              // 加入 GestureDetector 處理點擊與 Hero 動畫
-              return GestureDetector(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => PhotoScreen(
-                        imageUrl: url,
-                        heroTag: heroTag,
+                if (url.isEmpty) {
+                  return _PlaceholderTile(isDark: isDark, cs: cs);
+                }
+
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PhotoScreen(
+                          imageUrl: url,
+                          heroTag: heroTag,
+                        ),
                       ),
-                    ),
-                  );
-                },
-                child: Hero(
-                  tag: heroTag,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      url,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.broken_image_outlined),
-                        );
-                      },
+                    );
+                  },
+                  child: Hero(
+                    tag: heroTag,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Image
+                        Image.network(
+                          url,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, progress) {
+                            if (progress == null) return child;
+                            return Container(
+                              color: isDark
+                                  ? const Color(0xFF2C2C2E)
+                                  : const Color(0xFFF0F2F5),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  value: progress.expectedTotalBytes != null
+                                      ? progress.cumulativeBytesLoaded /
+                                          progress.expectedTotalBytes!
+                                      : null,
+                                  color: cs.primary.withValues(alpha: 0.6),
+                                ),
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: isDark
+                                  ? const Color(0xFF2C2C2E)
+                                  : const Color(0xFFF0F2F5),
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                size: 28,
+                                color: cs.onSurface.withValues(alpha: 0.3),
+                              ),
+                            );
+                          },
+                        ),
+                        // Video play overlay
+                        if (isVideo)
+                          Positioned(
+                            right: 6,
+                            bottom: 6,
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                ),
-              );
-            }, childCount: mediaMessages.length),
+                );
+              },
+              childCount: mediaMessages.length,
+            ),
           ),
         ),
       );
     }
 
+    // Load more indicator
     if (state.isLoadingMore) {
       slivers.add(
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator()),
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ),
         ),
       );
     }
 
-    return CustomScrollView(controller: _scrollController, slivers: slivers);
+    // Bottom safe area padding
+    slivers.add(
+      SliverToBoxAdapter(
+        child: SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
+      ),
+    );
+
+    return CustomScrollView(
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      slivers: slivers,
+    );
+  }
+}
+
+// ── Placeholder tile ──────────────────────────────────────────────────────────
+
+class _PlaceholderTile extends StatelessWidget {
+  final bool isDark;
+  final ColorScheme cs;
+
+  const _PlaceholderTile({required this.isDark, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF0F2F5),
+    );
   }
 }

@@ -62,4 +62,5 @@ type FriendUsecase interface {
 	BlockUser(ctx context.Context, blockerID, blockedTargetID string) error
 	UnblockUser(ctx context.Context, blockerID, blockedTargetID string) error
 	IsBlocked(ctx context.Context, userA, userB string) (bool, error)
+	GetBlockedUsers(ctx context.Context, userID string) ([]*Friend, error)
 }

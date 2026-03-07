@@ -10,7 +10,7 @@ import 'package:app/features/chat/ui/room_media_page.dart';
 import 'package:app/features/chat/providers/chat_setting_provider.dart';
 import 'package:app/features/chat/providers/e2ee_provider.dart';
 import 'package:app/features/chat/ui/encryption_info_page.dart';
-import 'package:app/features/chat/ui/media_visibility_settings_page.dart'; // 👉 匯入媒體設定頁面
+import 'package:app/features/chat/ui/media_visibility_settings_page.dart';
 import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/friend/repositories/friend_repository.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
@@ -21,10 +21,10 @@ class ContactInfoPage extends ConsumerStatefulWidget {
   final String title;
   final bool isRoom;
   final String? avatarUrl;
-  final int mediaCount; // 👉 1. 新增這行
-  final String? email; // 👉 1. 新增 email 參數
-  final String currentUserId; // 👉 新增 currentUserId 參數
-  final String? ownerId; // 👉 新增 ownerId 參數
+  final int mediaCount;
+  final String? email;
+  final String currentUserId;
+  final String? ownerId;
 
   const ContactInfoPage({
     super.key,
@@ -32,10 +32,10 @@ class ContactInfoPage extends ConsumerStatefulWidget {
     required this.title,
     this.isRoom = false,
     this.avatarUrl,
-    this.mediaCount = 0, // 👉 2. 設定預設值
-    this.email, // 👉 2. 加入建構子
-    required this.currentUserId, // 👉 加入建構子
-    this.ownerId, // 👉 加入建構子
+    this.mediaCount = 0,
+    this.email,
+    required this.currentUserId,
+    this.ownerId,
   });
 
   @override
@@ -56,12 +56,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
   Future<void> _checkBlockStatus() async {
     try {
-      final isBlocked = await ref
-          .read(friendRepositoryProvider)
-          .isBlocked(widget.roomId);
-      if (mounted) {
-        setState(() => _isBlocked = isBlocked);
-      }
+      final isBlocked =
+          await ref.read(friendRepositoryProvider).isBlocked(widget.roomId);
+      if (mounted) setState(() => _isBlocked = isBlocked);
     } catch (e) {
       debugPrint('檢查封鎖狀態失敗: $e');
     }
@@ -79,7 +76,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     if (option == '24小時') return 86400;
     if (option == '7天') return 604800;
     if (option == '90天') return 7776000;
-    return 0; // '關閉'
+    return 0;
   }
 
   void _showDisappearingMessagesDialog(
@@ -88,7 +85,6 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     String currentOption,
   ) {
     String tempOption = currentOption;
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -124,54 +120,30 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildOption(
-                    title: '24小時',
-                    value: '24小時',
-                    groupValue: tempOption,
-                    accentColor: accentColor,
-                    primaryTextColor: primaryTextColor,
-                    onChanged: (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildOption(
-                    title: '7天',
-                    value: '7天',
-                    groupValue: tempOption,
-                    accentColor: accentColor,
-                    primaryTextColor: primaryTextColor,
-                    onChanged: (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildOption(
-                    title: '90天',
-                    value: '90天',
-                    groupValue: tempOption,
-                    accentColor: accentColor,
-                    primaryTextColor: primaryTextColor,
-                    onChanged: (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildOption(
-                    title: '關閉',
-                    value: '關閉',
-                    groupValue: tempOption,
-                    accentColor: accentColor,
-                    primaryTextColor: primaryTextColor,
-                    onChanged: (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
-                    },
-                  ),
+                  _buildTimerOption('24小時', tempOption, accentColor,
+                      primaryTextColor, (val) {
+                    setSheetState(() => tempOption = val!);
+                    _updateTimer(val!);
+                    Navigator.pop(context);
+                  }),
+                  _buildTimerOption('7天', tempOption, accentColor,
+                      primaryTextColor, (val) {
+                    setSheetState(() => tempOption = val!);
+                    _updateTimer(val!);
+                    Navigator.pop(context);
+                  }),
+                  _buildTimerOption('90天', tempOption, accentColor,
+                      primaryTextColor, (val) {
+                    setSheetState(() => tempOption = val!);
+                    _updateTimer(val!);
+                    Navigator.pop(context);
+                  }),
+                  _buildTimerOption('關閉', tempOption, accentColor,
+                      primaryTextColor, (val) {
+                    setSheetState(() => tempOption = val!);
+                    _updateTimer(val!);
+                    Navigator.pop(context);
+                  }),
                   const SizedBox(height: 16),
                 ],
               ),
@@ -182,7 +154,22 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     );
   }
 
-  /// 顯示靜音選項的 BottomSheet
+  Widget _buildTimerOption(
+    String title,
+    String groupValue,
+    Color accentColor,
+    Color primaryTextColor,
+    ValueChanged<String?> onChanged,
+  ) {
+    return RadioListTile<String>(
+      title: Text(title, style: TextStyle(color: primaryTextColor)),
+      value: title,
+      groupValue: groupValue,
+      activeColor: accentColor,
+      onChanged: onChanged,
+    );
+  }
+
   void _showMuteDialog(
     Color primaryTextColor,
     Color accentColor,
@@ -225,7 +212,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 title: '8小時',
                 textColor: primaryTextColor,
                 onTap: () {
-                  final until = DateTime.now().add(const Duration(hours: 8));
+                  final until =
+                      DateTime.now().add(const Duration(hours: 8));
                   _updateMute(until.millisecondsSinceEpoch ~/ 1000);
                   Navigator.pop(context);
                 },
@@ -235,7 +223,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 title: '1星期',
                 textColor: primaryTextColor,
                 onTap: () {
-                  final until = DateTime.now().add(const Duration(days: 7));
+                  final until =
+                      DateTime.now().add(const Duration(days: 7));
                   _updateMute(until.millisecondsSinceEpoch ~/ 1000);
                   Navigator.pop(context);
                 },
@@ -286,9 +275,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       ref.invalidate(chatSettingProvider(widget.roomId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('更新失敗: $e')));
       }
     }
   }
@@ -299,7 +287,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
         title: const Text('解除好友'),
-        content: Text('確定要與 ${widget.title} 解除好友關係嗎？解除後對方將無法繼續傳訊息，但歷史記錄將保留。'),
+        content: Text(
+            '確定要與 ${widget.title} 解除好友關係嗎？解除後對方將無法繼續傳訊息，但歷史記錄將保留。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -309,7 +298,6 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
             onPressed: () async {
               Navigator.of(ctx).pop();
               try {
-                // widget.roomId 在私訊中等於對方的 userId
                 await ref
                     .read(friendViewModelProvider.notifier)
                     .unfriend(widget.roomId);
@@ -317,18 +305,17 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('已解除與 ${widget.title} 的好友關係')),
                   );
-                  // 返回到聊天頁，聊天頁會偵測到非好友狀態
                   context.pop();
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('解除失敗：$e')));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('解除失敗：$e')));
                 }
               }
             },
-            child: const Text('解除好友', style: TextStyle(color: Colors.red)),
+            child:
+                const Text('解除好友', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -343,28 +330,10 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       ref.invalidate(chatSettingProvider(widget.roomId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('更新失敗: $e')));
       }
     }
-  }
-
-  Widget _buildOption({
-    required String title,
-    required String value,
-    required String groupValue,
-    required Color accentColor,
-    required Color primaryTextColor,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return RadioListTile<String>(
-      title: Text(title, style: TextStyle(color: primaryTextColor)),
-      value: value,
-      groupValue: groupValue,
-      activeColor: accentColor,
-      onChanged: onChanged,
-    );
   }
 
   @override
@@ -373,9 +342,14 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     if (widget.isRoom) {
       final roomState = ref.watch(roomListViewModelProvider);
       try {
-        final room = roomState.rooms.firstWhere((r) => r.id == widget.roomId);
-        if (room.avatarUrl != null && room.avatarUrl!.isNotEmpty) {
-          displayAvatarUrl = room.avatarUrl;
+        final room = roomState.rooms.cast<dynamic>().firstWhere(
+          (r) => r.id == widget.roomId,
+          orElse: () => null,
+        );
+        if (room != null &&
+            room.avatarUrl != null &&
+            (room.avatarUrl as String).isNotEmpty) {
+          displayAvatarUrl = room.avatarUrl as String;
         }
       } catch (_) {}
     }
@@ -387,601 +361,440 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       colorScheme: colorScheme,
       brightness: brightness,
     );
-    final Color bgColor = isDark
-        ? const Color(0xFF0B141A)
-        : colorScheme.surface;
-    final Color surfaceColor = isDark
-        ? const Color(0xFF111B21)
-        : colorScheme.surfaceContainerHighest;
-    final Color accentColor = tokens.accent;
-    final Color dangerColor = colorScheme.error;
-    final Color primaryTextColor = colorScheme.onSurface;
-    final Color secondaryTextColor = colorScheme.onSurfaceVariant;
-    final Color dividerColor = colorScheme.outlineVariant.withValues(
-      alpha: 0.35,
-    );
+    final bgColor =
+        isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
+    final cardColor =
+        isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final accentColor = tokens.accent;
+    final dangerColor = colorScheme.error;
+    final primaryTextColor = isDark ? Colors.white : Colors.black87;
+    final secondaryTextColor =
+        isDark ? Colors.white54 : Colors.grey.shade600;
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.07)
+        : Colors.black.withValues(alpha: 0.07);
 
     return Scaffold(
       backgroundColor: bgColor,
       body: CustomScrollView(
         slivers: [
+          // ── SliverAppBar ─────────────────────────────────────────────
           SliverAppBar(
-            backgroundColor: surfaceColor,
-            expandedHeight: 320.0,
+            backgroundColor: cardColor,
+            expandedHeight: 300.0,
             pinned: true,
+            elevation: 0,
+            scrolledUnderElevation: 0,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back, color: primaryTextColor),
+              icon: Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 20, color: isDark ? Colors.white : Colors.black87),
               onPressed: () => context.pop(),
             ),
             actions: [
               IconButton(
-                icon: Icon(Icons.more_vert, color: primaryTextColor),
+                icon: Icon(Icons.more_vert,
+                    color: isDark ? Colors.white : Colors.black87),
                 onPressed: () {},
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                color: surfaceColor,
-                // 使用 Center + SingleChildScrollView 避免往上捲動壓縮高度時發生 RenderFlex Overflow
-                child: Center(
-                  child: SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const SizedBox(height: 20),
-                          Hero(
-                            tag: 'avatar_${widget.roomId}',
-                            child: _buildAvatar(displayAvatarUrl),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            widget.title,
-                            style: TextStyle(
-                              color: primaryTextColor,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 20,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                        // 👉 3. 將原本寫死的電話改為顯示 email
-                        if (!widget.isRoom &&
-                            widget.email != null &&
-                            widget.email!.isNotEmpty)
-                          Text(
-                            widget.email!,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: secondaryTextColor,
-                            ),
-                          ),
-                          const SizedBox(height: 40), // 預留空間給底部的 title，避免文字重疊
-                        ],
+                color: cardColor,
+                child: SafeArea(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 32),
+                      Hero(
+                        tag: 'avatar_${widget.roomId}',
+                        child: _buildAvatar(displayAvatarUrl, isDark),
                       ),
-                    ),
+                      const SizedBox(height: 14),
+                      Text(
+                        widget.title,
+                        style: TextStyle(
+                          color: primaryTextColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 22,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (!widget.isRoom &&
+                          widget.email != null &&
+                          widget.email!.isNotEmpty)
+                        Text(
+                          widget.email!,
+                          style: TextStyle(
+                              fontSize: 14, color: secondaryTextColor),
+                        ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
+
+          // ── Body ─────────────────────────────────────────────────────
           SliverList(
             delegate: SliverChildListDelegate([
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
 
-              // === 媒體、連結與文件 ===
-              Container(
-                color: surfaceColor,
-                child: ListTile(
-                  title: Text(
-                    '媒體、連結與文件',
-                    style: TextStyle(color: primaryTextColor),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 👉 3. 替換原本的 '0' 為 $mediaCount
-                      Text(
-                        '${widget.mediaCount}',
-                        style: TextStyle(color: secondaryTextColor),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(Icons.chevron_right, color: secondaryTextColor),
-                    ],
-                  ),
-                  onTap: () {
-                    // 2. 點擊後跳轉到 RoomMediaPage
-                    Navigator.push(
+              // ── Quick Actions ───────────────────────────────────────
+              _QuickActionsRow(
+                isDark: isDark,
+                cardColor: cardColor,
+                accentColor: accentColor,
+                onMessage: () => context.pop(),
+              ),
+              const SizedBox(height: 20),
+
+              // ── SECTION: 媒體與文件 ─────────────────────────────────
+              _SectionHeader(label: '媒體與文件', isDark: isDark),
+              _InfoCard(
+                isDark: isDark,
+                cardColor: cardColor,
+                dividerColor: dividerColor,
+                children: [
+                  _InfoTile(
+                    icon: Icons.photo_library_rounded,
+                    iconColor: const Color(0xFF5157AE),
+                    label: '媒體、連結與文件',
+                    trailing: Text(
+                      '${widget.mediaCount}',
+                      style: TextStyle(
+                          fontSize: 15, color: secondaryTextColor),
+                    ),
+                    isDark: isDark,
+                    onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) =>
                             RoomMediaPage(roomId: widget.roomId),
                       ),
-                    );
-
-                    // 如果你的 go_router 已經配好了路徑，也可以改成：
-                    // context.push('/rooms/${widget.roomId}/media');
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // === 通知設定區塊 ===
-              Container(
-                color: surfaceColor,
-                child: Column(
-                  children: [
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final settingAsync = ref.watch(
-                          chatSettingProvider(widget.roomId),
-                        );
-                        return settingAsync.when(
-                          data: (setting) {
-                            return Column(
-                              children: [
-                                ListTile(
-                                  leading: Icon(
-                                    Icons.notifications_off,
-                                    color: secondaryTextColor,
-                                  ),
-                                  title: Text(
-                                    '將通知靜音',
-                                    style: TextStyle(color: primaryTextColor),
-                                  ),
-                                  subtitle: setting.isMuted
-                                      ? Text(
-                                          setting.muteDescription,
-                                          style: TextStyle(
-                                            color: secondaryTextColor,
-                                            fontSize: 13,
-                                          ),
-                                        )
-                                      : null,
-                                  trailing: Switch(
-                                    value: setting.isMuted,
-                                    onChanged: (val) {
-                                      if (val) {
-                                        _showMuteDialog(
-                                          primaryTextColor,
-                                          accentColor,
-                                          setting.muteUntil,
-                                        );
-                                      } else {
-                                        _updateMute(null);
-                                      }
-                                    },
-                                    activeColor: accentColor,
-                                  ),
-                                ),
-                                Divider(height: 1, color: dividerColor),
-                                ListTile(
-                                  leading: Icon(
-                                    Icons.music_note,
-                                    color: secondaryTextColor,
-                                  ),
-                                  title: Text(
-                                    '自訂通知',
-                                    style: TextStyle(color: primaryTextColor),
-                                  ),
-                                  onTap: () => _showMuteDialog(
-                                    primaryTextColor,
-                                    accentColor,
-                                    setting.muteUntil,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                          loading: () => Column(
-                            children: [
-                              ListTile(
-                                leading: Icon(
-                                  Icons.notifications_off,
-                                  color: secondaryTextColor,
-                                ),
-                                title: Text(
-                                  '將通知靜音',
-                                  style: TextStyle(color: primaryTextColor),
-                                ),
-                                trailing: const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              ),
-                              Divider(height: 1, color: dividerColor),
-                              ListTile(
-                                leading: Icon(
-                                  Icons.music_note,
-                                  color: secondaryTextColor,
-                                ),
-                                title: Text(
-                                  '自訂通知',
-                                  style: TextStyle(color: primaryTextColor),
-                                ),
-                              ),
-                            ],
-                          ),
-                          error: (_, __) => Column(
-                            children: [
-                              ListTile(
-                                leading: Icon(
-                                  Icons.notifications_off,
-                                  color: secondaryTextColor,
-                                ),
-                                title: Text(
-                                  '將通知靜音',
-                                  style: TextStyle(color: primaryTextColor),
-                                ),
-                                trailing: Switch(value: false, onChanged: null),
-                              ),
-                              Divider(height: 1, color: dividerColor),
-                              ListTile(
-                                leading: Icon(
-                                  Icons.music_note,
-                                  color: secondaryTextColor,
-                                ),
-                                title: Text(
-                                  '自訂通知',
-                                  style: TextStyle(color: primaryTextColor),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
                     ),
-                    Divider(height: 1, color: dividerColor),
-                    ListTile(
-                      leading: Icon(Icons.image, color: secondaryTextColor),
-                      title: Text(
-                        '媒體瀏覽設定',
-                        style: TextStyle(color: primaryTextColor),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // ── SECTION: 通知與隱私 ─────────────────────────────────
+              _SectionHeader(label: '通知與隱私', isDark: isDark),
+              _InfoCard(
+                isDark: isDark,
+                cardColor: cardColor,
+                dividerColor: dividerColor,
+                children: [
+                  // Mute
+                  Consumer(builder: (context, ref, _) {
+                    final settingAsync =
+                        ref.watch(chatSettingProvider(widget.roomId));
+                    return settingAsync.when(
+                      data: (setting) => _InfoTile(
+                        icon: Icons.notifications_off_rounded,
+                        iconColor: const Color(0xFF8E8E93),
+                        label: '將通知靜音',
+                        subtitle: setting.isMuted
+                            ? setting.muteDescription
+                            : null,
+                        isDark: isDark,
+                        trailing: Switch(
+                          value: setting.isMuted,
+                          onChanged: (val) {
+                            if (val) {
+                              _showMuteDialog(primaryTextColor,
+                                  accentColor, setting.muteUntil);
+                            } else {
+                              _updateMute(null);
+                            }
+                          },
+                          activeColor: accentColor,
+                        ),
                       ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => MediaVisibilitySettingsPage(
-                              roomId: widget.roomId,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
+                      loading: () => _InfoTile(
+                        icon: Icons.notifications_off_rounded,
+                        iconColor: const Color(0xFF8E8E93),
+                        label: '將通知靜音',
+                        isDark: isDark,
+                        trailing: const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                      error: (_, __) => _InfoTile(
+                        icon: Icons.notifications_off_rounded,
+                        iconColor: const Color(0xFF8E8E93),
+                        label: '將通知靜音',
+                        isDark: isDark,
+                        trailing:
+                            Switch(value: false, onChanged: null),
+                      ),
+                    );
+                  }),
 
-              // === 隱私設定區塊 ===
-              Container(
-                color: surfaceColor,
-                child: Column(
-                  children: [
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final e2eeState = ref.watch(
-                          e2eeEnabledProvider(widget.roomId),
-                        );
-                        final isE2EEEnabled = e2eeState.value ?? true;
-
-                        return ListTile(
-                          leading: Icon(Icons.lock, color: secondaryTextColor),
-                          title: Text(
-                            '加密',
-                            style: TextStyle(color: primaryTextColor),
-                          ),
-                          subtitle: Text(
-                            isE2EEEnabled
-                                ? '訊息和通話都受到端對端加密。點按以切換。'
-                                : '目前未加密傳輸。不建議關閉。',
-                            style: TextStyle(
-                              color: secondaryTextColor,
-                              fontSize: 13,
-                            ),
-                          ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => EncryptionInfoPage(
-                                  contactId: widget.roomId,
-                                  contactName: widget.title,
-                                  currentUserId:
-                                      '', // Not strictly needed for UI shown
-                                ),
-                              ),
-                            );
-                          },
-                          trailing: e2eeState.isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Switch(
-                                  value: isE2EEEnabled,
-                                  onChanged: (val) {
-                                    if (val) {
-                                      // 開啟直接套用
-                                      ref
-                                          .read(
-                                            e2eeEnabledProvider(
-                                              widget.roomId,
-                                            ).notifier,
-                                          )
-                                          .toggle(true);
-                                    } else {
-                                      // 關閉需要確認
-                                      showDialog(
-                                        context: context,
-                                        builder: (dialogCtx) => AlertDialog(
-                                          backgroundColor: Theme.of(
-                                            context,
-                                          ).colorScheme.surface,
-                                          title: const Text('停用加密？'),
-                                          content: const Text(
-                                            '關閉後，與此聯絡人的訊息將不再加密傳輸，建議保持開啟以保護隱私。',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(dialogCtx),
-                                              child: const Text('取消'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () {
-                                                ref
-                                                    .read(
-                                                      e2eeEnabledProvider(
-                                                        widget.roomId,
-                                                      ).notifier,
-                                                    )
-                                                    .toggle(false);
-                                                Navigator.pop(dialogCtx);
-                                              },
-                                              child: Text(
-                                                '停用',
-                                                style: TextStyle(
-                                                  color: Theme.of(
-                                                    context,
-                                                  ).colorScheme.error,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
+                  // E2EE
+                  Consumer(builder: (context, ref, _) {
+                    final e2eeState =
+                        ref.watch(e2eeEnabledProvider(widget.roomId));
+                    final isE2EEEnabled = e2eeState.value ?? true;
+                    return _InfoTile(
+                      icon: Icons.lock_rounded,
+                      iconColor: const Color(0xFF34C759),
+                      label: '加密',
+                      subtitle: isE2EEEnabled
+                          ? '端對端加密已啟用'
+                          : '目前未加密傳輸',
+                      isDark: isDark,
+                      trailing: e2eeState.isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2),
+                            )
+                          : Switch(
+                              value: isE2EEEnabled,
+                              onChanged: (val) {
+                                if (val) {
+                                  ref
+                                      .read(e2eeEnabledProvider(
+                                              widget.roomId)
+                                          .notifier)
+                                      .toggle(true);
+                                } else {
+                                  showDialog(
+                                    context: context,
+                                    builder: (dialogCtx) => AlertDialog(
+                                      backgroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .surface,
+                                      title: const Text('停用加密？'),
+                                      content: const Text(
+                                          '關閉後，與此聯絡人的訊息將不再加密傳輸，建議保持開啟以保護隱私。'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(dialogCtx),
+                                          child: const Text('取消'),
                                         ),
-                                      );
-                                    }
-                                  },
-                                  activeThumbColor: accentColor,
-                                ),
-                        );
-                      },
-                    ),
-                    Divider(height: 1, color: dividerColor),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final settingAsync = ref.watch(
-                          chatSettingProvider(widget.roomId),
-                        );
-
-                        return settingAsync.when(
-                          data: (setting) {
-                            final currentOption = _formatTimerOption(
-                              setting.disappearingTimer,
-                            );
-                            return ListTile(
-                              leading: Icon(
-                                Icons.av_timer,
-                                color: secondaryTextColor,
-                              ),
-                              title: Text(
-                                '自動刪除的訊息',
-                                style: TextStyle(color: primaryTextColor),
-                              ),
-                              subtitle: Text(
-                                currentOption,
-                                style: TextStyle(
-                                  color: secondaryTextColor,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              onTap: () {
-                                _showDisappearingMessagesDialog(
-                                  primaryTextColor,
-                                  accentColor,
-                                  currentOption,
-                                );
+                                        TextButton(
+                                          onPressed: () {
+                                            ref
+                                                .read(e2eeEnabledProvider(
+                                                        widget.roomId)
+                                                    .notifier)
+                                                .toggle(false);
+                                            Navigator.pop(dialogCtx);
+                                          },
+                                          child: Text('停用',
+                                              style: TextStyle(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .error)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
                               },
-                            );
-                          },
-                          loading: () => ListTile(
-                            leading: Icon(
-                              Icons.av_timer,
-                              color: secondaryTextColor,
+                              activeThumbColor: accentColor,
                             ),
-                            title: Text(
-                              '自動刪除的訊息',
-                              style: TextStyle(color: primaryTextColor),
-                            ),
-                            subtitle: const LinearProgressIndicator(),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => EncryptionInfoPage(
+                            contactId: widget.roomId,
+                            contactName: widget.title,
+                            currentUserId: '',
                           ),
-                          error: (err, stack) => ListTile(
-                            leading: Icon(
-                              Icons.av_timer,
-                              color: secondaryTextColor,
-                            ),
-                            title: Text(
-                              '自動刪除的訊息',
-                              style: TextStyle(color: primaryTextColor),
-                            ),
-                            subtitle: Text(
-                              '載入失敗',
-                              style: TextStyle(color: dangerColor),
-                            ),
-                            onTap: () =>
-                                ref.refresh(chatSettingProvider(widget.roomId)),
-                          ),
+                        ),
+                      ),
+                    );
+                  }),
+
+                  // Disappearing messages
+                  Consumer(builder: (context, ref, _) {
+                    final settingAsync =
+                        ref.watch(chatSettingProvider(widget.roomId));
+                    return settingAsync.when(
+                      data: (setting) {
+                        final currentOption = _formatTimerOption(
+                            setting.disappearingTimer);
+                        return _InfoTile(
+                          icon: Icons.av_timer_rounded,
+                          iconColor: const Color(0xFFFF9500),
+                          label: '自動刪除的訊息',
+                          subtitle: currentOption,
+                          isDark: isDark,
+                          onTap: () => _showDisappearingMessagesDialog(
+                              primaryTextColor, accentColor, currentOption),
                         );
                       },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
+                      loading: () => _InfoTile(
+                        icon: Icons.av_timer_rounded,
+                        iconColor: const Color(0xFFFF9500),
+                        label: '自動刪除的訊息',
+                        isDark: isDark,
+                        trailing: const SizedBox(
+                          width: 60,
+                          child: LinearProgressIndicator(),
+                        ),
+                      ),
+                      error: (_, __) => _InfoTile(
+                        icon: Icons.av_timer_rounded,
+                        iconColor: const Color(0xFFFF9500),
+                        label: '自動刪除的訊息',
+                        subtitle: '載入失敗',
+                        isDark: isDark,
+                        onTap: () => ref
+                            .refresh(chatSettingProvider(widget.roomId)),
+                      ),
+                    );
+                  }),
 
-              // === 群組管理區塊 ===
-              if (widget.isRoom) ...[
-                Container(
-                  color: surfaceColor,
-                  child: ListTile(
-                    leading: Icon(Icons.group, color: secondaryTextColor),
-                    title: Text(
-                      '群組成員',
-                      style: TextStyle(color: primaryTextColor),
+                  // Media visibility
+                  _InfoTile(
+                    icon: Icons.image_rounded,
+                    iconColor: const Color(0xFF4F8EF7),
+                    label: '媒體瀏覽設定',
+                    isDark: isDark,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            MediaVisibilitySettingsPage(
+                                roomId: widget.roomId),
+                      ),
                     ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      context.push(
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // ── SECTION: 群組管理 ────────────────────────────────────
+              if (widget.isRoom) ...[
+                _SectionHeader(label: '群組管理', isDark: isDark),
+                _InfoCard(
+                  isDark: isDark,
+                  cardColor: cardColor,
+                  dividerColor: dividerColor,
+                  children: [
+                    _InfoTile(
+                      icon: Icons.group_rounded,
+                      iconColor: const Color(0xFF5157AE),
+                      label: '群組成員',
+                      isDark: isDark,
+                      onTap: () => context.push(
                         '/group-members',
                         extra: {
                           'roomId': widget.roomId,
                           'ownerId': widget.ownerId,
                           'currentUserId': widget.currentUserId,
                         },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              // === 解除好友區塊（只在非群組時顯示）===
-              if (!widget.isRoom) ...[
-                Container(
-                  color: surfaceColor,
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.person_remove_outlined,
-                      color: dangerColor,
-                    ),
-                    title: Text('解除好友', style: TextStyle(color: dangerColor)),
-                    onTap: () => _confirmUnfriend(context),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              // === 封鎖與檢舉區塊 ===
-              Container(
-                color: surfaceColor,
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: Icon(Icons.block, color: dangerColor),
-                      title: Text(
-                        _isBlocked
-                            ? '解除封鎖 ${widget.title}'
-                            : '封鎖 ${widget.title}',
-                        style: TextStyle(color: dangerColor),
                       ),
-                      onTap: () async {
-                        // 1. 根據目前狀態決定動作
-                        final action = _isBlocked ? '解除封鎖' : '封鎖';
-
-                        // 2. 顯示確認 Dialog
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.surface,
-                            title: Text('$action ${widget.title}？'),
-                            content: _isBlocked
-                                ? const Text('解除封鎖後，對方可以再次傳訊息給你和發送好友申請。')
-                                : const Text(
-                                    '封鎖後，對方無法傳訊息給你，也無法發送好友申請，直至你解除封鎖。',
-                                  ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('取消'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                ),
-                                child: Text(action),
-                              ),
-                            ],
-                          ),
-                        );
-
-                        if (confirmed != true) return;
-
-                        // 3. 執行封鎖 / 解封
-                        try {
-                          if (_isBlocked) {
-                            await ref
-                                .read(friendViewModelProvider.notifier)
-                                .unblockUser(widget.roomId);
-                          } else {
-                            await ref
-                                .read(friendViewModelProvider.notifier)
-                                .blockUser(widget.roomId);
-                          }
-                          setState(() => _isBlocked = !_isBlocked);
-
-                          // 4. 顯示成功 SnackBar
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  _isBlocked
-                                      ? '已封鎖 ${widget.title}'
-                                      : '已解除封鎖 ${widget.title}',
-                                ),
-                              ),
-                            );
-                          }
-
-                          // 5. 若是封鎖，返回上一頁
-                          if (_isBlocked && mounted) {
-                            context.pop();
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(
-                              context,
-                            ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
-                          }
-                        }
-                      },
-                    ),
-                    Divider(height: 1, color: dividerColor),
-                    ListTile(
-                      leading: Icon(
-                        Icons.thumb_down_alt_outlined,
-                        color: dangerColor,
-                      ),
-                      title: Text(
-                        '檢舉 ${widget.title}',
-                        style: TextStyle(color: dangerColor),
-                      ),
-                      onTap: () {},
                     ),
                   ],
                 ),
+                const SizedBox(height: 20),
+              ],
+
+              // ── SECTION: 危險操作 ────────────────────────────────────
+              _SectionHeader(label: '危險操作', isDark: isDark),
+              _InfoCard(
+                isDark: isDark,
+                cardColor: cardColor,
+                dividerColor: dividerColor,
+                children: [
+                  if (!widget.isRoom)
+                    _InfoTile(
+                      icon: Icons.person_remove_rounded,
+                      iconColor: dangerColor,
+                      label: '解除好友',
+                      labelColor: dangerColor,
+                      showChevron: false,
+                      isDark: isDark,
+                      onTap: () => _confirmUnfriend(context),
+                    ),
+                  _InfoTile(
+                    icon: Icons.block_rounded,
+                    iconColor: dangerColor,
+                    label: _isBlocked
+                        ? '解除封鎖 ${widget.title}'
+                        : '封鎖 ${widget.title}',
+                    labelColor: dangerColor,
+                    showChevron: false,
+                    isDark: isDark,
+                    onTap: () async {
+                      final action = _isBlocked ? '解除封鎖' : '封鎖';
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.surface,
+                          title: Text('$action ${widget.title}？'),
+                          content: _isBlocked
+                              ? const Text(
+                                  '解除封鎖後，對方可以再次傳訊息給你和發送好友申請。')
+                              : const Text(
+                                  '封鎖後，對方無法傳訊息給你，也無法發送好友申請，直至你解除封鎖。'),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(ctx, false),
+                              child: const Text('取消'),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(ctx, true),
+                              style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red),
+                              child: Text(action),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true) return;
+                      try {
+                        if (_isBlocked) {
+                          await ref
+                              .read(friendViewModelProvider.notifier)
+                              .unblockUser(widget.roomId);
+                        } else {
+                          await ref
+                              .read(friendViewModelProvider.notifier)
+                              .blockUser(widget.roomId);
+                        }
+                        setState(() => _isBlocked = !_isBlocked);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_isBlocked
+                                  ? '已封鎖 ${widget.title}'
+                                  : '已解除封鎖 ${widget.title}'),
+                            ),
+                          );
+                        }
+                        if (_isBlocked && mounted) context.pop();
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('操作失敗：$e')));
+                        }
+                      }
+                    },
+                  ),
+                  _InfoTile(
+                    icon: Icons.thumb_down_alt_rounded,
+                    iconColor: dangerColor,
+                    label: '檢舉 ${widget.title}',
+                    labelColor: dangerColor,
+                    showChevron: false,
+                    isDark: isDark,
+                    onTap: () {},
+                  ),
+                ],
               ),
               const SizedBox(height: 40),
             ]),
@@ -993,17 +806,16 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
   void _showAvatarActionSheet() {
     if (!widget.isRoom) return;
-
     if (widget.currentUserId != widget.ownerId) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('只有管理員可以修改群組圖示')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('只有管理員可以修改群組圖示')));
       return;
     }
-
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF111B21),
+      backgroundColor:
+          isDark ? const Color(0xFF1C1C1E) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1011,17 +823,27 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
             ListTile(
-              leading: const Icon(Icons.photo_library, color: Colors.white),
-              title: const Text('從相簿選擇', style: TextStyle(color: Colors.white)),
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('從相簿選擇'),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickAndUploadGroupIcon(ImageSource.gallery);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.camera_alt, color: Colors.white),
-              title: const Text('拍照', style: TextStyle(color: Colors.white)),
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: const Text('拍照'),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickAndUploadGroupIcon(ImageSource.camera);
@@ -1029,21 +851,21 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
             ),
             if (_localAvatarUrl != null && _localAvatarUrl!.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.delete, color: Colors.redAccent),
-                title: const Text(
-                  '移除群組圖示',
-                  style: TextStyle(color: Colors.redAccent),
-                ),
+                leading: const Icon(Icons.delete_rounded,
+                    color: Colors.redAccent),
+                title: const Text('移除群組圖示',
+                    style: TextStyle(color: Colors.redAccent)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _removeGroupIcon();
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.close, color: Colors.white),
-              title: const Text('取消', style: TextStyle(color: Colors.white)),
+              leading: const Icon(Icons.close_rounded),
+              title: const Text('取消'),
               onTap: () => Navigator.pop(ctx),
             ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1054,19 +876,16 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     if (mounted) setState(() => _isUploadingAvatar = true);
     try {
       final chatRepo = ref.read(chatRepositoryProvider);
-      await chatRepo.updateRoom(widget.roomId, avatarUrl: "");
-
+      await chatRepo.updateRoom(widget.roomId, avatarUrl: '');
       if (mounted) {
         setState(() => _localAvatarUrl = null);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('群組圖示已移除')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('群組圖示已移除')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('移除失敗：$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('移除失敗：$e')));
       }
     } finally {
       if (mounted) setState(() => _isUploadingAvatar = false);
@@ -1076,16 +895,11 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
   Future<void> _pickAndUploadGroupIcon(ImageSource source) async {
     try {
       final picker = ImagePicker();
-      // iOS 內建裁切介面支援 1:1，不需額外 plugin
-      final pickedFile = await picker.pickImage(
-        source: source,
-        imageQuality: 100,
-      );
+      final pickedFile =
+          await picker.pickImage(source: source, imageQuality: 100);
       if (pickedFile == null) return;
-
       if (mounted) setState(() => _isUploadingAvatar = true);
 
-      // Compress to <= 200KB, 256x256
       int quality = 90;
       File? targetFile;
       final tmpDir = await Directory.systemTemp.createTemp();
@@ -1111,78 +925,341 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       }
 
       if (targetFile == null) throw Exception('壓縮失敗');
-
       final finalSize = await targetFile.length();
       if (finalSize > 500 * 1024) throw Exception('圖示檔案過大，請選擇其他圖片');
 
       final chatRepo = ref.read(chatRepositoryProvider);
       final uploadedUrl = await chatRepo.uploadMedia(targetFile, 'image');
-
       if (uploadedUrl.isNotEmpty) {
         await chatRepo.updateRoom(widget.roomId, avatarUrl: uploadedUrl);
         if (mounted) {
           setState(() => _localAvatarUrl = uploadedUrl);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('群組圖示已更新')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('群組圖示已更新')));
         }
       }
     } catch (e) {
       debugPrint('上傳群組圖示失敗: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('操作失敗：$e')));
       }
     } finally {
       if (mounted) setState(() => _isUploadingAvatar = false);
     }
   }
 
-  Widget _buildAvatar(String? currentAvatarUrl) {
+  Widget _buildAvatar(String? currentAvatarUrl, bool isDark) {
     final avatarWidget = ChatAvatar(
       avatarUrl: currentAvatarUrl,
-      radius: 60,
-      fallbackText: widget.title.isNotEmpty
-          ? widget.title[0].toUpperCase()
-          : '?',
+      radius: 54,
+      fallbackText:
+          widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '?',
       logTag: 'contact_info',
     );
 
     if (widget.isRoom && widget.currentUserId == widget.ownerId) {
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _isUploadingAvatar ? null : _showAvatarActionSheet,
-              customBorder: const CircleBorder(),
-              child: avatarWidget,
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(
-                color: Color(0xFF00A884),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.camera_alt,
-                color: Colors.white,
-                size: 20,
+      final double diameter = 108; // radius 54 * 2
+      return SizedBox(
+        width: diameter,
+        height: diameter,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _isUploadingAvatar ? null : _showAvatarActionSheet,
+                customBorder: const CircleBorder(),
+                child: avatarWidget,
               ),
             ),
-          ),
-          if (_isUploadingAvatar)
-            const CircularProgressIndicator(color: Color(0xFF00A884)),
-        ],
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF3A3A3C)
+                      : const Color(0xFFE5E5EA),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF1C1C1E)
+                        : Colors.white,
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  Icons.camera_alt_rounded,
+                  size: 14,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
+              ),
+            ),
+            if (_isUploadingAvatar)
+              const CircularProgressIndicator(),
+          ],
+        ),
       );
     }
-
     return avatarWidget;
+  }
+}
+
+// ─── Section Header ───────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  final bool isDark;
+  const _SectionHeader({required this.label, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.8,
+          color: isDark ? Colors.white38 : Colors.grey[500],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Info Card ────────────────────────────────────────────────────────────────
+
+class _InfoCard extends StatelessWidget {
+  final bool isDark;
+  final Color cardColor;
+  final Color dividerColor;
+  final List<Widget> children;
+
+  const _InfoCard({
+    required this.isDark,
+    required this.cardColor,
+    required this.dividerColor,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < children.length; i++) ...[
+            children[i],
+            if (i < children.length - 1)
+              Divider(height: 1, indent: 54, color: dividerColor),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Info Tile ────────────────────────────────────────────────────────────────
+
+class _InfoTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final Color? labelColor;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool isDark;
+  final bool showChevron;
+
+  const _InfoTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.isDark,
+    this.labelColor,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+    this.showChevron = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = labelColor ??
+        (isDark ? Colors.white : Colors.black87);
+    final subColor = isDark ? Colors.white54 : Colors.grey[600]!;
+    final chevronColor = isDark ? Colors.white24 : Colors.black26;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: iconColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 18, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: textColor,
+                      )),
+                  if (subtitle != null && subtitle!.isNotEmpty)
+                    Text(subtitle!,
+                        style: TextStyle(fontSize: 12, color: subColor)),
+                ],
+              ),
+            ),
+            if (trailing != null)
+              trailing!
+            else if (showChevron)
+              Icon(Icons.chevron_right_rounded, size: 20, color: chevronColor),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Quick Actions Row ───────────────────────────────────────────────────────
+
+class _QuickActionsRow extends StatelessWidget {
+  final bool isDark;
+  final Color cardColor;
+  final Color accentColor;
+  final VoidCallback onMessage;
+
+  const _QuickActionsRow({
+    required this.isDark,
+    required this.cardColor,
+    required this.accentColor,
+    required this.onMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _QuickActionButton(
+            icon: Icons.chat_bubble_rounded,
+            label: '訊息',
+            color: accentColor,
+            isDark: isDark,
+            onTap: onMessage,
+          ),
+          _QuickActionButton(
+            icon: Icons.call_rounded,
+            label: '語音',
+            color: const Color(0xFF34C759),
+            isDark: isDark,
+            onTap: () {},
+          ),
+          _QuickActionButton(
+            icon: Icons.videocam_rounded,
+            label: '視訊',
+            color: const Color(0xFFFF9500),
+            isDark: isDark,
+            onTap: () {},
+          ),
+          _QuickActionButton(
+            icon: Icons.search_rounded,
+            label: '搜尋',
+            color: const Color(0xFF5157AE),
+            isDark: isDark,
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _QuickActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

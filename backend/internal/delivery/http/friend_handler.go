@@ -32,6 +32,7 @@ func NewFriendHandler(r *gin.Engine, fus domain.FriendUsecase, jwtSecret string)
 		api.POST("/block", handler.BlockUser)
 		api.POST("/unblock", handler.UnblockUser)
 		api.GET("/block/check", handler.CheckIsBlocked)
+		api.GET("/blocks", handler.GetBlockList)
 	}
 }
 
@@ -175,4 +176,14 @@ func (h *FriendHandler) CheckIsBlocked(c *gin.Context) {
 	}
 
 	response.Success(c, map[string]bool{"is_blocked": isBlocked})
+}
+
+func (h *FriendHandler) GetBlockList(c *gin.Context) {
+	userID := c.GetString(middleware.ContextUserIDKey)
+	users, err := h.FriendUsecase.GetBlockedUsers(c.Request.Context(), userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, users)
 }

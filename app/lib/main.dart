@@ -8,6 +8,8 @@ import 'package:app/features/chat/ui/contact_info_page.dart'; // <--- 匯入新�
 import 'package:app/features/splash/ui/splash_screen.dart';
 import 'package:app/features/friend/ui/add_friend_page.dart';
 import 'package:app/features/friend/ui/friend_requests_page.dart';
+import 'package:app/features/friend/ui/friend_list_page.dart';
+import 'package:app/features/friend/ui/blacklist_page.dart';
 import 'package:app/features/friend/ui/new_chat_page.dart';
 import 'package:app/features/friend/ui/create_group_page.dart';
 import 'package:app/features/chat/ui/group_members_page.dart'; // 👉 匯入群組成員管理頁面
@@ -63,6 +65,14 @@ class _MyAppState extends ConsumerState<MyApp> {
         GoRoute(
           path: '/friend-requests',
           builder: (context, state) => const FriendRequestsPage(),
+        ),
+        GoRoute(
+          path: '/friend-list',
+          builder: (context, state) => const FriendListPage(),
+        ),
+        GoRoute(
+          path: '/blacklist',
+          builder: (context, state) => const BlacklistPage(),
         ),
         GoRoute(
           path: '/chat',

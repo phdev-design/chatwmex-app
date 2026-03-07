@@ -52,6 +52,13 @@ class FriendRepository {
     );
     return response.data['data']['is_blocked'] == true;
   }
+
+  // TODO(backend): GET /api/v1/friends/blocks 尚未實作，待後端補上後確認
+  Future<List<Friend>> getBlockedUsers() async {
+    final response = await _networkService.client.get('/friends/blocks');
+    final List<dynamic> list = response.data['data'] ?? [];
+    return list.map((e) => Friend.fromJson(Map<String, dynamic>.from(e))).toList();
+  }
 }
 
 final friendRepositoryProvider = Provider<FriendRepository>((ref) {

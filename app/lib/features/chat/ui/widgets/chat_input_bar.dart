@@ -91,6 +91,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(widget.params));
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final tokens = resolveChatSurfaceTokens(
       colorScheme: colorScheme,
       brightness: Theme.of(context).brightness,
@@ -270,25 +271,43 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
               ),
             ),
           Container(
-            color: tokens.panelBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  color: tokens.subtleText,
-                  onPressed: _showAttachmentMenu,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.07),
+                  blurRadius: 12,
+                  offset: const Offset(0, -2),
                 ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Attachment button
+                GestureDetector(
+                  onTap: _showAttachmentMenu,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8, right: 4),
+                    child: Icon(
+                      Icons.add_circle_outline_rounded,
+                      size: 26,
+                      color: isDark ? Colors.white54 : Colors.grey[600],
+                    ),
+                  ),
+                ),
+                // Pill text field
                 Expanded(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
                     decoration: BoxDecoration(
-                      color: tokens.composerBackground,
+                      color: isDark
+                          ? const Color(0xFF2C2C2E)
+                          : const Color(0xFFF0F2F5),
                       borderRadius: BorderRadius.circular(24),
                     ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 6),
                     child: state.isRecording
                         ? Row(
                             children: [
@@ -312,38 +331,67 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                               ),
                             ],
                           )
-                        : TextField(
-                            controller: _textController,
-                            focusNode: _focusNode,
-                            style: TextStyle(color: tokens.bubbleText),
-                            decoration: InputDecoration(
-                              hintText: '輸入訊息',
-                              hintStyle: TextStyle(color: tokens.subtleText),
-                              border: InputBorder.none,
-                              isDense: true,
-                              suffixIcon: Icon(
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _textController,
+                                  focusNode: _focusNode,
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white : Colors.black87,
+                                    fontSize: 15,
+                                  ),
+                                  maxLines: 5,
+                                  minLines: 1,
+                                  decoration: InputDecoration(
+                                    hintText: '輸入訊息...',
+                                    hintStyle: TextStyle(
+                                      color: isDark
+                                          ? Colors.white38
+                                          : Colors.grey[500],
+                                      fontSize: 15,
+                                    ),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(vertical: 6),
+                                  ),
+                                  onSubmitted: (_) => _sendMessage(),
+                                  onChanged: _onTextChanged,
+                                ),
+                              ),
+                              Icon(
                                 Icons.emoji_emotions_outlined,
-                                color: tokens.subtleText,
+                                size: 20,
+                                color:
+                                    isDark ? Colors.white38 : Colors.grey[500],
                               ),
-                              suffixIconConstraints: const BoxConstraints(
-                                minWidth: 40,
-                                minHeight: 24,
-                              ),
-                            ),
-                            onSubmitted: (_) => _sendMessage(),
-                            onChanged: _onTextChanged,
+                            ],
                           ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                // Send / Mic button
                 ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _textController,
                   builder: (context, value, child) {
                     final isComposing = value.text.trim().isNotEmpty;
                     if (isComposing) {
-                      return IconButton(
-                        icon: const Icon(Icons.send),
-                        color: tokens.accent,
-                        onPressed: _sendMessage,
+                      return GestureDetector(
+                        onTap: _sendMessage,
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: tokens.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
                       );
                     }
                     return GestureDetector(
@@ -370,14 +418,23 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                             .read(chatRoomProvider(widget.params).notifier)
                             .stopRecordingAndSend();
                       },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Icon(
-                          Icons.mic,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
                           color: state.isRecording
                               ? tokens.accent
-                              : tokens.subtleText,
-                          size: 26,
+                              : (isDark
+                                  ? const Color(0xFF2C2C2E)
+                                  : const Color(0xFFF0F2F5)),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.mic_rounded,
+                          color: state.isRecording
+                              ? Colors.white
+                              : (isDark ? Colors.white54 : Colors.grey[600]),
+                          size: 22,
                         ),
                       ),
                     );
@@ -390,6 +447,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
       ),
     );
   }
+
 
   void _sendMessage() {
     final text = _textController.text.trim();

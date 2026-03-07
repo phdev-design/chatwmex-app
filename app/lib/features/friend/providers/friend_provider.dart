@@ -104,3 +104,61 @@ class FriendViewModel extends Notifier<FriendState> {
 }
 
 final friendViewModelProvider = NotifierProvider<FriendViewModel, FriendState>(FriendViewModel.new);
+
+// ─── Blacklist ───────────────────────────────────────────────────────────────
+
+class BlacklistState {
+  final List<Friend> blockedUsers;
+  final bool isLoading;
+  final String? error;
+
+  const BlacklistState({
+    this.blockedUsers = const [],
+    this.isLoading = false,
+    this.error,
+  });
+
+  BlacklistState copyWith({
+    List<Friend>? blockedUsers,
+    bool? isLoading,
+    String? error,
+  }) {
+    return BlacklistState(
+      blockedUsers: blockedUsers ?? this.blockedUsers,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
+    );
+  }
+}
+
+class BlacklistNotifier extends Notifier<BlacklistState> {
+  late FriendRepository _repository;
+
+  @override
+  BlacklistState build() {
+    _repository = ref.watch(friendRepositoryProvider);
+    return const BlacklistState();
+  }
+
+  Future<void> loadBlockedUsers() async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final users = await _repository.getBlockedUsers();
+      state = state.copyWith(isLoading: false, blockedUsers: users);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  Future<void> unblock(String userId) async {
+    try {
+      await _repository.unblockUser(userId);
+      await loadBlockedUsers();
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+}
+
+final blacklistProvider =
+    NotifierProvider<BlacklistNotifier, BlacklistState>(BlacklistNotifier.new);

@@ -329,7 +329,6 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatRoomProvider(_params));
-    final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
         ? state.roomAvatarUrl
@@ -372,12 +371,12 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     });
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0B141A) : colorScheme.surface,
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8),
       appBar: AppBar(
-        backgroundColor: isDark
-            ? const Color(0xFF111B21)
-            : colorScheme.surfaceContainerHighest,
-        foregroundColor: colorScheme.onSurface,
+        backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         titleSpacing: 0,
         title: ChatAppBarTitleBlock(
           roomId: widget.roomId,
@@ -448,20 +447,31 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
               if (state.typingUsers.isNotEmpty) const ChatTypingIndicator(),
               if (!widget.isRoom && !_isFriend)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  color: Theme.of(context).colorScheme.surface,
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      Icon(Icons.person_off_outlined,
+                          size: 16,
+                          color: isDark ? Colors.white38 : Colors.grey[500]),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           '你們已不再是好友，請重新發送交友申請才能繼續對話。',
                           style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
+                            color: isDark ? Colors.white54 : Colors.grey[600],
                             fontSize: 13,
                           ),
                           textAlign: TextAlign.center,
