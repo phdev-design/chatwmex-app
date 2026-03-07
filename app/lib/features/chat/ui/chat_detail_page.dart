@@ -14,6 +14,7 @@ import 'package:app/features/chat/utils/chat_url_utils.dart'; // 👉 新增引�
 import 'package:app/models/message.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/features/friend/providers/friend_provider.dart';
+import 'package:app/features/chat/providers/room_list_provider.dart';
 
 class ChatDetailPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -115,6 +116,17 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     }).length;
 
     String? contactEmail;
+    String? roomOwnerId;
+
+    if (widget.isRoom) {
+      final rooms = ref.read(roomListViewModelProvider).rooms;
+      for (final r in rooms) {
+        if (r.id == widget.roomId) {
+          roomOwnerId = r.ownerId;
+          break;
+        }
+      }
+    }
 
     // 👉 2. 如果是單人私訊，在跳轉前主動去抓 Email
     if (!widget.isRoom) {
@@ -184,6 +196,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           'avatarUrl': effectiveAvatarUrl,
           'mediaCount': mediaCount,
           'email': contactEmail, // 成功帶入 Email
+          'currentUserId': widget.currentUserId,
+          'ownerId': roomOwnerId,
         },
       );
     }

@@ -299,6 +299,14 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               _applyUserAvatarUpdated(arg, userId, avatarUrl);
             }
           }
+        } else if (event == 'room_updated') {
+          if (payload is Map) {
+            final roomId = payload['room_id']?.toString();
+            final avatarUrl = payload['avatar_url']?.toString();
+            if (roomId == arg.roomId && avatarUrl != null) {
+              state = state.copyWith(roomAvatarUrl: avatarUrl);
+            }
+          }
         }
       }
     });

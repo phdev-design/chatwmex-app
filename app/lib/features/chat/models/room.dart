@@ -5,6 +5,7 @@ class Room extends Equatable {
   final String name;
   final String? type; // 'group' or 'dm'
   final String? avatarUrl;
+  final String? ownerId; // 👉 新增這個欄位
   final DateTime createdAt;
   final String? lastMessage;
   final DateTime? lastMessageTime;
@@ -17,6 +18,7 @@ class Room extends Equatable {
     required this.name,
     this.type,
     this.avatarUrl,
+    this.ownerId,
     required this.createdAt,
     this.lastMessage,
     this.lastMessageType, // 👉 加入建構子
@@ -31,6 +33,7 @@ class Room extends Equatable {
       name: json['name'] ?? 'Unknown Room',
       type: json['type'],
       avatarUrl: json['avatar_url'],
+      ownerId: json['owner_id'],
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       lastMessage: json['last_message'],
       lastMessageType: json['last_message_type'], // 👉 加入映射
@@ -49,6 +52,7 @@ class Room extends Equatable {
     String? name,
     String? type,
     String? avatarUrl,
+    String? ownerId,
     DateTime? createdAt,
     String? lastMessage,
     String? lastMessageType, // 👉 加入映射
@@ -61,6 +65,7 @@ class Room extends Equatable {
       name: name ?? this.name,
       type: type ?? this.type,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      ownerId: ownerId ?? this.ownerId,
       createdAt: createdAt ?? this.createdAt,
       lastMessage: lastMessage ?? this.lastMessage,
       lastMessageType: lastMessageType ?? this.lastMessageType, // 👉 加入映射
@@ -76,6 +81,7 @@ class Room extends Equatable {
     name,
     type,
     avatarUrl,
+    ownerId,
     createdAt,
     lastMessage,
     lastMessageTime,

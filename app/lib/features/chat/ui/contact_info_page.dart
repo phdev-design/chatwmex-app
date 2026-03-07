@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
@@ -1061,53 +1060,32 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
   Future<void> _pickAndUploadGroupIcon(ImageSource source) async {
     try {
       final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: source);
-      if (pickedFile == null) return;
-
-      // 1. Crop 1:1
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: pickedFile.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: '裁切圖示',
-            toolbarColor: const Color(0xFF111B21),
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-          ),
-          IOSUiSettings(
-            title: '裁切圖示',
-            aspectRatioLockEnabled: true,
-            resetButtonHidden: true,
-          ),
-        ],
+      // iOS 內建裁切介面支援 1:1，不需額外 plugin
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 100,
       );
-
-      if (croppedFile == null) return;
+      if (pickedFile == null) return;
 
       if (mounted) setState(() => _isUploadingAvatar = true);
 
-      // 2. Compress to <= 200KB, max 512x512
+      // Compress to <= 200KB, 256x256
       int quality = 90;
       File? targetFile;
-
       final tmpDir = await Directory.systemTemp.createTemp();
       final targetPath =
           '${tmpDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       while (quality > 10) {
         final xfile = await FlutterImageCompress.compressAndGetFile(
-          croppedFile.path,
+          pickedFile.path,
           targetPath,
           quality: quality,
           minWidth: 256,
           minHeight: 256,
           format: CompressFormat.jpeg,
         );
-
         if (xfile == null) break;
-
         final size = await xfile.length();
         if (size <= 200 * 1024) {
           targetFile = File(xfile.path);
@@ -1116,26 +1094,18 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
         quality -= 10;
       }
 
-      if (targetFile == null) {
-        throw Exception("壓縮失敗");
-      }
+      if (targetFile == null) throw Exception('壓縮失敗');
 
       final finalSize = await targetFile.length();
-      if (finalSize > 500 * 1024) {
-        // According to instructions, if still over 500KB after loops, reject
-        throw Exception("圖示檔案過大，請選擇其他圖片");
-      }
+      if (finalSize > 500 * 1024) throw Exception('圖示檔案過大，請選擇其他圖片');
 
       final chatRepo = ref.read(chatRepositoryProvider);
       final uploadedUrl = await chatRepo.uploadMedia(targetFile, 'image');
 
       if (uploadedUrl.isNotEmpty) {
         await chatRepo.updateRoom(widget.roomId, avatarUrl: uploadedUrl);
-
         if (mounted) {
-          setState(() {
-            _localAvatarUrl = uploadedUrl;
-          });
+          setState(() => _localAvatarUrl = uploadedUrl);
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('群組圖示已更新')));
@@ -1167,10 +1137,13 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       return Stack(
         alignment: Alignment.center,
         children: [
-          InkWell(
-            onTap: _isUploadingAvatar ? null : _showAvatarActionSheet,
-            customBorder: const CircleBorder(),
-            child: avatarWidget,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _isUploadingAvatar ? null : _showAvatarActionSheet,
+              customBorder: const CircleBorder(),
+              child: avatarWidget,
+            ),
           ),
           Positioned(
             bottom: 0,
