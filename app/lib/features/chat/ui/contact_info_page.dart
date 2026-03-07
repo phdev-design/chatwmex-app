@@ -14,6 +14,7 @@ import 'package:app/features/chat/ui/media_visibility_settings_page.dart'; // �
 import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/friend/repositories/friend_repository.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
+import 'package:app/features/chat/providers/room_list_provider.dart';
 
 class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -368,6 +369,17 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
   @override
   Widget build(BuildContext context) {
+    String? displayAvatarUrl = _localAvatarUrl;
+    if (widget.isRoom) {
+      final roomState = ref.watch(roomListViewModelProvider);
+      try {
+        final room = roomState.rooms.firstWhere((r) => r.id == widget.roomId);
+        if (room.avatarUrl != null && room.avatarUrl!.isNotEmpty) {
+          displayAvatarUrl = room.avatarUrl;
+        }
+      } catch (_) {}
+    }
+
     final colorScheme = Theme.of(context).colorScheme;
     final brightness = Theme.of(context).brightness;
     final isDark = brightness == Brightness.dark;
@@ -429,7 +441,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         const SizedBox(height: 20),
                         Hero(
                           tag: 'avatar_${widget.roomId}',
-                          child: _buildAvatar(),
+                          child: _buildAvatar(displayAvatarUrl),
                         ),
                         const SizedBox(height: 12),
                         // 👉 3. 將原本寫死的電話改為顯示 email
@@ -1123,9 +1135,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     }
   }
 
-  Widget _buildAvatar() {
+  Widget _buildAvatar(String? currentAvatarUrl) {
     final avatarWidget = ChatAvatar(
-      avatarUrl: _localAvatarUrl,
+      avatarUrl: currentAvatarUrl,
       radius: 60,
       fallbackText: widget.title.isNotEmpty
           ? widget.title[0].toUpperCase()

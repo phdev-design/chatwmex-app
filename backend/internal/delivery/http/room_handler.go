@@ -395,7 +395,7 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 			if hub, ok := hubValues.(interface {
 				BroadcastRoomEvent(roomID string, eventType string, data interface{})
 			}); ok {
-				hub.BroadcastRoomEvent(roomID, "room_updated", gin.H{
+				hub.BroadcastRoomEvent(roomID, "room_updated", map[string]interface{}{
 					"room_id":    roomID,
 					"name":       targetRoom.Name,
 					"avatar_url": targetRoom.AvatarURL,

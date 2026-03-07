@@ -277,6 +277,7 @@ type chatEvent struct {
 	ReceiverID   string              `json:"receiver_id"`
 	UserID       string              `json:"user_id"`
 	AvatarURL    string              `json:"avatar_url"`
+	Name         string              `json:"name"`
 }
 
 func (h *Hub) BroadcastRoomReadReceipt(roomID string, messageIDs []string, readerID string) {
@@ -313,6 +314,10 @@ func (h *Hub) handleChatEvent(eventBytes []byte) {
 	}
 	if event.Type == "user_profile_updated" {
 		h.broadcastUserProfileUpdatedLocal(event)
+		return
+	}
+	if event.Type == "room_updated" {
+		h.broadcastRoomUpdatedLocal(event)
 	}
 }
 
@@ -523,6 +528,73 @@ func (h *Hub) broadcastUserProfileUpdatedLocal(event chatEvent) {
 			close(client.send)
 			delete(h.clients, client)
 			delete(h.userClients, client.userID)
+		}
+	}
+}
+
+func (h *Hub) BroadcastRoomEvent(roomID, eventType string, data interface{}) {
+	if roomID == "" {
+		return
+	}
+
+	payloadMap, ok := data.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	name, _ := payloadMap["name"].(string)
+	avatarUrl, _ := payloadMap["avatar_url"].(string)
+
+	event := chatEvent{
+		Type:      eventType,
+		RoomID:    roomID,
+		Name:      name,
+		AvatarURL: avatarUrl,
+	}
+
+	if h.rabbitMQ != nil {
+		if err := h.rabbitMQ.PublishEvent(event); err == nil {
+			return
+		}
+	}
+	h.broadcastRoomUpdatedLocal(event)
+}
+
+func (h *Hub) broadcastRoomUpdatedLocal(event chatEvent) {
+	if event.RoomID == "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
+	cancel()
+	if err != nil {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event": event.Type,
+		"data": map[string]interface{}{
+			"room_id":    event.RoomID,
+			"name":       event.Name,
+			"avatar_url": event.AvatarURL,
+		},
+	}
+
+	messageBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	for _, memberID := range members {
+		if destClient, ok := h.userClients[memberID]; ok {
+			select {
+			case destClient.send <- messageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
 		}
 	}
 }

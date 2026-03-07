@@ -18,6 +18,7 @@ const roomCollectionName = "rooms"
 type mongoRoom struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty"`
 	Name      string             `bson:"name"`
+	AvatarURL string             `bson:"avatar_url,omitempty"`
 	OwnerID   string             `bson:"owner_id"`
 	Members   []string           `bson:"members"`
 	Type      string             `bson:"type"`
@@ -39,6 +40,7 @@ func (r *RoomRepository) toDomain(mr *mongoRoom) *domain.Room {
 	return &domain.Room{
 		ID:        mr.ID.Hex(),
 		Name:      mr.Name,
+		AvatarURL: mr.AvatarURL,
 		OwnerID:   mr.OwnerID,
 		Members:   mr.Members,
 		Type:      mr.Type,
@@ -59,6 +61,7 @@ func (r *RoomRepository) fromDomain(dr *domain.Room) (*mongoRoom, error) {
 	return &mongoRoom{
 		ID:        id,
 		Name:      dr.Name,
+		AvatarURL: dr.AvatarURL,
 		OwnerID:   dr.OwnerID,
 		Members:   dr.Members,
 		Type:      dr.Type,
