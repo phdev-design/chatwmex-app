@@ -8,6 +8,7 @@ import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
 import 'package:app/core/backup/backup_manager.dart';
+import 'package:app/features/chat/repositories/room_repository.dart';
 
 class RoomListState {
   final List<Room> rooms;
@@ -240,6 +241,44 @@ class RoomListViewModel extends Notifier<RoomListState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  Future<void> leaveRoom(String roomId) async {
+    try {
+      final roomRepo = ref.read(roomRepositoryProvider);
+      await roomRepo.leaveRoom(roomId);
+      // Remove the room from the local state
+      state = state.copyWith(
+        rooms: state.rooms.where((r) => r.id != roomId).toList(),
+      );
+    } catch (e) {
+      debugPrint('Failed to leave room: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteRoom(String roomId) async {
+    try {
+      final roomRepo = ref.read(roomRepositoryProvider);
+      await roomRepo.deleteRoom(roomId);
+      // Remove the room from the local state
+      state = state.copyWith(
+        rooms: state.rooms.where((r) => r.id != roomId).toList(),
+      );
+    } catch (e) {
+      debugPrint('Failed to delete room: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> transferOwnership(String roomId, String newOwnerId) async {
+    final roomRepo = ref.read(roomRepositoryProvider);
+    await roomRepo.transferOwnership(roomId, newOwnerId);
+  }
+
+  Future<List<dynamic>> getRoomMemberProfiles(String roomId) async {
+    final roomRepo = ref.read(roomRepositoryProvider);
+    return await roomRepo.getRoomMemberProfiles(roomId);
   }
 
   void markRoomRead(String roomId) {

@@ -196,3 +196,22 @@ func (r *RoomRepository) UpdateRoom(ctx context.Context, roomID string, update m
 	}
 	return nil
 }
+
+func (r *RoomRepository) UpdateOwner(ctx context.Context, roomID string, newOwnerID string) error {
+	oid, err := primitive.ObjectIDFromHex(roomID)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"owner_id":   newOwnerID,
+			"updated_at": time.Now(),
+		},
+	}
+	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": oid}, update)
+	if err != nil {
+		return fmt.Errorf("failed to update owner: %w", err)
+	}
+	return nil
+}

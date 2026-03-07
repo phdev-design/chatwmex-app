@@ -36,6 +36,7 @@ func NewRoomHandler(r *gin.Engine, ru domain.RoomUsecase, uu domain.UserUsecase,
 		api.GET("/:id/media", handler.GetRoomMedia)
 		api.GET("/:id/members", handler.GetRoomMembers)
 		api.GET("/:id/member-profiles", handler.GetRoomMemberProfiles)
+		api.PATCH("/:id/owner", handler.TransferOwnership)
 	}
 }
 
@@ -413,4 +414,51 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 	}
 
 	response.Success(c, "Room updated successfully")
+}
+
+type TransferOwnerRequest struct {
+	NewOwnerID string `json:"new_owner_id" binding:"required"`
+}
+
+func (h *RoomHandler) TransferOwnership(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	roomID := c.Param("id")
+	if roomID == "" {
+		response.Error(c, http.StatusBadRequest, "Room ID is required")
+		return
+	}
+
+	ownerID, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+
+	var req TransferOwnerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+	err := h.RoomUsecase.TransferOwnership(ctx, roomID, ownerID, req.NewOwnerID)
+	if err != nil {
+		if err.Error() == "forbidden" {
+			response.Error(c, http.StatusForbidden, "Only owner can transfer ownership")
+			return
+		}
+		if err.Error() == "user_not_in_room" {
+			response.Error(c, http.StatusBadRequest, "New owner must be a member of the room")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, "Ownership transferred successfully")
 }

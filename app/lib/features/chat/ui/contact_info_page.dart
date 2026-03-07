@@ -15,6 +15,7 @@ import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/friend/repositories/friend_repository.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
+import 'package:app/features/chat/utils/chat_url_utils.dart';
 
 class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -794,7 +795,264 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     isDark: isDark,
                     onTap: () {},
                   ),
+                  if (widget.isRoom) ...[
+                    _InfoTile(
+                      icon: Icons.exit_to_app_rounded,
+                      iconColor: dangerColor,
+                      label: '退出群組',
+                      labelColor: dangerColor,
+                      showChevron: false,
+                      isDark: isDark,
+                      onTap: () async {
+                        final isOwner = widget.currentUserId == widget.ownerId;
+                        if (isOwner) {
+                          if (!mounted) return;
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) => const Center(child: CircularProgressIndicator()),
+                          );
+
+                          List<dynamic> members = [];
+                          try {
+                            members = await ref
+                                .read(roomListViewModelProvider.notifier)
+                                .getRoomMemberProfiles(widget.roomId);
+                          } catch (e) {
+                            if (mounted) {
+                              Navigator.pop(context); // close loading
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('無法取得群組成員：$e')),
+                              );
+                            }
+                            return;
+                          }
+
+                          if (!mounted) return;
+                          Navigator.pop(context); // close loading
+
+                          final remainingMembers = members
+                              .where((m) => m['id'] != widget.currentUserId)
+                              .toList();
+
+                          if (remainingMembers.isEmpty) {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: Theme.of(context).colorScheme.surface,
+                                title: const Text('解散群組'),
+                                content: const Text('群組僅剩您一人，退出將直接解散群組。確定要解散嗎？'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('取消'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                    child: const Text('解散'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed != true) return;
+                            
+                            if (!mounted) return;
+                            try {
+                              await ref
+                                  .read(roomListViewModelProvider.notifier)
+                                  .deleteRoom(widget.roomId);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('群組已解散')),
+                                );
+                                context.go('/rooms');
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('解散群組失敗：$e')),
+                                );
+                              }
+                            }
+                          } else {
+                            final selectedUserId = await showModalBottomSheet<String>(
+                              context: context,
+                              backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                              ),
+                              builder: (ctx) {
+                                return SafeArea(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        width: 36,
+                                        height: 4,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.withValues(alpha: 0.3),
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        '選擇新管理員',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const Padding(
+                                        padding: EdgeInsets.all(16.0),
+                                        child: Text(
+                                          '身為管理員，退出群組前必須先轉交管理員權限給其他成員。',
+                                          style: TextStyle(color: Colors.grey),
+                                        ),
+                                      ),
+                                      Flexible(
+                                        child: ListView.builder(
+                                          shrinkWrap: true,
+                                          itemCount: remainingMembers.length,
+                                          itemBuilder: (context, index) {
+                                            final m = remainingMembers[index];
+                                            final name = m['username'] ?? '使用者';
+                                            final avatarUrl = m['avatar_url'] as String?;
+                                            return ListTile(
+                                              leading: CircleAvatar(
+                                                backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                                                backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
+                                                    ? NetworkImage(resolveFullUrl(avatarUrl))
+                                                    : null,
+                                                child: (avatarUrl == null || avatarUrl.isEmpty)
+                                                    ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?')
+                                                    : null,
+                                              ),
+                                              title: Text(name),
+                                              onTap: () => Navigator.pop(ctx, m['id']),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+
+                            if (selectedUserId == null || !mounted) return;
+
+                            final newOwnerName = remainingMembers.firstWhere(
+                                (m) => m['id'] == selectedUserId)['username'] ?? '該成員';
+
+                            final confirmTransfer = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: Theme.of(context).colorScheme.surface,
+                                title: const Text('轉交管理員並退出'),
+                                content: Text('確定要將管理員轉交給 $newOwnerName 並退出群組嗎？'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('取消'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                    child: const Text('確認退出'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirmTransfer != true) return;
+
+                            if (!mounted) return;
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => const Center(child: CircularProgressIndicator()),
+                            );
+
+                            try {
+                              await ref
+                                  .read(roomListViewModelProvider.notifier)
+                                  .transferOwnership(widget.roomId, selectedUserId);
+                              await ref
+                                  .read(roomListViewModelProvider.notifier)
+                                  .leaveRoom(widget.roomId);
+                              
+                              if (mounted) {
+                                Navigator.pop(context); // close loading
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('已成功轉交權限並退出群組')),
+                                );
+                                context.go('/rooms');
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                Navigator.pop(context); // close loading
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('操作失敗：$e')),
+                                );
+                              }
+                            }
+                          }
+                        } else {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.surface,
+                              title: const Text('確定要退出此群組嗎？'),
+                              content: const Text(
+                                  '退出後，您將無法再接收此群組的任何新訊息。'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx, false),
+                                  child: const Text('取消'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx, true),
+                                  style: TextButton.styleFrom(
+                                      foregroundColor: Colors.red),
+                                  child: const Text('退出'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true) return;
+
+                          if (!mounted) return;
+                          // Show a loading indicator dialogue optionally, or just let the async operation run
+                          try {
+                            await ref
+                                .read(roomListViewModelProvider.notifier)
+                                .leaveRoom(widget.roomId);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('已退出群組')),
+                              );
+                              // Navigate back to the main chat list
+                              // Assuming /rooms is the route for the main tab view where chat list lives
+                              context.go('/rooms');
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('退出群組失敗：$e')),
+                              );
+                            }
+                          }
+                        }
+                      },
+                    ),
+                  ],
                 ],
+
               ),
               const SizedBox(height: 40),
             ]),

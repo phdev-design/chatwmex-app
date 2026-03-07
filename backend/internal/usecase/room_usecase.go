@@ -289,3 +289,29 @@ func (u *roomUsecase) UpdateRoom(c context.Context, roomID string, ownerID strin
 
 	return u.roomRepo.UpdateRoom(ctx, roomID, update)
 }
+
+func (u *roomUsecase) TransferOwnership(c context.Context, roomID string, currentOwnerID string, newOwnerID string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	room, err := u.roomRepo.GetByID(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if room.OwnerID != currentOwnerID {
+		return errors.New("forbidden")
+	}
+
+	isMember := false
+	for _, memberID := range room.Members {
+		if memberID == newOwnerID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		return errors.New("user_not_in_room")
+	}
+
+	return u.roomRepo.UpdateOwner(ctx, roomID, newOwnerID)
+}
