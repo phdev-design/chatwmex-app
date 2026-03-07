@@ -420,30 +420,33 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
-              title: Text(
-                widget.title,
-                style: TextStyle(
-                  color: primaryTextColor,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 20,
-                ),
-              ),
               background: Container(
                 color: surfaceColor,
                 // 使用 Center + SingleChildScrollView 避免往上捲動壓縮高度時發生 RenderFlex Overflow
                 child: Center(
                   child: SingleChildScrollView(
                     physics: const NeverScrollableScrollPhysics(),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 20),
-                        Hero(
-                          tag: 'avatar_${widget.roomId}',
-                          child: _buildAvatar(displayAvatarUrl),
-                        ),
-                        const SizedBox(height: 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const SizedBox(height: 20),
+                          Hero(
+                            tag: 'avatar_${widget.roomId}',
+                            child: _buildAvatar(displayAvatarUrl),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            widget.title,
+                            style: TextStyle(
+                              color: primaryTextColor,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
                         // 👉 3. 將原本寫死的電話改為顯示 email
                         if (!widget.isRoom &&
                             widget.email != null &&
@@ -455,8 +458,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                               color: secondaryTextColor,
                             ),
                           ),
-                        const SizedBox(height: 40), // 預留空間給底部的 title，避免文字重疊
-                      ],
+                          const SizedBox(height: 40), // 預留空間給底部的 title，避免文字重疊
+                        ],
+                      ),
                     ),
                   ),
                 ),
