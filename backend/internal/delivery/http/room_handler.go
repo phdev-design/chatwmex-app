@@ -95,6 +95,14 @@ func (h *RoomHandler) JoinRoom(c *gin.Context) {
 	ctx := c.Request.Context()
 	err := h.RoomUsecase.JoinRoom(ctx, roomID, memberID)
 	if err != nil {
+		if err.Error() == "room_not_found" {
+			response.Error(c, http.StatusNotFound, "Room disbanded or does not exist")
+			return
+		}
+		if err.Error() == "already_in_room" {
+			response.Error(c, http.StatusBadRequest, "User already in room")
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}

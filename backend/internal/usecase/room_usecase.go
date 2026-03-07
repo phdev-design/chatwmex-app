@@ -55,6 +55,18 @@ func (u *roomUsecase) CreateRoom(c context.Context, name string, ownerID string,
 func (u *roomUsecase) JoinRoom(c context.Context, roomID string, userID string) error {
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
+
+	room, err := u.roomRepo.GetByID(ctx, roomID)
+	if err != nil {
+		return errors.New("room_not_found")
+	}
+
+	for _, memberID := range room.Members {
+		if memberID == userID {
+			return errors.New("already_in_room")
+		}
+	}
+
 	return u.roomRepo.AddMember(ctx, roomID, userID)
 }
 

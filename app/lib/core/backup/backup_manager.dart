@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:app/core/backup/google_drive_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/storage/local_db_service.dart';
+import 'package:app/core/storage/storage_service.dart';
 import 'package:app/models/message.dart';
 
 class RestoreResult {
@@ -27,12 +28,14 @@ class BackupState {
   final String? lastBackupDate;
   final bool autoBackupEnabled;
   final String? error;
+  final String? linkedGoogleEmail;
 
   BackupState({
     this.isBackingUp = false,
     this.lastBackupDate,
     this.autoBackupEnabled = false,
     this.error,
+    this.linkedGoogleEmail,
   });
 
   BackupState copyWith({
@@ -41,12 +44,14 @@ class BackupState {
     bool? autoBackupEnabled,
     String? error,
     bool clearError = false,
+    String? linkedGoogleEmail,
   }) {
     return BackupState(
       isBackingUp: isBackingUp ?? this.isBackingUp,
       lastBackupDate: lastBackupDate ?? this.lastBackupDate,
       autoBackupEnabled: autoBackupEnabled ?? this.autoBackupEnabled,
       error: clearError ? null : (error ?? this.error),
+      linkedGoogleEmail: linkedGoogleEmail ?? this.linkedGoogleEmail,
     );
   }
 }
@@ -56,11 +61,13 @@ class BackupManager extends StateNotifier<BackupState>
   final GoogleDriveService _googleDriveService;
   final LocalDbService _localDbService;
   final CryptoService _cryptoService;
+  final StorageService _storageService;
 
   BackupManager(
     this._googleDriveService,
     this._localDbService,
     this._cryptoService,
+    this._storageService,
   ) : super(BackupState()) {
     _loadSettings();
     WidgetsBinding.instance.addObserver(this);
@@ -104,10 +111,65 @@ class BackupManager extends StateNotifier<BackupState>
     final prefs = await SharedPreferences.getInstance();
     final lastBackup = prefs.getString('lastBackupDate');
     final autoBackup = prefs.getBool('autoBackupEnabled') ?? false;
+
+    // Load linked email based on current app user
+    final userId = await _storageService.read('user_id');
+    String? linkedEmail;
+    if (userId != null && userId.isNotEmpty) {
+      linkedEmail = prefs.getString('drive_linked_email_$userId');
+    }
+
     state = state.copyWith(
       lastBackupDate: lastBackup,
       autoBackupEnabled: autoBackup,
+      linkedGoogleEmail: linkedEmail,
     );
+  }
+
+  Future<bool> _verifyAndLinkGoogleAccount() async {
+    final currentUserEmail = _googleDriveService.currentUser?.email;
+    if (currentUserEmail == null) return false;
+
+    final userId = await _storageService.read('user_id');
+    if (userId == null || userId.isEmpty) return false;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    if (state.linkedGoogleEmail == null) {
+      // 本地尚未綁定，將此次的 Google Email 綁定給當前的 user_id
+      await prefs.setString('drive_linked_email_$userId', currentUserEmail);
+      state = state.copyWith(linkedGoogleEmail: currentUserEmail);
+      return true;
+    } else {
+      // 本地已經綁定過，比對是否一致
+      if (state.linkedGoogleEmail != currentUserEmail) {
+        // 不一致，拒絕登入並強迫切斷
+        await _googleDriveService.disconnect();
+        state = state.copyWith(
+          error: '請選擇您原本綁定的 Google 帳號：${state.linkedGoogleEmail}',
+          clearError: false,
+        );
+        return false;
+      }
+      return true;
+    }
+  }
+
+  Future<void> _syncLatestBackupDateFromDrive() async {
+    try {
+      final history = await fetchBackupHistory();
+      if (history.isNotEmpty) {
+        final latestBackup = history.first as Map<String, dynamic>;
+        final date = latestBackup['date'] as String?;
+        if (date != null && date.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('lastBackupDate', date);
+          state = state.copyWith(lastBackupDate: date);
+        }
+      }
+    } catch (e) {
+      debugPrint('[BackupManager] sync latest backup date error: $e');
+    }
   }
 
   Future<bool> signIn() async {
@@ -117,6 +179,13 @@ class BackupManager extends StateNotifier<BackupState>
     try {
       final result = await _googleDriveService.signIn();
       print('[BackupManager] signIn result: $result');
+      
+      if (result) {
+        final isValid = await _verifyAndLinkGoogleAccount();
+        if (!isValid) return false;
+        
+        await _syncLatestBackupDateFromDrive();
+      }
       return result;
     } finally {
       _isAuthenticating = false;
@@ -124,7 +193,14 @@ class BackupManager extends StateNotifier<BackupState>
   }
 
   Future<bool> signInSilently() async {
-    return await _googleDriveService.signInSilently();
+    final result = await _googleDriveService.signInSilently();
+    if (result) {
+      final isValid = await _verifyAndLinkGoogleAccount();
+      if (!isValid) return false;
+      
+      await _syncLatestBackupDateFromDrive();
+    }
+    return result;
   }
 
   Future<void> clearSession() async {
@@ -320,7 +396,8 @@ final backupManagerProvider = StateNotifierProvider<BackupManager, BackupState>(
   (ref) {
     final driveService = ref.watch(googleDriveServiceProvider);
     final cryptoService = ref.watch(cryptoServiceProvider);
+    final storageService = ref.watch(storageServiceProvider);
     final localDb = LocalDbService();
-    return BackupManager(driveService, localDb, cryptoService);
+    return BackupManager(driveService, localDb, cryptoService, storageService);
   },
 );

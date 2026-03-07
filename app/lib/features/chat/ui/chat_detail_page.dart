@@ -45,6 +45,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   int _unreadCount = 0;
   bool _isAtBottom = true;
   bool _isFriend = true;
+  bool _isMember = true;
   late final AnimationController _arrowController;
   late final Animation<Offset> _arrowOffset;
 
@@ -59,6 +60,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   void initState() {
     super.initState();
     _checkFriendStatus();
+    _checkMemberStatus();
     _scrollController = AutoScrollController(
       axis: Axis.vertical,
       suggestedRowHeight: 76,
@@ -94,6 +96,17 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     if (mounted) {
       if (_isFriend != stillFriend) {
         setState(() => _isFriend = stillFriend);
+      }
+    }
+  }
+
+  Future<void> _checkMemberStatus() async {
+    if (!widget.isRoom) return;
+    final rooms = ref.read(roomListViewModelProvider).rooms;
+    final stillMember = rooms.any((r) => r.id == widget.roomId);
+    if (mounted) {
+      if (_isMember != stillMember) {
+        setState(() => _isMember = stillMember);
       }
     }
   }
@@ -326,6 +339,10 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
       _checkFriendStatus();
     });
 
+    ref.listen(roomListViewModelProvider, (prev, next) {
+      _checkMemberStatus();
+    });
+
     ref.listen(chatRoomProvider(_params), (prev, next) {
       if (!mounted) return;
 
@@ -459,6 +476,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                   isRoom: widget.isRoom,
                   title: widget.title,
                   currentUserId: widget.currentUserId,
+                  isMember: _isMember,
                 ),
             ],
           ),

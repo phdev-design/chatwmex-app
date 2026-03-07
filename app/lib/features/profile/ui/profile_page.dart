@@ -12,6 +12,7 @@ import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/auth/providers/auth_provider.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
+import 'package:app/features/auth/repositories/auth_repository.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -40,6 +41,9 @@ void _logout() async {
   // ✅ 清 public key 快取
   await ref.read(publicKeyCacheServiceProvider).clearAllCache();
 
+// 👇 關鍵修復：呼叫 AuthRepository 的登出，讓它處理 Google Drive 斷開與刪除 Storage 等完整流程
+  await ref.read(authRepositoryProvider).logout();
+
   // ✅ 只刪認證相關資料，保留 E2EE 私鑰
   final storage = ref.read(storageServiceProvider);
   await storage.delete('jwt_token');
@@ -49,7 +53,7 @@ void _logout() async {
   await storage.delete('phone_number');
   await storage.delete('avatar_url');
 
-  // ✅ 重置所有 providers 的 in-memory state（關鍵修復！）
+// ✅ 重置所有 providers 的 in-memory state
   ref.invalidate(roomListViewModelProvider);
   ref.invalidate(profileViewModelProvider);
   ref.invalidate(friendViewModelProvider);

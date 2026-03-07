@@ -32,6 +32,7 @@ class ChatInputBar extends ConsumerStatefulWidget {
   final bool isRoom;
   final String title;
   final String currentUserId;
+  final bool isMember;
 
   const ChatInputBar({
     super.key,
@@ -39,6 +40,7 @@ class ChatInputBar extends ConsumerStatefulWidget {
     required this.isRoom,
     required this.title,
     required this.currentUserId,
+    this.isMember = true,
   });
 
   @override
@@ -104,6 +106,24 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
     }
     if (replying == null) {
       _lastReplyMessageId = null;
+    }
+
+    if (widget.isRoom && !widget.isMember) {
+      return SafeArea(
+        child: Container(
+          width: double.infinity,
+          color: tokens.panelBackground,
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          child: Text(
+            '您已無法在此群組傳送訊息，或此群組已解散。',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: tokens.subtleText,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      );
     }
 
     return SafeArea(
