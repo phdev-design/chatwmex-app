@@ -127,6 +127,11 @@ class BackupManager extends StateNotifier<BackupState>
     return await _googleDriveService.signInSilently();
   }
 
+  Future<void> clearSession() async {
+    await _googleDriveService.signOut();
+    state = BackupState();
+  }
+
   Future<List<dynamic>> fetchBackupHistory() async {
     final files = await _googleDriveService.listBackups();
     return files

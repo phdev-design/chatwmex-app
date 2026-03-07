@@ -2,16 +2,19 @@ import 'package:app/core/network/network_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/notification/notification_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app/core/backup/backup_manager.dart';
 
 class AuthRepository {
   final NetworkService _networkService;
   final StorageService _storageService;
   final NotificationService _notificationService;
+  final Ref _ref;
 
   AuthRepository(
     this._networkService,
     this._storageService,
     this._notificationService,
+    this._ref,
   );
 
   Future<void> login(String username, String password) async {
@@ -91,6 +94,12 @@ class AuthRepository {
       if (pendingDeviceId != null) {
         await _storageService.save('pending_unregister_device_id', pendingDeviceId);
       }
+      // Detach Google Drive SignIn Session completely
+      try {
+        await _ref.read(backupManagerProvider.notifier).clearSession();
+      } catch (e) {
+        print('Error clearing Google Drive session on logout: $e');
+      }
     }
   }
 }
@@ -99,5 +108,5 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final network = ref.watch(networkServiceProvider);
   final storage = ref.watch(storageServiceProvider);
   final notification = ref.watch(notificationServiceProvider);
-  return AuthRepository(network, storage, notification);
+  return AuthRepository(network, storage, notification, ref);
 });

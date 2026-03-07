@@ -125,6 +125,11 @@ class GoogleDriveService {
 
   Future<void> signOut() async {
     await ensureInitialized();
+    try {
+      await _signIn.disconnect();
+    } catch (_) {
+      // Ignore disconnect errors (e.g. if not signed in)
+    }
     await _signIn.signOut();
     _currentUser = null;
   }
