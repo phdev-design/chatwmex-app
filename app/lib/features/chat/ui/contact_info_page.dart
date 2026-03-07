@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/chat/ui/room_media_page.dart';
@@ -974,32 +976,160 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     );
   }
 
-  Future<void> _pickAndUploadGroupIcon() async {
+  void _showAvatarActionSheet() {
     if (!widget.isRoom) return;
 
-    // 只有群組管理員才能修改頭像
     if (widget.currentUserId != widget.ownerId) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('只有管理員可以修改群組頭像')));
+      ).showSnackBar(const SnackBar(content: Text('只有管理員可以修改群組圖示')));
       return;
     }
 
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF111B21),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.white),
+              title: const Text('從相簿選擇', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAndUploadGroupIcon(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Colors.white),
+              title: const Text('拍照', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAndUploadGroupIcon(ImageSource.camera);
+              },
+            ),
+            if (_localAvatarUrl != null && _localAvatarUrl!.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.redAccent),
+                title: const Text(
+                  '移除群組圖示',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _removeGroupIcon();
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.close, color: Colors.white),
+              title: const Text('取消', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removeGroupIcon() async {
+    if (mounted) setState(() => _isUploadingAvatar = true);
+    try {
+      final chatRepo = ref.read(chatRepositoryProvider);
+      await chatRepo.updateRoom(widget.roomId, avatarUrl: "");
+
+      if (mounted) {
+        setState(() => _localAvatarUrl = null);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('群組圖示已移除')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('移除失敗：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingAvatar = false);
+    }
+  }
+
+  Future<void> _pickAndUploadGroupIcon(ImageSource source) async {
     try {
       final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      final pickedFile = await picker.pickImage(source: source);
       if (pickedFile == null) return;
+
+      // 1. Crop 1:1
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: '裁切圖示',
+            toolbarColor: const Color(0xFF111B21),
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+          ),
+          IOSUiSettings(
+            title: '裁切圖示',
+            aspectRatioLockEnabled: true,
+            resetButtonHidden: true,
+          ),
+        ],
+      );
+
+      if (croppedFile == null) return;
 
       if (mounted) setState(() => _isUploadingAvatar = true);
 
-      final file = File(pickedFile.path);
-      final chatRepo = ref.read(chatRepositoryProvider);
+      // 2. Compress to <= 200KB, max 512x512
+      int quality = 90;
+      File? targetFile;
 
-      // 上傳圖片取得 URL
-      final uploadedUrl = await chatRepo.uploadMedia(file, 'image');
+      final tmpDir = await Directory.systemTemp.createTemp();
+      final targetPath =
+          '${tmpDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      while (quality > 10) {
+        final xfile = await FlutterImageCompress.compressAndGetFile(
+          croppedFile.path,
+          targetPath,
+          quality: quality,
+          minWidth: 256,
+          minHeight: 256,
+          format: CompressFormat.jpeg,
+        );
+
+        if (xfile == null) break;
+
+        final size = await xfile.length();
+        if (size <= 200 * 1024) {
+          targetFile = File(xfile.path);
+          break;
+        }
+        quality -= 10;
+      }
+
+      if (targetFile == null) {
+        throw Exception("壓縮失敗");
+      }
+
+      final finalSize = await targetFile.length();
+      if (finalSize > 500 * 1024) {
+        // According to instructions, if still over 500KB after loops, reject
+        throw Exception("圖示檔案過大，請選擇其他圖片");
+      }
+
+      final chatRepo = ref.read(chatRepositoryProvider);
+      final uploadedUrl = await chatRepo.uploadMedia(targetFile, 'image');
 
       if (uploadedUrl.isNotEmpty) {
-        // 呼叫更新頭像 API
         await chatRepo.updateRoom(widget.roomId, avatarUrl: uploadedUrl);
 
         if (mounted) {
@@ -1008,15 +1138,15 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
           });
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('群組頭像已更新')));
+          ).showSnackBar(const SnackBar(content: Text('群組圖示已更新')));
         }
       }
     } catch (e) {
-      debugPrint('上傳群組頭像失敗: $e');
+      debugPrint('上傳群組圖示失敗: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('上傳失敗：$e')));
+        ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
       }
     } finally {
       if (mounted) setState(() => _isUploadingAvatar = false);
@@ -1038,9 +1168,25 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
         alignment: Alignment.center,
         children: [
           InkWell(
-            onTap: _isUploadingAvatar ? null : _pickAndUploadGroupIcon,
+            onTap: _isUploadingAvatar ? null : _showAvatarActionSheet,
             customBorder: const CircleBorder(),
             child: avatarWidget,
+          ),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Color(0xFF00A884),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.camera_alt,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
           ),
           if (_isUploadingAvatar)
             const CircularProgressIndicator(color: Color(0xFF00A884)),
