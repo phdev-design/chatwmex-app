@@ -69,6 +69,7 @@ func main() {
 	friendRepo := mongo_repo.NewFriendRepository(db)
 	deviceRepo := mongo_repo.NewDeviceRepository(db)
 	onlineRepo := redis_repo.NewOnlineRepository(redisClient)
+	authRepo := redis_repo.NewAuthRepository(redisClient) // 👉 新增 AuthRepo
 	chatSettingRepo := mongo_repo.NewChatSettingRepository(db) // 👉 新增
 	roomLabelRepo := mongo_repo.NewRoomLabelRepository(db)
 
@@ -76,6 +77,7 @@ func main() {
 	// Set a default timeout for usecase operations
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
+	authUsecase := usecase.NewAuthUsecase(authRepo, timeout) // 👉 新增 AuthUsecase
 	chatSettingUsecase := usecase.NewChatSettingUsecase(chatSettingRepo) // 👉 新增
 	roomLabelUsecase := usecase.NewRoomLabelUsecase(roomLabelRepo, timeout)
 	// Initialize Notification Service
@@ -178,6 +180,7 @@ func main() {
 	friendUsecase := usecase.NewFriendUsecase(friendRepo, userRepo, hub, timeout)
 
 	// Register Handlers
+	delivery.NewAuthHandler(r, authUsecase, cfg.JWTSecret, hub) // 👉 新增 Auth
 	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret, hub)
 	delivery.NewMessageHandler(r, messageUsecase, hub, authMiddleware)
 	delivery.NewRoomHandler(r, roomUsecase, userUsecase, authMiddleware)

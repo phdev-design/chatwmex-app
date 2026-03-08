@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:app/core/storage/storage_service.dart';
 
 class NetworkService {
@@ -9,20 +10,24 @@ class NetworkService {
   final StorageService _storageService;
   static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
   static String get baseUrl {
+    // 如果是 Debug 模式，強制使用本地環境（無視 .env 的正是機設定）
+    if (kDebugMode) {
+      if (Platform.isAndroid) return 'http://10.0.2.2:8080';
+      if (Platform.isIOS) return 'http://127.0.0.1:8080';
+      return 'http://localhost:8080';
+    }
+
+    // 非 Debug 模式才讀取 .env 或編譯參數
     final envUrl = dotenv.env['API_URL'];
     if (envUrl != null && envUrl.isNotEmpty) {
       return envUrl;
     }
+    
     if (_envBaseUrl.isNotEmpty) {
       return _envBaseUrl;
     }
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8080';
-    }
-    if (Platform.isIOS) {
-      return 'http://127.0.0.1:8080';
-    }
-    return 'http://localhost:8080';
+
+    return 'http://localhost:8080'; 
   }
 
   static String resolveUrl(String path) {
@@ -109,6 +114,14 @@ class NetworkService {
       throw Exception('Invalid upload avatar response format');
     } catch (e) {
       throw Exception('Upload avatar failed: $e');
+    }
+  }
+
+  Future<void> confirmQrLogin(String qrToken) async {
+    try {
+      await _dio.post('/auth/qr/confirm', data: {'qr_token': qrToken});
+    } catch (e) {
+      throw Exception('QR Login failed: $e');
     }
   }
 

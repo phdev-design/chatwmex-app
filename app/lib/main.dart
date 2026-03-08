@@ -17,10 +17,18 @@ import 'package:app/features/profile/ui/profile_page.dart';
 import 'package:app/core/theme/theme.dart';
 import 'package:app/core/notification/notification_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart'; // 👉 引入 kDebugMode
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  
+  // 根據開發或正式環境載入不同的 .env 檔案
+  try {
+    await dotenv.load(fileName: kDebugMode ? ".env.dev" : ".env");
+  } catch (e) {
+    // 預防 .env.dev 缺失時的安全降級
+    await dotenv.load(fileName: ".env").catchError((_) => null);
+  }
 
   runApp(const ProviderScope(child: MyApp()));
 }

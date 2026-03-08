@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
+import QrLogin from './pages/QrLogin';
 import Chat from './pages/Chat';
 
 const PrivateRoute = ({ children }) => {
@@ -13,6 +14,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/qr-login" element={<QrLogin />} />
         <Route
           path="/chat"
           element={

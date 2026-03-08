@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const useWebSocket = (token) => {
+const useWebSocket = (token, isQrToken = false) => {
   const ws = useRef(null);
   const [messages, setMessages] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -30,7 +30,7 @@ const useWebSocket = (token) => {
     let reconnectTimer;
     const connect = () => {
       const baseUrl = getWsUrl();
-      const socketUrl = `${baseUrl}?token=${token}`;
+      const socketUrl = isQrToken ? `${baseUrl}?qr_token=${token}` : `${baseUrl}?token=${token}`;
       ws.current = new WebSocket(socketUrl);
 
       ws.current.onopen = () => {
@@ -44,15 +44,15 @@ const useWebSocket = (token) => {
           // If server sends chunks separated by newline
           const lines = event.data.split('\n').map(line => line.trim()).filter(line => line.length > 0);
           for (const line of lines) {
-             const message = JSON.parse(line);
-             console.log('Received:', message);
+            const message = JSON.parse(line);
+            console.log('Received:', message);
 
-             // Handle ACK
-             if (message.event === 'message_ack' && message.data && message.data.client_msg_id) {
-               pendingAcks.current.delete(message.data.client_msg_id);
-             }
+            // Handle ACK
+            if (message.event === 'message_ack' && message.data && message.data.client_msg_id) {
+              pendingAcks.current.delete(message.data.client_msg_id);
+            }
 
-             setMessages((prev) => [...prev, message]);
+            setMessages((prev) => [...prev, message]);
           }
         } catch (err) {
           console.error('Error parsing message:', err);
@@ -66,10 +66,10 @@ const useWebSocket = (token) => {
           connect();
         }, 3000);
       };
-      
+
       ws.current.onerror = (err) => {
         console.error('WebSocket Error', err);
-        ws.current.close(); 
+        ws.current.close();
       }
     };
 
@@ -99,13 +99,13 @@ const useWebSocket = (token) => {
 
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(payload));
-      
+
       // Basic ACK tracking
       pendingAcks.current.set(clientMsgId, {
-        payload, 
+        payload,
         timestamp: Date.now()
       });
-      
+
       // Clean up un-acked messages after 10s
       setTimeout(() => {
         if (pendingAcks.current.has(clientMsgId)) {
@@ -113,7 +113,7 @@ const useWebSocket = (token) => {
           pendingAcks.current.delete(clientMsgId);
         }
       }, 10000);
-      
+
     } else {
       console.warn('WebSocket is not connected, queueing message.');
       messageQueue.current.push(payload);

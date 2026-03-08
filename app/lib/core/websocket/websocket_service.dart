@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:uuid/uuid.dart';
 
@@ -31,17 +32,25 @@ class WebSocketService {
     final token = await _storageService.read('jwt_token');
     if (token == null) return;
 
-    // Use proper IP for emulator/device
-    String baseUrl = dotenv.env['WS_URL'] ?? '';
-    
-    if (baseUrl.isEmpty) {
+    // Debug Mode 強制使用本地 WS
+    String baseUrl = '';
+    if (kDebugMode) {
       if (Platform.isAndroid) {
         baseUrl = 'ws://10.0.2.2:8080/ws';
+      } else if (Platform.isIOS) {
+        baseUrl = 'ws://127.0.0.1:8080/ws';
       } else {
         baseUrl = 'ws://localhost:8080/ws';
       }
+    } else {
+      // Release 讀取環境變數
+      baseUrl = dotenv.env['WS_URL'] ?? '';
     }
 
+    // 安全字串替換：防止 dart Uri 把部分缺少 port 的 https/wss 解析掛上 :0
+    baseUrl = baseUrl.replaceAll(':0/ws', '/ws').replaceAll(':0', '');
+
+    // 最後組合 token
     final uri = Uri.parse('$baseUrl?token=$token');
 
     try {
