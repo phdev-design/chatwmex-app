@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:uuid/uuid.dart';
 
@@ -32,8 +33,8 @@ class WebSocketService {
     // Use proper IP for emulator/device
     // Android Emulator: 10.0.2.2
     // iOS Simulator / Real Device on LAN: Needs LAN IP or localhost (if Simulator)
-    String baseUrl = 'ws://192.168.100.114:8080/ws';
-    if (Platform.isAndroid) {
+    String baseUrl = dotenv.env['WS_URL'] ?? 'ws://192.168.100.114:8080/ws';
+    if (dotenv.env['WS_URL'] == null && Platform.isAndroid) {
       baseUrl = 'ws://10.0.2.2:8080/ws';
     }
 

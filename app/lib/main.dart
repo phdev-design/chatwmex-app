@@ -16,9 +16,11 @@ import 'package:app/features/chat/ui/group_members_page.dart'; // 👉 匯入群
 import 'package:app/features/profile/ui/profile_page.dart';
 import 'package:app/core/theme/theme.dart';
 import 'package:app/core/notification/notification_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
 
   runApp(const ProviderScope(child: MyApp()));
 }

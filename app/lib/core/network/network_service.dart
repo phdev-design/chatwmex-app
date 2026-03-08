@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:app/core/storage/storage_service.dart';
 
 class NetworkService {
@@ -8,6 +9,10 @@ class NetworkService {
   final StorageService _storageService;
   static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
   static String get baseUrl {
+    final envUrl = dotenv.env['API_URL'];
+    if (envUrl != null && envUrl.isNotEmpty) {
+      return envUrl;
+    }
     if (_envBaseUrl.isNotEmpty) {
       return _envBaseUrl;
     }
