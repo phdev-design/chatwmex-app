@@ -76,7 +76,7 @@ class FriendViewModel extends Notifier<FriendState> {
   void _updateFriendAvatar(String userId, String avatarUrl) {
     if (state.friends.isEmpty) return;
     
-    final updatedFriends = state.friends.map((friend) {
+    final updatedFriends = state.friends.map<Friend>((friend) {
       if (friend.id == userId) {
         return friend.copyWith(avatarUrl: avatarUrl);
       }
@@ -89,7 +89,7 @@ class FriendViewModel extends Notifier<FriendState> {
   void _updateFriendInfo(String userId, String? firstName, String? lastName, String? bio) {
     if (state.friends.isEmpty) return;
     
-    final updatedFriends = state.friends.map((friend) {
+    final updatedFriends = state.friends.map<Friend>((friend) {
       if (friend.id == userId) {
         return friend.copyWith(
           firstName: firstName,

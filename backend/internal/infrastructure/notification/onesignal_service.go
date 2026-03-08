@@ -52,7 +52,25 @@ func (s *OneSignalService) SendNotification(userID, event string, data interface
 		}
 	case "friend_request":
 		heading = "Friend Request"
-		content = "You have a new friend request"
+		senderName := "Someone"
+		if reqMap, ok := data.(map[string]interface{}); ok {
+			firstName, _ := reqMap["first_name"].(string)
+			lastName, _ := reqMap["last_name"].(string)
+			username, _ := reqMap["sender_username"].(string)
+			
+			if firstName != "" || lastName != "" {
+				if firstName != "" && lastName != "" {
+					senderName = firstName + " " + lastName
+				} else if firstName != "" {
+					senderName = firstName
+				} else {
+					senderName = lastName
+				}
+			} else if username != "" {
+				senderName = username
+			}
+		}
+		content = fmt.Sprintf("%s sent you a friend request", senderName)
 	case "friend_accepted":
 		heading = "Friend Request Accepted"
 		content = "Your friend request was accepted"

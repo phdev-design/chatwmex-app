@@ -87,10 +87,31 @@ func (u *friendUsecase) SendFriendRequest(c context.Context, senderID, receiverU
 	if u.notification != nil {
 		// Fetch sender info for notification
 		sender, _ := u.userRepo.GetByID(ctx, senderID)
+		var enrichedReq map[string]interface{}
+		
 		if sender != nil {
 			req.SenderUsername = sender.Username
+			enrichedReq = map[string]interface{}{
+				"id":              req.ID,
+				"sender_id":       req.SenderID,
+				"receiver_id":     req.ReceiverID,
+				"status":          req.Status,
+				"sender_username": sender.Username,
+				"first_name":      sender.FirstName,
+				"last_name":       sender.LastName,
+				"avatar_url":      sender.AvatarURL,
+			}
+		} else {
+			// Fallback
+			enrichedReq = map[string]interface{}{
+				"id":          req.ID,
+				"sender_id":   req.SenderID,
+				"receiver_id": req.ReceiverID,
+				"status":      req.Status,
+			}
 		}
-		u.notification.SendNotification(receiver.ID, "friend_request", req)
+		
+		u.notification.SendNotification(receiver.ID, "friend_request", enrichedReq)
 	}
 
 	return nil

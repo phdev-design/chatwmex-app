@@ -4,11 +4,19 @@ class Friend extends Equatable {
   final String id;
   final String username;
   final String email;
+  final String? avatarUrl;
+  final String? firstName;
+  final String? lastName;
+  final String? bio;
 
   const Friend({
     required this.id,
     required this.username,
     required this.email,
+    this.avatarUrl,
+    this.firstName,
+    this.lastName,
+    this.bio,
   });
 
   factory Friend.fromJson(Map<String, dynamic> json) {
@@ -16,11 +24,35 @@ class Friend extends Equatable {
       id: json['id'] ?? '',
       username: json['username'] ?? '',
       email: json['email'] ?? '',
+      avatarUrl: json['avatar_url'],
+      firstName: json['first_name'],
+      lastName: json['last_name'],
+      bio: json['bio'],
+    );
+  }
+
+  Friend copyWith({
+    String? id,
+    String? username,
+    String? email,
+    String? avatarUrl,
+    String? firstName,
+    String? lastName,
+    String? bio,
+  }) {
+    return Friend(
+      id: id ?? this.id,
+      username: username ?? this.username,
+      email: email ?? this.email,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      bio: bio ?? this.bio,
     );
   }
 
   @override
-  List<Object?> get props => [id, username, email];
+  List<Object?> get props => [id, username, email, avatarUrl, firstName, lastName, bio];
 }
 
 enum FriendRequestStatus { pending, accepted, rejected }
