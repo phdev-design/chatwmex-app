@@ -15,7 +15,7 @@ API_KEY_ID="B7A4L375MZ"
 ISSUER_ID="c74b3e95-5b55-43c0-8437-6d5bc4c93325"
 
 # ------------------------------------------
-# 2. 檢查環境
+# 2. 檢查環境與金鑰
 # ------------------------------------------
 
 echo "🚀 [1/6] 檢查環境中..."
@@ -27,6 +27,14 @@ fi
 
 if ! command -v xcrun &> /dev/null; then
     echo "❌ 錯誤: 找不到 xcrun 指令，請確認已安裝 Xcode。"
+    exit 1
+fi
+
+# 檢查 p8 金鑰是否存在
+P8_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8"
+if [ ! -f "$P8_KEY_PATH" ]; then
+    echo "❌ 錯誤: 找不到 App Store Connect API 金鑰檔案。"
+    echo "   請確認已將 AuthKey_${API_KEY_ID}.p8 放置於 $HOME/.appstoreconnect/private_keys/ 目錄下。"
     exit 1
 fi
 
@@ -53,7 +61,7 @@ fi
 
 # 分離出基礎版本號與 Build Number
 BASE_VERSION=$(echo "$VERSION_LINE" | cut -d '+' -f 1) # 例如: version: 1.0.31
-CURRENT_BUILD_NUMBER=$(echo "$VERSION_LINE" | cut -d '+' -f 2) # 例如: 1
+CURRENT_BUILD_NUMBER=$(echo "$VERSION_LINE" | cut -d '+' -f 2 | tr -d '\r') # 移除可能的 carriage return
 
 if [[ -z "$CURRENT_BUILD_NUMBER" || "$BASE_VERSION" == "$CURRENT_BUILD_NUMBER" ]]; then
     echo "⚠️ 警告: 無法解析 Build Number。請確認格式為 version: x.y.z+n"
@@ -61,12 +69,12 @@ if [[ -z "$CURRENT_BUILD_NUMBER" || "$BASE_VERSION" == "$CURRENT_BUILD_NUMBER" ]
 else
     # 計算新的 Build Number
     NEW_BUILD_NUMBER=$((CURRENT_BUILD_NUMBER + 1))
-    NEW_VERSION_LINE="${BASE_VERSION}+${NEW_BUILD_NUMBER}"
     
-    # 精準替換該行 (macOS sed 語法)
-    sed -i '' "s/^version: .*/${NEW_VERSION_LINE}/" "$PUBSPEC"
+    # 這裡修改為只替換 + 號後面的數字，避免覆蓋整行導致格式跑掉
+    # macOS 的 sed 需要 -i ''
+    sed -i '' -e "s/^+${CURRENT_BUILD_NUMBER}/+${NEW_BUILD_NUMBER}/" "$PUBSPEC"
     
-    echo "✅ 版本號已更新: +$CURRENT_BUILD_NUMBER -> +$NEW_BUILD_NUMBER ($NEW_VERSION_LINE)"
+    echo "✅ 版本號已更新: +$CURRENT_BUILD_NUMBER -> +$NEW_BUILD_NUMBER ($BASE_VERSION+$NEW_BUILD_NUMBER)"
 fi
 
 # ------------------------------------------
@@ -95,8 +103,8 @@ cd ..
 
 echo "🔨 [4/6] 開始建置 $APP_NAME Release IPA..."
 
-# 執行 Flutter 官方的 IPA 建置指令
-flutter build ipa --release || { echo "❌ 建置 IPA 失敗，請檢查程式碼錯誤。"; exit 1; }
+# 執行 Flutter 官方的 IPA 建置指令，建議加上 obfuscate 混淆程式碼
+flutter build ipa --release --obfuscate --split-debug-info=./build/app/outputs/symbols || { echo "❌ 建置 IPA 失敗，請檢查程式碼錯誤。"; exit 1; }
 
 # 自動搜尋產生的 IPA 檔案
 IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
@@ -109,26 +117,58 @@ fi
 echo "✅ 找到 IPA 檔案: $IPA_PATH"
 
 # ------------------------------------------
-# 6. 驗證與上傳至 TestFlight
+# 6. 驗證與上傳至 TestFlight (含重試機制)
 # ------------------------------------------
+
+MAX_RETRIES=3
+RETRY_COUNT=0
 
 echo "☁️  [5/6] 正在驗證 IPA 檔案..."
 
-xcrun altool --validate-app \
-    -f "$IPA_PATH" \
-    -t ios \
-    --apiKey "$API_KEY_ID" \
-    --apiIssuer "$ISSUER_ID" \
-    --verbose
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if xcrun altool --validate-app \
+        -f "$IPA_PATH" \
+        -t ios \
+        --apiKey "$API_KEY_ID" \
+        --apiIssuer "$ISSUER_ID" \
+        --verbose; then
+        echo "✅ 驗證成功！"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT+1))
+        echo "⚠️ 驗證失敗 (嘗試 $RETRY_COUNT/$MAX_RETRIES)。等待 5 秒後重試..."
+        sleep 5
+    fi
+done
 
-echo "🚀 [6/6] 驗證成功，開始上傳至 App Store Connect..."
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ 錯誤: 達到最大重試次數，驗證失敗。"
+    exit 1
+fi
 
-xcrun altool --upload-app \
-    -f "$IPA_PATH" \
-    -t ios \
-    --apiKey "$API_KEY_ID" \
-    --apiIssuer "$ISSUER_ID" \
-    --verbose
+echo "🚀 [6/6] 開始上傳至 App Store Connect..."
+
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if xcrun altool --upload-app \
+        -f "$IPA_PATH" \
+        -t ios \
+        --apiKey "$API_KEY_ID" \
+        --apiIssuer "$ISSUER_ID" \
+        --verbose; then
+        echo "✅ 上傳成功！"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT+1))
+        echo "⚠️ 上傳失敗 (嘗試 $RETRY_COUNT/$MAX_RETRIES)。等待 10 秒後重試..."
+        sleep 10
+    fi
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ 錯誤: 達到最大重試次數，上傳失敗。"
+    exit 1
+fi
 
 echo "🎉==========================================🎉"
 echo "   $APP_NAME 部署成功！"
