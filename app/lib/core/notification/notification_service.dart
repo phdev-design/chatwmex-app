@@ -8,6 +8,8 @@ class NotificationService {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
+  static String? currentActiveRoomId;
+
   final StorageService _storageService;
 
   NotificationService(this._storageService);
@@ -18,6 +20,9 @@ class NotificationService {
     OneSignal.Notifications.requestPermission(true);
     OneSignal.Notifications.addClickListener((event) {
       _handleNotificationClick(event);
+    });
+    OneSignal.Notifications.addForegroundWillDisplayListener((event) {
+      _handleForegroundNotification(event);
     });
     await handlePendingNavigation();
   }
@@ -39,6 +44,16 @@ class NotificationService {
     );
     await _storageService.delete('pending_room_title');
     await _storageService.delete('pending_is_room');
+  }
+
+  void _handleForegroundNotification(OSNotificationWillDisplayEvent event) {
+    final data = event.notification.additionalData;
+    if (data == null) return;
+    
+    final roomId = data['room_id']?.toString() ?? '';
+    if (roomId.isNotEmpty && roomId == currentActiveRoomId) {
+      event.preventDefault(); // Suspend the banner if user is in this active room
+    }
   }
 
   Future<void> _handleNotificationClick(OSNotificationClickEvent event) async {

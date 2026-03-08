@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/features/friend/models/friend.dart';
 import 'package:app/features/friend/repositories/friend_repository.dart';
+import 'package:app/core/websocket/websocket_service.dart';
 
 class FriendState {
   final List<Friend> friends;
@@ -36,8 +38,69 @@ class FriendViewModel extends Notifier<FriendState> {
   @override
   FriendState build() {
     _repository = ref.watch(friendRepositoryProvider);
+    final wsService = ref.watch(webSocketServiceProvider);
+
+    final subscription = wsService.events.listen((data) {
+      if (data is Map) {
+        final event = data['event'];
+        final payload = data['data'];
+        
+        if (event == 'user_profile_updated' && payload is Map) {
+          final userId = payload['user_id'];
+          final avatarUrl = payload['avatar_url'];
+          
+          if (userId is String && avatarUrl is String) {
+            _updateFriendAvatar(userId, avatarUrl);
+          }
+        } else if (event == 'user_info_updated' && payload is Map) {
+          final userId = payload['user_id'];
+          final firstName = payload['first_name'];
+          final lastName = payload['last_name'];
+          final bio = payload['bio'];
+          
+          if (userId is String) {
+           _updateFriendInfo(userId, firstName, lastName, bio);
+          }
+        }
+      }
+    });
+
+    ref.onDispose(() {
+      subscription.cancel();
+    });
+
     Future.microtask(() => loadAll());
     return const FriendState();
+  }
+
+  void _updateFriendAvatar(String userId, String avatarUrl) {
+    if (state.friends.isEmpty) return;
+    
+    final updatedFriends = state.friends.map((friend) {
+      if (friend.id == userId) {
+        return friend.copyWith(avatarUrl: avatarUrl);
+      }
+      return friend;
+    }).toList();
+    
+    state = state.copyWith(friends: updatedFriends);
+  }
+
+  void _updateFriendInfo(String userId, String? firstName, String? lastName, String? bio) {
+    if (state.friends.isEmpty) return;
+    
+    final updatedFriends = state.friends.map((friend) {
+      if (friend.id == userId) {
+        return friend.copyWith(
+          firstName: firstName,
+          lastName: lastName,
+          bio: bio,
+        );
+      }
+      return friend;
+    }).toList();
+    
+    state = state.copyWith(friends: updatedFriends);
   }
 
   Future<void> loadAll() async {

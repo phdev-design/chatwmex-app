@@ -15,6 +15,7 @@ import 'package:app/models/message.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
+import 'package:app/core/notification/notification_service.dart';
 
 class ChatDetailPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -59,6 +60,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
   @override
   void initState() {
     super.initState();
+    NotificationService.currentActiveRoomId = widget.roomId;
     _checkFriendStatus();
     _checkMemberStatus();
     _scrollController = AutoScrollController(
@@ -84,6 +86,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
 
   @override
   void dispose() {
+    NotificationService.currentActiveRoomId = null;
     _scrollController.dispose();
     _arrowController.dispose();
     super.dispose();

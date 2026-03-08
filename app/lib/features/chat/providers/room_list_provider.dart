@@ -172,6 +172,8 @@ class RoomListViewModel extends Notifier<RoomListState> {
               updateRoomDetails(roomId, avatarUrl, name);
             }
           }
+        } else if (event == 'ws_reconnected') {
+          Future.microtask(() => fetchRooms());
         }
       }
     });

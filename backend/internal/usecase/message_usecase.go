@@ -69,7 +69,7 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 		return errors.New("receiver ID or room ID must be provided")
 	}
 
-	offlineUserIDs := make([]string, 0)
+	pushTargets := make([]string, 0)
 
 	// 👉 自動刪除訊息：判斷此對話是否開啟計時器
 	var chatID string
@@ -125,8 +125,9 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 				if err := u.messageRepo.StoreOfflineMessage(ctx, memberID, msg); err != nil {
 					return err
 				}
-				offlineUserIDs = append(offlineUserIDs, memberID)
 			}
+			// 👉 ALWAYS include in push notification targets to ensure background delivery
+			pushTargets = append(pushTargets, memberID)
 		}
 	} else if strings.TrimSpace(msg.ReceiverID) != "" {
 		isOnline, err := u.onlineRepo.IsUserOnline(ctx, msg.ReceiverID)
@@ -134,8 +135,9 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 			if err := u.messageRepo.StoreOfflineMessage(ctx, msg.ReceiverID, msg); err != nil {
 				return err
 			}
-			offlineUserIDs = append(offlineUserIDs, msg.ReceiverID)
 		}
+		// 👉 ALWAYS include in push notification targets to ensure background delivery
+		pushTargets = append(pushTargets, msg.ReceiverID)
 	}
 
 	// 4) Set server timestamp to ensure canonical ordering.
@@ -154,10 +156,10 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 		return err
 	}
 
-	if u.pushService != nil && len(offlineUserIDs) > 0 {
-		offlineUsers := append([]string(nil), offlineUserIDs...)
+	if u.pushService != nil && len(pushTargets) > 0 {
+		targetsCopy := append([]string(nil), pushTargets...)
 		messageCopy := *msg
-		go u.pushToOfflineUsers(offlineUsers, &messageCopy)
+		go u.pushToOfflineUsers(targetsCopy, &messageCopy)
 	}
 	return nil
 }

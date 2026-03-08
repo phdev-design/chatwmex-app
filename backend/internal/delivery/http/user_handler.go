@@ -25,6 +25,7 @@ type UserHandler struct {
 
 type UserProfileEventBroadcaster interface {
 	BroadcastUserProfileUpdated(userID, avatarURL string)
+	BroadcastUserInfoUpdated(userID, firstName, lastName, bio string)
 }
 
 // NewUserHandler initializes the user handler and registers routes.
@@ -259,6 +260,10 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		}
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if h.ProfileBroadcaster != nil {
+		h.ProfileBroadcaster.BroadcastUserInfoUpdated(userID, req.FirstName, req.LastName, req.Bio)
 	}
 
 	response.Success(c, "Profile updated successfully")

@@ -15,6 +15,7 @@ class WebSocketService {
 
   // Connection state
   bool _isConnected = false;
+  bool _hasConnectedOnce = false;
   Timer? _reconnectTimer;
   int _retryAttempts = 0;
 
@@ -47,6 +48,12 @@ class WebSocketService {
       _isConnected = true;
       _retryAttempts = 0;
       print('WebSocket connected');
+
+      if (_hasConnectedOnce) {
+        _streamController.add({'event': 'ws_reconnected'});
+      } else {
+        _hasConnectedOnce = true;
+      }
 
       // Process offline queue
       _processQueue();

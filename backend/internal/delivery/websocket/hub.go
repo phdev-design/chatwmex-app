@@ -278,6 +278,9 @@ type chatEvent struct {
 	UserID       string              `json:"user_id"`
 	AvatarURL    string              `json:"avatar_url"`
 	Name         string              `json:"name"`
+	FirstName    string              `json:"first_name,omitempty"`
+	LastName     string              `json:"last_name,omitempty"`
+	Bio          string              `json:"bio,omitempty"`
 }
 
 func (h *Hub) BroadcastRoomReadReceipt(roomID string, messageIDs []string, readerID string) {
@@ -314,6 +317,10 @@ func (h *Hub) handleChatEvent(eventBytes []byte) {
 	}
 	if event.Type == "user_profile_updated" {
 		h.broadcastUserProfileUpdatedLocal(event)
+		return
+	}
+	if event.Type == "user_info_updated" {
+		h.broadcastUserInfoUpdatedLocal(event)
 		return
 	}
 	if event.Type == "room_updated" {
@@ -515,6 +522,50 @@ func (h *Hub) broadcastUserProfileUpdatedLocal(event chatEvent) {
 		"data": map[string]interface{}{
 			"user_id":    event.UserID,
 			"avatar_url": event.AvatarURL,
+		},
+	}
+	messageBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	for client := range h.clients {
+		select {
+		case client.send <- messageBytes:
+		default:
+			close(client.send)
+			delete(h.clients, client)
+			delete(h.userClients, client.userID)
+		}
+	}
+}
+
+func (h *Hub) BroadcastUserInfoUpdated(userID, firstName, lastName, bio string) {
+	if userID == "" {
+		return
+	}
+	event := chatEvent{
+		Type:      "user_info_updated",
+		UserID:    userID,
+		FirstName: firstName,
+		LastName:  lastName,
+		Bio:       bio,
+	}
+	if h.rabbitMQ != nil {
+		if err := h.rabbitMQ.PublishEvent(event); err == nil {
+			return
+		}
+	}
+	h.broadcastUserInfoUpdatedLocal(event)
+}
+
+func (h *Hub) broadcastUserInfoUpdatedLocal(event chatEvent) {
+	payload := map[string]interface{}{
+		"event": "user_info_updated",
+		"data": map[string]interface{}{
+			"user_id":    event.UserID,
+			"first_name": event.FirstName,
+			"last_name":  event.LastName,
+			"bio":        event.Bio,
 		},
 	}
 	messageBytes, err := json.Marshal(payload)
