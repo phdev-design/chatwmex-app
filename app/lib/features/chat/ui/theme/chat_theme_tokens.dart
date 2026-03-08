@@ -125,7 +125,9 @@ ChatSurfaceTokens resolveChatSurfaceTokens({
     bubbleText: isDark ? Colors.white : colorScheme.onSurface,
     bubbleOutgoingText: Colors.white, // 不論深淺色，藍色/綠色發送泡泡上一律白字
     subtleText: isDark ? Colors.grey.shade400 : colorScheme.onSurfaceVariant,
-    bubbleOutgoingSubtleText: isDark ? Colors.grey.shade400 : Colors.white70, // 發送泡泡上的時間顏色
+    bubbleOutgoingSubtleText: isDark
+        ? Colors.grey.shade400
+        : Colors.white70, // 發送泡泡上的時間顏色
     dateDividerBackground: isDark
         ? const Color(0xFF2A3942)
         : colorScheme.surfaceContainerHighest,

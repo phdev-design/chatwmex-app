@@ -26,10 +26,7 @@ class ChatDateDivider extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 11,
-              color: tokens.dateDividerText,
-            ),
+            style: TextStyle(fontSize: 11, color: tokens.dateDividerText),
           ),
         ),
       ),

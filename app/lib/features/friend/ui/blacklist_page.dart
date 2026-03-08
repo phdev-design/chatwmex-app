@@ -45,9 +45,9 @@ class _BlacklistPageState extends ConsumerState<BlacklistPage> {
       try {
         await ref.read(blacklistProvider.notifier).unblock(userId);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已解除封鎖 $username')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('已解除封鎖 $username')));
         }
       } catch (e) {
         if (mounted) {
@@ -87,12 +87,13 @@ class _BlacklistPageState extends ConsumerState<BlacklistPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline,
-                    size: 48,
-                    color: colorScheme.error.withValues(alpha: 0.7)),
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: colorScheme.error.withValues(alpha: 0.7),
+                ),
                 const SizedBox(height: 12),
-                Text(state.error!,
-                    style: TextStyle(color: colorScheme.error)),
+                Text(state.error!, style: TextStyle(color: colorScheme.error)),
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () =>
@@ -108,10 +109,11 @@ class _BlacklistPageState extends ConsumerState<BlacklistPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.block,
-                    size: 64,
-                    color:
-                        colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                Icon(
+                  Icons.block,
+                  size: 64,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   '目前沒有黑名單',
@@ -134,8 +136,10 @@ class _BlacklistPageState extends ConsumerState<BlacklistPage> {
           itemBuilder: (context, index) {
             final user = state.blockedUsers[index];
             return ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
               leading: ChatAvatar(
                 avatarUrl: null,
                 radius: 22,

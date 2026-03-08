@@ -52,7 +52,15 @@ class Friend extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, username, email, avatarUrl, firstName, lastName, bio];
+  List<Object?> get props => [
+    id,
+    username,
+    email,
+    avatarUrl,
+    firstName,
+    lastName,
+    bio,
+  ];
 }
 
 enum FriendRequestStatus { pending, accepted, rejected }
@@ -97,5 +105,12 @@ class FriendRequest extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, senderId, senderUsername, receiverId, status, createdAt];
+  List<Object?> get props => [
+    id,
+    senderId,
+    senderUsername,
+    receiverId,
+    status,
+    createdAt,
+  ];
 }

@@ -40,7 +40,9 @@ class SettingsPage extends StatelessWidget {
               title: const Text('分類名單', style: TextStyle(color: Colors.white)),
               trailing: const Icon(Icons.chevron_right, color: Colors.grey),
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RoomLabelsSettingsPage()),
+                MaterialPageRoute(
+                  builder: (_) => const RoomLabelsSettingsPage(),
+                ),
               ),
             ),
           ]),

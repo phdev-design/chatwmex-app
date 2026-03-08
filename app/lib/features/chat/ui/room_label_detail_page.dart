@@ -11,7 +11,8 @@ class RoomLabelDetailPage extends ConsumerStatefulWidget {
   const RoomLabelDetailPage({super.key, required this.label});
 
   @override
-  ConsumerState<RoomLabelDetailPage> createState() => _RoomLabelDetailPageState();
+  ConsumerState<RoomLabelDetailPage> createState() =>
+      _RoomLabelDetailPageState();
 }
 
 class _RoomLabelDetailPageState extends ConsumerState<RoomLabelDetailPage> {
@@ -34,11 +35,9 @@ class _RoomLabelDetailPageState extends ConsumerState<RoomLabelDetailPage> {
   void _saveBasicSettings() {
     final newName = _nameController.text.trim();
     if (newName.isNotEmpty) {
-      ref.read(roomLabelProvider.notifier).updateLabel(
-            widget.label.id,
-            newName,
-            _isEnabled,
-          );
+      ref
+          .read(roomLabelProvider.notifier)
+          .updateLabel(widget.label.id, newName, _isEnabled);
     }
   }
 
@@ -55,9 +54,7 @@ class _RoomLabelDetailPageState extends ConsumerState<RoomLabelDetailPage> {
     final rooms = roomListState.rooms;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('編輯分類'),
-      ),
+      appBar: AppBar(title: const Text('編輯分類')),
       body: ListView(
         children: [
           Padding(
@@ -82,8 +79,8 @@ class _RoomLabelDetailPageState extends ConsumerState<RoomLabelDetailPage> {
                       border: InputBorder.none,
                     ),
                     onEditingComplete: () {
-                       FocusScope.of(context).unfocus();
-                       _saveBasicSettings();
+                      FocusScope.of(context).unfocus();
+                      _saveBasicSettings();
                     },
                   ),
                 ),
@@ -124,18 +121,27 @@ class _RoomLabelDetailPageState extends ConsumerState<RoomLabelDetailPage> {
                   secondary: ChatAvatar(
                     avatarUrl: room.avatarUrl,
                     radius: 16,
-                    fallbackText: room.name.isNotEmpty ? room.name[0].toUpperCase() : '?',
+                    fallbackText: room.name.isNotEmpty
+                        ? room.name[0].toUpperCase()
+                        : '?',
                     fallbackIcon: room.type == 'group' ? Icons.group : null,
                     logTag: 'label_detail',
                   ),
-                  title: Text(room.name, style: const TextStyle(color: Colors.white)),
+                  title: Text(
+                    room.name,
+                    style: const TextStyle(color: Colors.white),
+                  ),
                   activeColor: Colors.blueAccent,
                   value: isIncluded,
                   onChanged: (val) {
                     if (val == true) {
-                      ref.read(roomLabelProvider.notifier).addRoomToLabel(currentLabel.id, room.id);
+                      ref
+                          .read(roomLabelProvider.notifier)
+                          .addRoomToLabel(currentLabel.id, room.id);
                     } else {
-                      ref.read(roomLabelProvider.notifier).removeRoomFromLabel(currentLabel.id, room.id);
+                      ref
+                          .read(roomLabelProvider.notifier)
+                          .removeRoomFromLabel(currentLabel.id, room.id);
                     }
                   },
                 );

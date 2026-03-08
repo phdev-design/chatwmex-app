@@ -81,8 +81,9 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
       case '私訊':
         return rooms.where((r) => r.type == 'dm').toList();
       default:
-        final matchedLabel =
-            customLabels.where((l) => l.name == _selectedFilter).firstOrNull;
+        final matchedLabel = customLabels
+            .where((l) => l.name == _selectedFilter)
+            .firstOrNull;
         if (matchedLabel != null) {
           return rooms
               .where((r) => matchedLabel.roomIds.contains(r.id))
@@ -111,14 +112,17 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     if (!context.mounted) return;
     if (mounted && token != null) {
       ref.read(roomListViewModelProvider.notifier).markRoomRead(roomId);
-      context.push('/chat', extra: {
-        'roomId': roomId,
-        'title': title,
-        'isRoom': isRoom,
-        'currentUserId': userId,
-        'token': token,
-        'avatarUrl': avatarUrl,
-      });
+      context.push(
+        '/chat',
+        extra: {
+          'roomId': roomId,
+          'title': title,
+          'isRoom': isRoom,
+          'currentUserId': userId,
+          'token': token,
+          'avatarUrl': avatarUrl,
+        },
+      );
     }
   }
 
@@ -160,7 +164,9 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                     _favoriteRoomIds.add(room.id);
                   }
                 });
-                ref.read(storageServiceProvider).save(
+                ref
+                    .read(storageServiceProvider)
+                    .save(
                       'favorite_room_ids',
                       jsonEncode(_favoriteRoomIds.toList()),
                     );
@@ -191,7 +197,11 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     final customLabels =
         labelsAsync.valueOrNull?.where((l) => l.isEnabled).toList() ?? [];
     final allTabs = [
-      '全部', '未讀', '最愛', '群組', '私訊',
+      '全部',
+      '未讀',
+      '最愛',
+      '群組',
+      '私訊',
       ...customLabels.map((l) => l.name),
     ];
     final filteredRooms = _filterRooms(state.rooms, customLabels);
@@ -280,8 +290,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                     color: isDark ? Colors.white38 : Colors.grey[500],
                   ),
                   border: InputBorder.none,
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
             ),
@@ -296,20 +305,19 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () =>
-                        setState(() => _selectedFilter = label),
+                    onTap: () => setState(() => _selectedFilter = label),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? (isDark
-                                ? Colors.white
-                                : Colors.black87)
+                            ? (isDark ? Colors.white : Colors.black87)
                             : (isDark
-                                ? const Color(0xFF2C2C2E)
-                                : const Color(0xFFEFEFF0)),
+                                  ? const Color(0xFF2C2C2E)
+                                  : const Color(0xFFEFEFF0)),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -321,9 +329,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                               : FontWeight.normal,
                           color: isSelected
                               ? (isDark ? Colors.black : Colors.white)
-                              : (isDark
-                                  ? Colors.white70
-                                  : Colors.black54),
+                              : (isDark ? Colors.white70 : Colors.black54),
                         ),
                       ),
                     ),
@@ -463,12 +469,10 @@ class _RoomListItem extends StatelessWidget {
     if (room.lastMessageType == 'voice' || room.lastMessageType == 'audio') {
       return (Icons.mic_rounded, '[語音訊息]');
     }
-    if (room.lastMessageType == 'file' ||
-        room.lastMessageType == 'document') {
+    if (room.lastMessageType == 'file' || room.lastMessageType == 'document') {
       return (Icons.insert_drive_file_rounded, '[檔案]');
     }
-    final hasLink =
-        msg != null && extractAllUrls(msg).isNotEmpty;
+    final hasLink = msg != null && extractAllUrls(msg).isNotEmpty;
     if (room.lastMessageType == 'link' || hasLink) {
       return (Icons.link_rounded, '[連結] ${msg ?? ''}');
     }
@@ -513,13 +517,14 @@ class _RoomListItem extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF1C1C1E)
-                            : Colors.white,
+                        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.star_rounded,
-                          size: 12, color: Color(0xFFFFC107)),
+                      child: const Icon(
+                        Icons.star_rounded,
+                        size: 12,
+                        color: Color(0xFFFFC107),
+                      ),
                     ),
                   ),
               ],
@@ -593,9 +598,13 @@ class _RoomListItem extends StatelessWidget {
                           child: Container(
                             key: ValueKey(room.unreadCount),
                             constraints: const BoxConstraints(
-                                minWidth: 20, minHeight: 20),
+                              minWidth: 20,
+                              minHeight: 20,
+                            ),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: tokens.unreadBadgeBackground,
                               borderRadius: BorderRadius.circular(10),

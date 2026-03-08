@@ -40,9 +40,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         await ref.read(publicKeyCacheServiceProvider).clearAllCache();
 
         // Security logic: Cleanup pending unregistration
-        final pendingDeviceId = await storage.read('pending_unregister_device_id');
+        final pendingDeviceId = await storage.read(
+          'pending_unregister_device_id',
+        );
         final networkService = ref.read(networkServiceProvider);
-        
+
         if (pendingDeviceId != null) {
           try {
             await networkService.client.delete('/devices/$pendingDeviceId');
@@ -54,10 +56,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         }
 
         // Re-register active device session for push
-        await ref.read(notificationServiceProvider).initOneSignal(
-          "88247551-a540-4ffc-89aa-e6ea9478b7be",
-        );
-        final subscriptionId = await ref.read(notificationServiceProvider).getSubscriptionId();
+        await ref
+            .read(notificationServiceProvider)
+            .initOneSignal("88247551-a540-4ffc-89aa-e6ea9478b7be");
+        final subscriptionId = await ref
+            .read(notificationServiceProvider)
+            .getSubscriptionId();
         if (subscriptionId != null) {
           try {
             await networkService.client.post(
@@ -67,7 +71,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 'platform': Platform.isAndroid ? 'android' : 'ios',
               },
             );
-          } catch(e) {
+          } catch (e) {
             print('Splash device register warning: $e');
           }
         }

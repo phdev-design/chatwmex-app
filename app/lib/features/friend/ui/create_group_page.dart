@@ -20,9 +20,9 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
   void _createGroup() async {
     final name = _groupNameController.text.trim();
     if (_selectedFriendIds.length < 2 || name.isEmpty) return;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       final myId = await ref.read(storageServiceProvider).read('user_id');
       final token = await ref.read(storageServiceProvider).read('jwt_token');
@@ -32,25 +32,28 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
       }
 
       final repo = ref.read(roomRepositoryProvider);
-      
+
       // Sending the selected friends. (The backend adds the creator based on token usually, or at least that's typical)
       final room = await repo.createRoom(name, _selectedFriendIds);
-      
+
       if (mounted) {
-        context.pushReplacement('/chat', extra: {
-          'roomId': room.id,
-          'title': room.name,
-          'isRoom': true,
-          'currentUserId': myId,
-          'token': token,
-          'avatarUrl': room.avatarUrl,
-        });
+        context.pushReplacement(
+          '/chat',
+          extra: {
+            'roomId': room.id,
+            'title': room.name,
+            'isRoom': true,
+            'currentUserId': myId,
+            'token': token,
+            'avatarUrl': room.avatarUrl,
+          },
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create group: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to create group: $e')));
         setState(() => _isLoading = false);
       }
     }
@@ -67,7 +70,10 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
     final state = ref.watch(friendViewModelProvider);
     final friends = state.friends;
 
-    final canCreate = _selectedFriendIds.length >= 2 && _groupNameController.text.trim().isNotEmpty && !_isLoading;
+    final canCreate =
+        _selectedFriendIds.length >= 2 &&
+        _groupNameController.text.trim().isNotEmpty &&
+        !_isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -75,15 +81,30 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('建立群組'),
-            Text('已選 ${_selectedFriendIds.length} 人（至少需要 2 人）', style: const TextStyle(fontSize: 12)),
+            Text(
+              '已選 ${_selectedFriendIds.length} 人（至少需要 2 人）',
+              style: const TextStyle(fontSize: 12),
+            ),
           ],
         ),
         actions: [
           _isLoading
-              ? const Center(child: Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))))
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
               : TextButton(
                   onPressed: canCreate ? _createGroup : null,
-                  child: const Text('建立', style: TextStyle(color: Colors.blueAccent)),
+                  child: const Text(
+                    '建立',
+                    style: TextStyle(color: Colors.blueAccent),
+                  ),
                 ),
         ],
       ),
@@ -111,7 +132,9 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
                       final friend = friends[index];
                       final isSelected = _selectedFriendIds.contains(friend.id);
                       return CheckboxListTile(
-                        secondary: const CircleAvatar(child: Icon(Icons.person)),
+                        secondary: const CircleAvatar(
+                          child: Icon(Icons.person),
+                        ),
                         title: Text(friend.username),
                         subtitle: Text(friend.email),
                         value: isSelected,
@@ -128,7 +151,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
                       );
                     },
                   ),
-          )
+          ),
         ],
       ),
     );

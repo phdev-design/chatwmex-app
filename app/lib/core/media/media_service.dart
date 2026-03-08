@@ -41,7 +41,7 @@ class MediaService {
     final directory = await getTemporaryDirectory();
     return '${directory.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
   }
-  
+
   void dispose() {
     _audioRecorder.dispose();
   }

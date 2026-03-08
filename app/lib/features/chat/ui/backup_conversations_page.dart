@@ -38,7 +38,7 @@ class _BackupConversationsPageState
   Future<void> _handleSignIn() async {
     try {
       final success = await ref.read(backupManagerProvider.notifier).signIn();
-      print('[BackupPage] signIn result: $success');  // 加這行
+      print('[BackupPage] signIn result: $success'); // 加這行
       debugPrint('[BackupPage] signIn result: $success');
       if (mounted) setState(() => _isAuthenticated = success);
     } catch (e, st) {
@@ -59,9 +59,12 @@ class _BackupConversationsPageState
       builder: (context) => const _BackupPasswordDialog(),
     );
 
-    if (password != null && password.isEmpty) return; // user cancelled without skipping
+    if (password != null && password.isEmpty)
+      return; // user cancelled without skipping
 
-    ref.read(backupManagerProvider.notifier).backupNow(backupPassword: password);
+    ref
+        .read(backupManagerProvider.notifier)
+        .backupNow(backupPassword: password);
   }
 
   @override
@@ -225,9 +228,7 @@ class _BackupConversationsPageState
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: state.isBackingUp
-                        ? null
-                        : _handleBackupNow,
+                    onPressed: state.isBackingUp ? null : _handleBackupNow,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       foregroundColor: Colors.white,
@@ -274,6 +275,7 @@ class _BackupConversationsPageState
       ),
     );
   }
+
   String _formatLastBackup(String? isoDate) {
     if (isoDate == null || isoDate.isEmpty) return '未曾備份';
     try {
@@ -360,7 +362,8 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
                     _obscureConfirm ? Icons.visibility : Icons.visibility_off,
                     color: Colors.white54,
                   ),
-                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  onPressed: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
                 ),
               ),
               onChanged: (_) => setState(() => _error = null),
@@ -370,7 +373,8 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(null), // return null for skip
+          onPressed: () =>
+              Navigator.of(context).pop(null), // return null for skip
           child: const Text('略過（不備份金鑰）', style: TextStyle(color: Colors.grey)),
         ),
         TextButton(

@@ -98,7 +98,8 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
           .restoreBackup(fileId);
       if (mounted) {
         if (result != null) {
-          if (result.encryptedPrivateKey != null && result.privateKeySalt != null) {
+          if (result.encryptedPrivateKey != null &&
+              result.privateKeySalt != null) {
             final password = await showDialog<String>(
               context: context,
               barrierDismissible: false,
@@ -266,7 +267,10 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
               context: context,
               builder: (context) => AlertDialog(
                 backgroundColor: const Color(0xFF1C1C1E),
-                title: const Text('刪除備份？', style: TextStyle(color: Colors.white)),
+                title: const Text(
+                  '刪除備份？',
+                  style: TextStyle(color: Colors.white),
+                ),
                 content: const Text(
                   '您確定要刪除這筆備份嗎？此操作無法還原。',
                   style: TextStyle(color: Colors.white70),
@@ -274,11 +278,17 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('取消', style: TextStyle(color: Colors.grey)),
+                    child: const Text(
+                      '取消',
+                      style: TextStyle(color: Colors.grey),
+                    ),
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('刪除', style: TextStyle(color: Colors.redAccent)),
+                    child: const Text(
+                      '刪除',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
                   ),
                 ],
               ),
@@ -403,7 +413,8 @@ class _RestorePasswordDialogState extends State<_RestorePasswordDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(null), // return null for skip
+          onPressed: () =>
+              Navigator.of(context).pop(null), // return null for skip
           child: const Text('略過', style: TextStyle(color: Colors.grey)),
         ),
         TextButton(

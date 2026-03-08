@@ -307,6 +307,10 @@ func (h *Hub) handleChatEvent(eventBytes []byte) {
 		h.broadcastRoomReadReceiptLocal(event)
 		return
 	}
+	if event.Type == "messages_delivered_receipt" {
+		h.broadcastRoomDeliveredReceiptLocal(event)
+		return
+	}
 	if event.Type == "message_reaction" {
 		h.broadcastMessageReactionLocal(event)
 		return
@@ -342,6 +346,58 @@ func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
 			"room_id":         event.RoomID,
 			"message_ids":     event.MessageIDs,
 			"read_by_user_id": event.ReadByUserID,
+		},
+	}
+	messageBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	for _, memberID := range members {
+		if memberID == event.ReadByUserID {
+			continue
+		}
+		if destClient, ok := h.userClients[memberID]; ok {
+			select {
+			case destClient.send <- messageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
+		}
+	}
+}
+
+func (h *Hub) BroadcastRoomDeliveredReceipt(roomID string, messageIDs []string, readerID string) {
+	event := chatEvent{
+		Type:         "messages_delivered_receipt",
+		RoomID:       roomID,
+		MessageIDs:   messageIDs,
+		ReadByUserID: readerID,
+	}
+	if h.rabbitMQ != nil {
+		if err := h.rabbitMQ.PublishEvent(event); err == nil {
+			return
+		}
+	}
+	h.broadcastRoomDeliveredReceiptLocal(event)
+}
+
+func (h *Hub) broadcastRoomDeliveredReceiptLocal(event chatEvent) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
+	cancel()
+	if err != nil {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event": "messages_delivered_receipt",
+		"data": map[string]interface{}{
+			"room_id":              event.RoomID,
+			"message_ids":          event.MessageIDs,
+			"delivered_by_user_id": event.ReadByUserID,
 		},
 	}
 	messageBytes, err := json.Marshal(payload)

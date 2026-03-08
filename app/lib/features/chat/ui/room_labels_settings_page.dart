@@ -31,7 +31,7 @@ class RoomLabelsSettingsPage extends ConsumerWidget {
               if (oldIndex < newIndex) newIndex -= 1;
               final item = labels.removeAt(oldIndex);
               labels.insert(newIndex, item);
-              
+
               final orderedIds = labels.map((e) => e.id).toList();
               ref.read(roomLabelProvider.notifier).reorderLabels(orderedIds);
             },
@@ -46,22 +46,24 @@ class RoomLabelsSettingsPage extends ConsumerWidget {
                   padding: const EdgeInsets.only(right: 20),
                   child: const Icon(Icons.delete, color: Colors.white),
                 ),
-                confirmDismiss: (direction) => _confirmDelete(context, label.name),
+                confirmDismiss: (direction) =>
+                    _confirmDelete(context, label.name),
                 onDismissed: (direction) {
                   ref.read(roomLabelProvider.notifier).deleteLabel(label.id);
                 },
                 child: ListTile(
                   leading: const Icon(Icons.drag_handle, color: Colors.grey),
-                  title: Text(label.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  title: Text(
+                    label.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   subtitle: Text('${label.roomIds.length} 個對話'),
                   trailing: Switch(
                     value: label.isEnabled,
                     onChanged: (val) {
-                      ref.read(roomLabelProvider.notifier).updateLabel(
-                            label.id,
-                            label.name,
-                            val,
-                          );
+                      ref
+                          .read(roomLabelProvider.notifier)
+                          .updateLabel(label.id, label.name, val);
                     },
                     activeThumbColor: Colors.blueAccent,
                   ),
@@ -83,7 +85,10 @@ class RoomLabelsSettingsPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _showCreateLabelDialog(BuildContext context, WidgetRef ref) async {
+  Future<void> _showCreateLabelDialog(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final controller = TextEditingController();
     await showDialog(
       context: context,
@@ -118,7 +123,10 @@ class RoomLabelsSettingsPage extends ConsumerWidget {
                 }
                 Navigator.pop(context);
               },
-              child: const Text('新增', style: TextStyle(color: Colors.blueAccent)),
+              child: const Text(
+                '新增',
+                style: TextStyle(color: Colors.blueAccent),
+              ),
             ),
           ],
         );
@@ -132,7 +140,10 @@ class RoomLabelsSettingsPage extends ConsumerWidget {
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
         title: const Text('刪除分類', style: TextStyle(color: Colors.white)),
-        content: Text('確定要刪除「$name」嗎？', style: const TextStyle(color: Colors.white70)),
+        content: Text(
+          '確定要刪除「$name」嗎？',
+          style: const TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

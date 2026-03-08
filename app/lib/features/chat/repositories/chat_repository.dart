@@ -88,10 +88,7 @@ class ChatRepository {
 
       if (data.isEmpty) return;
 
-      await _networkService.client.patch(
-        '/rooms/$roomId',
-        data: data,
-      );
+      await _networkService.client.patch('/rooms/$roomId', data: data);
     } catch (e) {
       throw e;
     }
@@ -100,9 +97,7 @@ class ChatRepository {
   Future<void> kickMember(String roomId, String memberId) async {
     if (roomId.isEmpty || memberId.isEmpty) return;
     try {
-      await _networkService.client.delete(
-        '/rooms/$roomId/members/$memberId',
-      );
+      await _networkService.client.delete('/rooms/$roomId/members/$memberId');
     } catch (e) {
       throw e;
     }

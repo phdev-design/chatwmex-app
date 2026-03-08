@@ -49,13 +49,18 @@ class NewChatPage extends ConsumerWidget {
                   subtitle: Text(friend.email),
                   onTap: () async {
                     // Navigate to Chat
-                    final myId = await ref.read(storageServiceProvider).read('user_id');
-                    final token = await ref.read(storageServiceProvider).read('jwt_token');
+                    final myId = await ref
+                        .read(storageServiceProvider)
+                        .read('user_id');
+                    final token = await ref
+                        .read(storageServiceProvider)
+                        .read('jwt_token');
                     if (context.mounted && myId != null && token != null) {
                       context.push(
                         '/chat',
                         extra: {
-                          'roomId': friend.id, // Using user ID as room ID for DM initially
+                          'roomId': friend
+                              .id, // Using user ID as room ID for DM initially
                           'title': friend.username,
                           'isRoom': false,
                           'currentUserId': myId,

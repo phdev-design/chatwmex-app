@@ -182,7 +182,9 @@ class _GroupMembersPageState extends ConsumerState<GroupMembersPage> {
       itemBuilder: (context, index) {
         final member = _members[index];
         final memberId = member.id;
-        final username = member.username.isNotEmpty ? member.username : 'Unknown';
+        final username = member.username.isNotEmpty
+            ? member.username
+            : 'Unknown';
         final avatarUrl = member.avatarUrl;
         final isOwner = memberId == widget.ownerId;
         final isMe = memberId == widget.currentUserId;

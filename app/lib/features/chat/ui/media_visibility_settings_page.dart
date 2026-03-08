@@ -22,7 +22,9 @@ class MediaVisibilitySettingsPage extends ConsumerWidget {
     // 使用系統的亮度來決定背景顏色，達到現代通訊軟體的質感
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
-    final appBarColor = isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
+    final appBarColor = isDark
+        ? const Color(0xFF0D0D0D)
+        : const Color(0xFFF4F6F8);
     final textColor = isDark ? Colors.white : Colors.black87;
 
     return Scaffold(
@@ -43,10 +45,16 @@ class MediaVisibilitySettingsPage extends ConsumerWidget {
           child: CircularProgressIndicator(color: ChatThemeTokens.accentColor),
         ),
         error: (err, stack) => Center(
-          child: Text('載入失敗: $err', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          child: Text(
+            '載入失敗: $err',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         ),
-        data: (setting) =>
-            _MediaSettingsForm(roomId: roomId, initialSetting: setting, isDark: isDark),
+        data: (setting) => _MediaSettingsForm(
+          roomId: roomId,
+          initialSetting: setting,
+          isDark: isDark,
+        ),
       ),
     );
   }
@@ -98,7 +106,9 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('儲存失敗：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('儲存失敗：$e')));
       }
     } finally {
       if (mounted) {
@@ -161,9 +171,11 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
     final isSelected = value == groupValue;
     final primaryColor = widget.isDark ? Colors.white : Colors.black87;
     final secondaryColor = widget.isDark ? Colors.white54 : Colors.grey[500]!;
-    final dividerColor = widget.isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.05);
-    final highlightColor = widget.isDark 
-        ? ChatThemeTokens.accentColor.withValues(alpha: 0.1) 
+    final dividerColor = widget.isDark
+        ? Colors.white12
+        : Colors.black.withValues(alpha: 0.05);
+    final highlightColor = widget.isDark
+        ? ChatThemeTokens.accentColor.withValues(alpha: 0.1)
         : ChatThemeTokens.accentColor.withValues(alpha: 0.05);
 
     return Column(
@@ -186,7 +198,9 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
                           style: TextStyle(
                             color: primaryColor,
                             fontSize: 16,
-                            fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                            fontWeight: isSelected
+                                ? FontWeight.w500
+                                : FontWeight.normal,
                           ),
                         ),
                         if (subtitle != null) ...[
@@ -227,7 +241,9 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
   // 統一的設定卡片容器
   Widget _buildSettingsCard({required List<Widget> children}) {
     final cardColor = widget.isDark ? const Color(0xFF1C1C1E) : Colors.white;
-    final shadowColor = widget.isDark ? Colors.transparent : Colors.black.withValues(alpha: 0.04);
+    final shadowColor = widget.isDark
+        ? Colors.transparent
+        : Colors.black.withValues(alpha: 0.04);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -244,9 +260,7 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: Column(
-          children: children,
-        ),
+        child: Column(children: children),
       ),
     );
   }
@@ -257,7 +271,9 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
       children: [
         Expanded(
           child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               // ── 儲存至手機相簿 ───────────────────────────────────────
@@ -273,26 +289,29 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
                     subtitle: null,
                     value: 0,
                     groupValue: _saveToCameraRoll,
-                    onChanged: (val) => setState(() => _saveToCameraRoll = val!),
+                    onChanged: (val) =>
+                        setState(() => _saveToCameraRoll = val!),
                   ),
                   _buildRadioOption(
                     title: '永遠開啟',
                     subtitle: null,
                     value: 1,
                     groupValue: _saveToCameraRoll,
-                    onChanged: (val) => setState(() => _saveToCameraRoll = val!),
+                    onChanged: (val) =>
+                        setState(() => _saveToCameraRoll = val!),
                   ),
                   _buildRadioOption(
                     title: '永遠關閉',
                     subtitle: null,
                     value: 2,
                     groupValue: _saveToCameraRoll,
-                    onChanged: (val) => setState(() => _saveToCameraRoll = val!),
+                    onChanged: (val) =>
+                        setState(() => _saveToCameraRoll = val!),
                     showDivider: false,
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 8),
 
               // ── 自動下載 ──────────────────────────────────────────
@@ -379,7 +398,9 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
             color: widget.isDark ? const Color(0xFF1C1C1E) : Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: widget.isDark ? 0.2 : 0.05),
+                color: Colors.black.withValues(
+                  alpha: widget.isDark ? 0.2 : 0.05,
+                ),
                 blurRadius: 10,
                 offset: const Offset(0, -4),
               ),

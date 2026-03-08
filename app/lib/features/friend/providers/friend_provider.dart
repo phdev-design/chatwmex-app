@@ -44,11 +44,11 @@ class FriendViewModel extends Notifier<FriendState> {
       if (data is Map) {
         final event = data['event'];
         final payload = data['data'];
-        
+
         if (event == 'user_profile_updated' && payload is Map) {
           final userId = payload['user_id'];
           final avatarUrl = payload['avatar_url'];
-          
+
           if (userId is String && avatarUrl is String) {
             _updateFriendAvatar(userId, avatarUrl);
           }
@@ -57,9 +57,9 @@ class FriendViewModel extends Notifier<FriendState> {
           final firstName = payload['first_name'];
           final lastName = payload['last_name'];
           final bio = payload['bio'];
-          
+
           if (userId is String) {
-           _updateFriendInfo(userId, firstName, lastName, bio);
+            _updateFriendInfo(userId, firstName, lastName, bio);
           }
         }
       }
@@ -75,20 +75,25 @@ class FriendViewModel extends Notifier<FriendState> {
 
   void _updateFriendAvatar(String userId, String avatarUrl) {
     if (state.friends.isEmpty) return;
-    
+
     final updatedFriends = state.friends.map<Friend>((friend) {
       if (friend.id == userId) {
         return friend.copyWith(avatarUrl: avatarUrl);
       }
       return friend;
     }).toList();
-    
+
     state = state.copyWith(friends: updatedFriends);
   }
 
-  void _updateFriendInfo(String userId, String? firstName, String? lastName, String? bio) {
+  void _updateFriendInfo(
+    String userId,
+    String? firstName,
+    String? lastName,
+    String? bio,
+  ) {
     if (state.friends.isEmpty) return;
-    
+
     final updatedFriends = state.friends.map<Friend>((friend) {
       if (friend.id == userId) {
         return friend.copyWith(
@@ -99,7 +104,7 @@ class FriendViewModel extends Notifier<FriendState> {
       }
       return friend;
     }).toList();
-    
+
     state = state.copyWith(friends: updatedFriends);
   }
 
@@ -108,7 +113,11 @@ class FriendViewModel extends Notifier<FriendState> {
     try {
       final friends = await _repository.getFriends();
       final requests = await _repository.getPendingRequests();
-      state = state.copyWith(isLoading: false, friends: friends, requests: requests);
+      state = state.copyWith(
+        isLoading: false,
+        friends: friends,
+        requests: requests,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -166,7 +175,9 @@ class FriendViewModel extends Notifier<FriendState> {
   }
 }
 
-final friendViewModelProvider = NotifierProvider<FriendViewModel, FriendState>(FriendViewModel.new);
+final friendViewModelProvider = NotifierProvider<FriendViewModel, FriendState>(
+  FriendViewModel.new,
+);
 
 // ─── Blacklist ───────────────────────────────────────────────────────────────
 
@@ -223,5 +234,6 @@ class BlacklistNotifier extends Notifier<BlacklistState> {
   }
 }
 
-final blacklistProvider =
-    NotifierProvider<BlacklistNotifier, BlacklistState>(BlacklistNotifier.new);
+final blacklistProvider = NotifierProvider<BlacklistNotifier, BlacklistState>(
+  BlacklistNotifier.new,
+);

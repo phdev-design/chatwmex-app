@@ -8,9 +8,10 @@ class FriendRepository {
   FriendRepository(this._networkService);
 
   Future<void> sendFriendRequest(String usernameOrEmail) async {
-    await _networkService.client.post('/friends/request', data: {
-      'username_or_email': usernameOrEmail,
-    });
+    await _networkService.client.post(
+      '/friends/request',
+      data: {'username_or_email': usernameOrEmail},
+    );
   }
 
   Future<void> acceptFriendRequest(String requestId) async {
@@ -38,11 +39,17 @@ class FriendRepository {
   }
 
   Future<void> blockUser(String targetId) async {
-    await _networkService.client.post('/friends/block', data: {'target_id': targetId});
+    await _networkService.client.post(
+      '/friends/block',
+      data: {'target_id': targetId},
+    );
   }
 
   Future<void> unblockUser(String targetId) async {
-    await _networkService.client.post('/friends/unblock', data: {'target_id': targetId});
+    await _networkService.client.post(
+      '/friends/unblock',
+      data: {'target_id': targetId},
+    );
   }
 
   Future<bool> isBlocked(String targetId) async {
@@ -57,7 +64,9 @@ class FriendRepository {
   Future<List<Friend>> getBlockedUsers() async {
     final response = await _networkService.client.get('/friends/blocks');
     final List<dynamic> list = response.data['data'] ?? [];
-    return list.map((e) => Friend.fromJson(Map<String, dynamic>.from(e))).toList();
+    return list
+        .map((e) => Friend.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 }
 

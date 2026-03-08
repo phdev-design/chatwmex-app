@@ -57,8 +57,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
   Future<void> _checkBlockStatus() async {
     try {
-      final isBlocked =
-          await ref.read(friendRepositoryProvider).isBlocked(widget.roomId);
+      final isBlocked = await ref
+          .read(friendRepositoryProvider)
+          .isBlocked(widget.roomId);
       if (mounted) setState(() => _isBlocked = isBlocked);
     } catch (e) {
       debugPrint('檢查封鎖狀態失敗: $e');
@@ -121,30 +122,50 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildTimerOption('24小時', tempOption, accentColor,
-                      primaryTextColor, (val) {
-                    setSheetState(() => tempOption = val!);
-                    _updateTimer(val!);
-                    Navigator.pop(context);
-                  }),
-                  _buildTimerOption('7天', tempOption, accentColor,
-                      primaryTextColor, (val) {
-                    setSheetState(() => tempOption = val!);
-                    _updateTimer(val!);
-                    Navigator.pop(context);
-                  }),
-                  _buildTimerOption('90天', tempOption, accentColor,
-                      primaryTextColor, (val) {
-                    setSheetState(() => tempOption = val!);
-                    _updateTimer(val!);
-                    Navigator.pop(context);
-                  }),
-                  _buildTimerOption('關閉', tempOption, accentColor,
-                      primaryTextColor, (val) {
-                    setSheetState(() => tempOption = val!);
-                    _updateTimer(val!);
-                    Navigator.pop(context);
-                  }),
+                  _buildTimerOption(
+                    '24小時',
+                    tempOption,
+                    accentColor,
+                    primaryTextColor,
+                    (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  _buildTimerOption(
+                    '7天',
+                    tempOption,
+                    accentColor,
+                    primaryTextColor,
+                    (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  _buildTimerOption(
+                    '90天',
+                    tempOption,
+                    accentColor,
+                    primaryTextColor,
+                    (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  _buildTimerOption(
+                    '關閉',
+                    tempOption,
+                    accentColor,
+                    primaryTextColor,
+                    (val) {
+                      setSheetState(() => tempOption = val!);
+                      _updateTimer(val!);
+                      Navigator.pop(context);
+                    },
+                  ),
                   const SizedBox(height: 16),
                 ],
               ),
@@ -213,8 +234,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 title: '8小時',
                 textColor: primaryTextColor,
                 onTap: () {
-                  final until =
-                      DateTime.now().add(const Duration(hours: 8));
+                  final until = DateTime.now().add(const Duration(hours: 8));
                   _updateMute(until.millisecondsSinceEpoch ~/ 1000);
                   Navigator.pop(context);
                 },
@@ -224,8 +244,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 title: '1星期',
                 textColor: primaryTextColor,
                 onTap: () {
-                  final until =
-                      DateTime.now().add(const Duration(days: 7));
+                  final until = DateTime.now().add(const Duration(days: 7));
                   _updateMute(until.millisecondsSinceEpoch ~/ 1000);
                   Navigator.pop(context);
                 },
@@ -276,8 +295,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       ref.invalidate(chatSettingProvider(widget.roomId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
       }
     }
   }
@@ -288,8 +308,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
         title: const Text('解除好友'),
-        content: Text(
-            '確定要與 ${widget.title} 解除好友關係嗎？解除後對方將無法繼續傳訊息，但歷史記錄將保留。'),
+        content: Text('確定要與 ${widget.title} 解除好友關係嗎？解除後對方將無法繼續傳訊息，但歷史記錄將保留。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -310,13 +329,13 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text('解除失敗：$e')));
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('解除失敗：$e')));
                 }
               }
             },
-            child:
-                const Text('解除好友', style: TextStyle(color: Colors.red)),
+            child: const Text('解除好友', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -331,8 +350,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       ref.invalidate(chatSettingProvider(widget.roomId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
       }
     }
   }
@@ -362,15 +382,12 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       colorScheme: colorScheme,
       brightness: brightness,
     );
-    final bgColor =
-        isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
-    final cardColor =
-        isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final bgColor = isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
+    final cardColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
     final accentColor = tokens.accent;
     final dangerColor = colorScheme.error;
     final primaryTextColor = isDark ? Colors.white : Colors.black87;
-    final secondaryTextColor =
-        isDark ? Colors.white54 : Colors.grey.shade600;
+    final secondaryTextColor = isDark ? Colors.white54 : Colors.grey.shade600;
     final dividerColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
         : Colors.black.withValues(alpha: 0.07);
@@ -387,14 +404,19 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
             elevation: 0,
             scrolledUnderElevation: 0,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 20, color: isDark ? Colors.white : Colors.black87),
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 20,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
               onPressed: () => context.pop(),
             ),
             actions: [
               IconButton(
-                icon: Icon(Icons.more_vert,
-                    color: isDark ? Colors.white : Colors.black87),
+                icon: Icon(
+                  Icons.more_vert,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
                 onPressed: () {},
               ),
             ],
@@ -428,7 +450,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         Text(
                           widget.email!,
                           style: TextStyle(
-                              fontSize: 14, color: secondaryTextColor),
+                            fontSize: 14,
+                            color: secondaryTextColor,
+                          ),
                         ),
                     ],
                   ),
@@ -464,8 +488,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     label: '媒體、連結與文件',
                     trailing: Text(
                       '${widget.mediaCount}',
-                      style: TextStyle(
-                          fontSize: 15, color: secondaryTextColor),
+                      style: TextStyle(fontSize: 15, color: secondaryTextColor),
                     ),
                     isDark: isDark,
                     onTap: () => Navigator.push(
@@ -488,172 +511,194 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 dividerColor: dividerColor,
                 children: [
                   // Mute
-                  Consumer(builder: (context, ref, _) {
-                    final settingAsync =
-                        ref.watch(chatSettingProvider(widget.roomId));
-                    return settingAsync.when(
-                      data: (setting) => _InfoTile(
-                        icon: Icons.notifications_off_rounded,
-                        iconColor: const Color(0xFF8E8E93),
-                        label: '將通知靜音',
-                        subtitle: setting.isMuted
-                            ? setting.muteDescription
-                            : null,
-                        isDark: isDark,
-                        trailing: Switch(
-                          value: setting.isMuted,
-                          onChanged: (val) {
-                            if (val) {
-                              _showMuteDialog(primaryTextColor,
-                                  accentColor, setting.muteUntil);
-                            } else {
-                              _updateMute(null);
-                            }
-                          },
-                          activeColor: accentColor,
-                        ),
-                      ),
-                      loading: () => _InfoTile(
-                        icon: Icons.notifications_off_rounded,
-                        iconColor: const Color(0xFF8E8E93),
-                        label: '將通知靜音',
-                        isDark: isDark,
-                        trailing: const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                      error: (_, __) => _InfoTile(
-                        icon: Icons.notifications_off_rounded,
-                        iconColor: const Color(0xFF8E8E93),
-                        label: '將通知靜音',
-                        isDark: isDark,
-                        trailing:
-                            Switch(value: false, onChanged: null),
-                      ),
-                    );
-                  }),
-
-                  // E2EE
-                  Consumer(builder: (context, ref, _) {
-                    final e2eeState =
-                        ref.watch(e2eeEnabledProvider(widget.roomId));
-                    final isE2EEEnabled = e2eeState.value ?? true;
-                    return _InfoTile(
-                      icon: Icons.lock_rounded,
-                      iconColor: const Color(0xFF34C759),
-                      label: '加密',
-                      subtitle: isE2EEEnabled
-                          ? '端對端加密已啟用'
-                          : '目前未加密傳輸',
-                      isDark: isDark,
-                      trailing: e2eeState.isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2),
-                            )
-                          : Switch(
-                              value: isE2EEEnabled,
-                              onChanged: (val) {
-                                if (val) {
-                                  ref
-                                      .read(e2eeEnabledProvider(
-                                              widget.roomId)
-                                          .notifier)
-                                      .toggle(true);
-                                } else {
-                                  showDialog(
-                                    context: context,
-                                    builder: (dialogCtx) => AlertDialog(
-                                      backgroundColor: Theme.of(context)
-                                          .colorScheme
-                                          .surface,
-                                      title: const Text('停用加密？'),
-                                      content: const Text(
-                                          '關閉後，與此聯絡人的訊息將不再加密傳輸，建議保持開啟以保護隱私。'),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(dialogCtx),
-                                          child: const Text('取消'),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            ref
-                                                .read(e2eeEnabledProvider(
-                                                        widget.roomId)
-                                                    .notifier)
-                                                .toggle(false);
-                                            Navigator.pop(dialogCtx);
-                                          },
-                                          child: Text('停用',
-                                              style: TextStyle(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .error)),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                              },
-                              activeThumbColor: accentColor,
-                            ),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => EncryptionInfoPage(
-                            contactId: widget.roomId,
-                            contactName: widget.title,
-                            currentUserId: '',
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final settingAsync = ref.watch(
+                        chatSettingProvider(widget.roomId),
+                      );
+                      return settingAsync.when(
+                        data: (setting) => _InfoTile(
+                          icon: Icons.notifications_off_rounded,
+                          iconColor: const Color(0xFF8E8E93),
+                          label: '將通知靜音',
+                          subtitle: setting.isMuted
+                              ? setting.muteDescription
+                              : null,
+                          isDark: isDark,
+                          trailing: Switch(
+                            value: setting.isMuted,
+                            onChanged: (val) {
+                              if (val) {
+                                _showMuteDialog(
+                                  primaryTextColor,
+                                  accentColor,
+                                  setting.muteUntil,
+                                );
+                              } else {
+                                _updateMute(null);
+                              }
+                            },
+                            activeColor: accentColor,
                           ),
                         ),
-                      ),
-                    );
-                  }),
+                        loading: () => _InfoTile(
+                          icon: Icons.notifications_off_rounded,
+                          iconColor: const Color(0xFF8E8E93),
+                          label: '將通知靜音',
+                          isDark: isDark,
+                          trailing: const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        error: (_, __) => _InfoTile(
+                          icon: Icons.notifications_off_rounded,
+                          iconColor: const Color(0xFF8E8E93),
+                          label: '將通知靜音',
+                          isDark: isDark,
+                          trailing: Switch(value: false, onChanged: null),
+                        ),
+                      );
+                    },
+                  ),
+
+                  // E2EE
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final e2eeState = ref.watch(
+                        e2eeEnabledProvider(widget.roomId),
+                      );
+                      final isE2EEEnabled = e2eeState.value ?? true;
+                      return _InfoTile(
+                        icon: Icons.lock_rounded,
+                        iconColor: const Color(0xFF34C759),
+                        label: '加密',
+                        subtitle: isE2EEEnabled ? '端對端加密已啟用' : '目前未加密傳輸',
+                        isDark: isDark,
+                        trailing: e2eeState.isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Switch(
+                                value: isE2EEEnabled,
+                                onChanged: (val) {
+                                  if (val) {
+                                    ref
+                                        .read(
+                                          e2eeEnabledProvider(
+                                            widget.roomId,
+                                          ).notifier,
+                                        )
+                                        .toggle(true);
+                                  } else {
+                                    showDialog(
+                                      context: context,
+                                      builder: (dialogCtx) => AlertDialog(
+                                        backgroundColor: Theme.of(
+                                          context,
+                                        ).colorScheme.surface,
+                                        title: const Text('停用加密？'),
+                                        content: const Text(
+                                          '關閉後，與此聯絡人的訊息將不再加密傳輸，建議保持開啟以保護隱私。',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(dialogCtx),
+                                            child: const Text('取消'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () {
+                                              ref
+                                                  .read(
+                                                    e2eeEnabledProvider(
+                                                      widget.roomId,
+                                                    ).notifier,
+                                                  )
+                                                  .toggle(false);
+                                              Navigator.pop(dialogCtx);
+                                            },
+                                            child: Text(
+                                              '停用',
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.error,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                },
+                                activeThumbColor: accentColor,
+                              ),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EncryptionInfoPage(
+                              contactId: widget.roomId,
+                              contactName: widget.title,
+                              currentUserId: '',
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
 
                   // Disappearing messages
-                  Consumer(builder: (context, ref, _) {
-                    final settingAsync =
-                        ref.watch(chatSettingProvider(widget.roomId));
-                    return settingAsync.when(
-                      data: (setting) {
-                        final currentOption = _formatTimerOption(
-                            setting.disappearingTimer);
-                        return _InfoTile(
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final settingAsync = ref.watch(
+                        chatSettingProvider(widget.roomId),
+                      );
+                      return settingAsync.when(
+                        data: (setting) {
+                          final currentOption = _formatTimerOption(
+                            setting.disappearingTimer,
+                          );
+                          return _InfoTile(
+                            icon: Icons.av_timer_rounded,
+                            iconColor: const Color(0xFFFF9500),
+                            label: '自動刪除的訊息',
+                            subtitle: currentOption,
+                            isDark: isDark,
+                            onTap: () => _showDisappearingMessagesDialog(
+                              primaryTextColor,
+                              accentColor,
+                              currentOption,
+                            ),
+                          );
+                        },
+                        loading: () => _InfoTile(
                           icon: Icons.av_timer_rounded,
                           iconColor: const Color(0xFFFF9500),
                           label: '自動刪除的訊息',
-                          subtitle: currentOption,
                           isDark: isDark,
-                          onTap: () => _showDisappearingMessagesDialog(
-                              primaryTextColor, accentColor, currentOption),
-                        );
-                      },
-                      loading: () => _InfoTile(
-                        icon: Icons.av_timer_rounded,
-                        iconColor: const Color(0xFFFF9500),
-                        label: '自動刪除的訊息',
-                        isDark: isDark,
-                        trailing: const SizedBox(
-                          width: 60,
-                          child: LinearProgressIndicator(),
+                          trailing: const SizedBox(
+                            width: 60,
+                            child: LinearProgressIndicator(),
+                          ),
                         ),
-                      ),
-                      error: (_, __) => _InfoTile(
-                        icon: Icons.av_timer_rounded,
-                        iconColor: const Color(0xFFFF9500),
-                        label: '自動刪除的訊息',
-                        subtitle: '載入失敗',
-                        isDark: isDark,
-                        onTap: () => ref
-                            .refresh(chatSettingProvider(widget.roomId)),
-                      ),
-                    );
-                  }),
+                        error: (_, __) => _InfoTile(
+                          icon: Icons.av_timer_rounded,
+                          iconColor: const Color(0xFFFF9500),
+                          label: '自動刪除的訊息',
+                          subtitle: '載入失敗',
+                          isDark: isDark,
+                          onTap: () =>
+                              ref.refresh(chatSettingProvider(widget.roomId)),
+                        ),
+                      );
+                    },
+                  ),
 
                   // Media visibility
                   _InfoTile(
@@ -665,8 +710,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                       context,
                       MaterialPageRoute(
                         builder: (context) =>
-                            MediaVisibilitySettingsPage(
-                                roomId: widget.roomId),
+                            MediaVisibilitySettingsPage(roomId: widget.roomId),
                       ),
                     ),
                   ),
@@ -732,25 +776,23 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.surface,
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.surface,
                           title: Text('$action ${widget.title}？'),
                           content: _isBlocked
-                              ? const Text(
-                                  '解除封鎖後，對方可以再次傳訊息給你和發送好友申請。')
-                              : const Text(
-                                  '封鎖後，對方無法傳訊息給你，也無法發送好友申請，直至你解除封鎖。'),
+                              ? const Text('解除封鎖後，對方可以再次傳訊息給你和發送好友申請。')
+                              : const Text('封鎖後，對方無法傳訊息給你，也無法發送好友申請，直至你解除封鎖。'),
                           actions: [
                             TextButton(
-                              onPressed: () =>
-                                  Navigator.pop(ctx, false),
+                              onPressed: () => Navigator.pop(ctx, false),
                               child: const Text('取消'),
                             ),
                             TextButton(
-                              onPressed: () =>
-                                  Navigator.pop(ctx, true),
+                              onPressed: () => Navigator.pop(ctx, true),
                               style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red),
+                                foregroundColor: Colors.red,
+                              ),
                               child: Text(action),
                             ),
                           ],
@@ -771,17 +813,20 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(_isBlocked
-                                  ? '已封鎖 ${widget.title}'
-                                  : '已解除封鎖 ${widget.title}'),
+                              content: Text(
+                                _isBlocked
+                                    ? '已封鎖 ${widget.title}'
+                                    : '已解除封鎖 ${widget.title}',
+                              ),
                             ),
                           );
                         }
                         if (_isBlocked && mounted) context.pop();
                       } catch (e) {
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('操作失敗：$e')));
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
                         }
                       }
                     },
@@ -810,7 +855,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                           showDialog(
                             context: context,
                             barrierDismissible: false,
-                            builder: (_) => const Center(child: CircularProgressIndicator()),
+                            builder: (_) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
                           );
 
                           List<dynamic> members = [];
@@ -839,9 +886,13 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                             final confirmed = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
-                                backgroundColor: Theme.of(context).colorScheme.surface,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.surface,
                                 title: const Text('解散群組'),
-                                content: const Text('群組僅剩您一人，退出將直接解散群組。確定要解散嗎？'),
+                                content: const Text(
+                                  '群組僅剩您一人，退出將直接解散群組。確定要解散嗎？',
+                                ),
                                 actions: [
                                   TextButton(
                                     onPressed: () => Navigator.pop(ctx, false),
@@ -849,14 +900,16 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                   ),
                                   TextButton(
                                     onPressed: () => Navigator.pop(ctx, true),
-                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                    ),
                                     child: const Text('解散'),
                                   ),
                                 ],
                               ),
                             );
                             if (confirmed != true) return;
-                            
+
                             if (!mounted) return;
                             try {
                               await ref
@@ -876,82 +929,121 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                               }
                             }
                           } else {
-                            final selectedUserId = await showModalBottomSheet<String>(
-                              context: context,
-                              backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                              ),
-                              builder: (ctx) {
-                                return SafeArea(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const SizedBox(height: 8),
-                                      Container(
-                                        width: 36,
-                                        height: 4,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.withValues(alpha: 0.3),
-                                          borderRadius: BorderRadius.circular(2),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        '選擇新管理員',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const Padding(
-                                        padding: EdgeInsets.all(16.0),
-                                        child: Text(
-                                          '身為管理員，退出群組前必須先轉交管理員權限給其他成員。',
-                                          style: TextStyle(color: Colors.grey),
-                                        ),
-                                      ),
-                                      Flexible(
-                                        child: ListView.builder(
-                                          shrinkWrap: true,
-                                          itemCount: remainingMembers.length,
-                                          itemBuilder: (context, index) {
-                                            final m = remainingMembers[index];
-                                            final name = m['username'] ?? '使用者';
-                                            final avatarUrl = m['avatar_url'] as String?;
-                                            return ListTile(
-                                              leading: CircleAvatar(
-                                                backgroundColor: Colors.grey.withValues(alpha: 0.2),
-                                                backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-                                                    ? NetworkImage(resolveFullUrl(avatarUrl))
-                                                    : null,
-                                                child: (avatarUrl == null || avatarUrl.isEmpty)
-                                                    ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?')
-                                                    : null,
-                                              ),
-                                              title: Text(name),
-                                              onTap: () => Navigator.pop(ctx, m['id']),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ],
+                            final selectedUserId =
+                                await showModalBottomSheet<String>(
+                                  context: context,
+                                  backgroundColor: isDark
+                                      ? const Color(0xFF1C1C1E)
+                                      : Colors.white,
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.vertical(
+                                      top: Radius.circular(20),
+                                    ),
                                   ),
+                                  builder: (ctx) {
+                                    return SafeArea(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const SizedBox(height: 8),
+                                          Container(
+                                            width: 36,
+                                            height: 4,
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.withValues(
+                                                alpha: 0.3,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(2),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          const Text(
+                                            '選擇新管理員',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const Padding(
+                                            padding: EdgeInsets.all(16.0),
+                                            child: Text(
+                                              '身為管理員，退出群組前必須先轉交管理員權限給其他成員。',
+                                              style: TextStyle(
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ),
+                                          Flexible(
+                                            child: ListView.builder(
+                                              shrinkWrap: true,
+                                              itemCount:
+                                                  remainingMembers.length,
+                                              itemBuilder: (context, index) {
+                                                final m =
+                                                    remainingMembers[index];
+                                                final name =
+                                                    m['username'] ?? '使用者';
+                                                final avatarUrl =
+                                                    m['avatar_url'] as String?;
+                                                return ListTile(
+                                                  leading: CircleAvatar(
+                                                    backgroundColor: Colors.grey
+                                                        .withValues(alpha: 0.2),
+                                                    backgroundImage:
+                                                        (avatarUrl != null &&
+                                                            avatarUrl
+                                                                .isNotEmpty)
+                                                        ? NetworkImage(
+                                                            resolveFullUrl(
+                                                              avatarUrl,
+                                                            ),
+                                                          )
+                                                        : null,
+                                                    child:
+                                                        (avatarUrl == null ||
+                                                            avatarUrl.isEmpty)
+                                                        ? Text(
+                                                            name.isNotEmpty
+                                                                ? name[0]
+                                                                      .toUpperCase()
+                                                                : '?',
+                                                          )
+                                                        : null,
+                                                  ),
+                                                  title: Text(name),
+                                                  onTap: () => Navigator.pop(
+                                                    ctx,
+                                                    m['id'],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 );
-                              },
-                            );
 
                             if (selectedUserId == null || !mounted) return;
 
-                            final newOwnerName = remainingMembers.firstWhere(
-                                (m) => m['id'] == selectedUserId)['username'] ?? '該成員';
+                            final newOwnerName =
+                                remainingMembers.firstWhere(
+                                  (m) => m['id'] == selectedUserId,
+                                )['username'] ??
+                                '該成員';
 
                             final confirmTransfer = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
-                                backgroundColor: Theme.of(context).colorScheme.surface,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.surface,
                                 title: const Text('轉交管理員並退出'),
-                                content: Text('確定要將管理員轉交給 $newOwnerName 並退出群組嗎？'),
+                                content: Text(
+                                  '確定要將管理員轉交給 $newOwnerName 並退出群組嗎？',
+                                ),
                                 actions: [
                                   TextButton(
                                     onPressed: () => Navigator.pop(ctx, false),
@@ -959,7 +1051,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                   ),
                                   TextButton(
                                     onPressed: () => Navigator.pop(ctx, true),
-                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                    ),
                                     child: const Text('確認退出'),
                                   ),
                                 ],
@@ -972,17 +1066,22 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                             showDialog(
                               context: context,
                               barrierDismissible: false,
-                              builder: (_) => const Center(child: CircularProgressIndicator()),
+                              builder: (_) => const Center(
+                                child: CircularProgressIndicator(),
+                              ),
                             );
 
                             try {
                               await ref
                                   .read(roomListViewModelProvider.notifier)
-                                  .transferOwnership(widget.roomId, selectedUserId);
+                                  .transferOwnership(
+                                    widget.roomId,
+                                    selectedUserId,
+                                  );
                               await ref
                                   .read(roomListViewModelProvider.notifier)
                                   .leaveRoom(widget.roomId);
-                              
+
                               if (mounted) {
                                 Navigator.pop(context); // close loading
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1003,22 +1102,21 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                           final confirmed = await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.surface,
+                              backgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.surface,
                               title: const Text('確定要退出此群組嗎？'),
-                              content: const Text(
-                                  '退出後，您將無法再接收此群組的任何新訊息。'),
+                              content: const Text('退出後，您將無法再接收此群組的任何新訊息。'),
                               actions: [
                                 TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(ctx, false),
+                                  onPressed: () => Navigator.pop(ctx, false),
                                   child: const Text('取消'),
                                 ),
                                 TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(ctx, true),
+                                  onPressed: () => Navigator.pop(ctx, true),
                                   style: TextButton.styleFrom(
-                                      foregroundColor: Colors.red),
+                                    foregroundColor: Colors.red,
+                                  ),
                                   child: const Text('退出'),
                                 ),
                               ],
@@ -1052,7 +1150,6 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     ),
                   ],
                 ],
-
               ),
               const SizedBox(height: 40),
             ]),
@@ -1065,15 +1162,15 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
   void _showAvatarActionSheet() {
     if (!widget.isRoom) return;
     if (widget.currentUserId != widget.ownerId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('只有管理員可以修改群組圖示')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('只有管理員可以修改群組圖示')));
       return;
     }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor:
-          isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1109,10 +1206,14 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
             ),
             if (_localAvatarUrl != null && _localAvatarUrl!.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.delete_rounded,
-                    color: Colors.redAccent),
-                title: const Text('移除群組圖示',
-                    style: TextStyle(color: Colors.redAccent)),
+                leading: const Icon(
+                  Icons.delete_rounded,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  '移除群組圖示',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _removeGroupIcon();
@@ -1137,13 +1238,15 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
       await chatRepo.updateRoom(widget.roomId, avatarUrl: '');
       if (mounted) {
         setState(() => _localAvatarUrl = null);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('群組圖示已移除')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('群組圖示已移除')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('移除失敗：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('移除失敗：$e')));
       }
     } finally {
       if (mounted) setState(() => _isUploadingAvatar = false);
@@ -1153,8 +1256,10 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
   Future<void> _pickAndUploadGroupIcon(ImageSource source) async {
     try {
       final picker = ImagePicker();
-      final pickedFile =
-          await picker.pickImage(source: source, imageQuality: 100);
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 100,
+      );
       if (pickedFile == null) return;
       if (mounted) setState(() => _isUploadingAvatar = true);
 
@@ -1192,15 +1297,17 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
         await chatRepo.updateRoom(widget.roomId, avatarUrl: uploadedUrl);
         if (mounted) {
           setState(() => _localAvatarUrl = uploadedUrl);
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('群組圖示已更新')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('群組圖示已更新')));
         }
       }
     } catch (e) {
       debugPrint('上傳群組圖示失敗: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('操作失敗：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
       }
     } finally {
       if (mounted) setState(() => _isUploadingAvatar = false);
@@ -1211,8 +1318,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     final avatarWidget = ChatAvatar(
       avatarUrl: currentAvatarUrl,
       radius: 54,
-      fallbackText:
-          widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '?',
+      fallbackText: widget.title.isNotEmpty
+          ? widget.title[0].toUpperCase()
+          : '?',
       logTag: 'contact_info',
     );
 
@@ -1243,9 +1351,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                       : const Color(0xFFE5E5EA),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isDark
-                        ? const Color(0xFF1C1C1E)
-                        : Colors.white,
+                    color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
                     width: 2,
                   ),
                 ),
@@ -1256,8 +1362,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                 ),
               ),
             ),
-            if (_isUploadingAvatar)
-              const CircularProgressIndicator(),
+            if (_isUploadingAvatar) const CircularProgressIndicator(),
           ],
         ),
       );
@@ -1360,8 +1465,7 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = labelColor ??
-        (isDark ? Colors.white : Colors.black87);
+    final textColor = labelColor ?? (isDark ? Colors.white : Colors.black87);
     final subColor = isDark ? Colors.white54 : Colors.grey[600]!;
     final chevronColor = isDark ? Colors.white24 : Colors.black26;
 
@@ -1386,15 +1490,19 @@ class _InfoTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: textColor,
-                      )),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: textColor,
+                    ),
+                  ),
                   if (subtitle != null && subtitle!.isNotEmpty)
-                    Text(subtitle!,
-                        style: TextStyle(fontSize: 12, color: subColor)),
+                    Text(
+                      subtitle!,
+                      style: TextStyle(fontSize: 12, color: subColor),
+                    ),
                 ],
               ),
             ),

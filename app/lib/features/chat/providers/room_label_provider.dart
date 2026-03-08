@@ -25,10 +25,7 @@ class RoomLabelNotifier extends AsyncNotifier<List<RoomLabel>> {
 
   Future<void> createLabel(String name) async {
     final network = ref.read(networkServiceProvider);
-    final response = await network.client.post(
-      '/labels',
-      data: {'name': name},
-    );
+    final response = await network.client.post('/labels', data: {'name': name});
     if (response.statusCode == 200) {
       ref.invalidateSelf();
     } else {
@@ -68,8 +65,8 @@ class RoomLabelNotifier extends AsyncNotifier<List<RoomLabel>> {
       for (int i = 0; i < orderedIds.length; i++) {
         final id = orderedIds[i];
         if (map.containsKey(id)) {
-           // We keep the object, but essentially the list order is what matters
-           newList.add(map[id]!);
+          // We keep the object, but essentially the list order is what matters
+          newList.add(map[id]!);
         }
       }
       state = AsyncValue.data(newList);
@@ -81,8 +78,8 @@ class RoomLabelNotifier extends AsyncNotifier<List<RoomLabel>> {
       data: {'ordered_ids': orderedIds},
     );
     if (response.statusCode != 200) {
-       ref.invalidateSelf(); // Revert on failure
-       throw Exception('Failed to reorder labels: ${response.data}');
+      ref.invalidateSelf(); // Revert on failure
+      throw Exception('Failed to reorder labels: ${response.data}');
     }
   }
 
@@ -93,9 +90,9 @@ class RoomLabelNotifier extends AsyncNotifier<List<RoomLabel>> {
       data: {'room_id': roomId},
     );
     if (response.statusCode == 200) {
-       ref.invalidateSelf();
+      ref.invalidateSelf();
     } else {
-       throw Exception('Failed to add room to label: ${response.data}');
+      throw Exception('Failed to add room to label: ${response.data}');
     }
   }
 
@@ -105,13 +102,14 @@ class RoomLabelNotifier extends AsyncNotifier<List<RoomLabel>> {
       '/labels/$labelId/rooms/$roomId',
     );
     if (response.statusCode == 200) {
-       ref.invalidateSelf();
+      ref.invalidateSelf();
     } else {
-       throw Exception('Failed to remove room from label: ${response.data}');
+      throw Exception('Failed to remove room from label: ${response.data}');
     }
   }
 }
 
-final roomLabelProvider = AsyncNotifierProvider<RoomLabelNotifier, List<RoomLabel>>(
-  RoomLabelNotifier.new,
-);
+final roomLabelProvider =
+    AsyncNotifierProvider<RoomLabelNotifier, List<RoomLabel>>(
+      RoomLabelNotifier.new,
+    );

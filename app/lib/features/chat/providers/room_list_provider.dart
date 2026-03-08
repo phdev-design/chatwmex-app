@@ -134,14 +134,16 @@ class RoomListViewModel extends Notifier<RoomListState> {
               }
             }
           }
-          
+
           // 如果訊息不是自己發送的，自動回傳 delivered 回執
           if (payload is Map) {
             final senderId = payload['sender_id']?.toString() ?? '';
             final msgId = payload['id']?.toString() ?? '';
             final roomIdRaw = payload['room_id']?.toString() ?? '';
-            
-            if (senderId.isNotEmpty && senderId != _currentUserId && msgId.isNotEmpty) {
+
+            if (senderId.isNotEmpty &&
+                senderId != _currentUserId &&
+                msgId.isNotEmpty) {
               wsService.send('message_delivered', {
                 'message_id': msgId,
                 'room_id': roomIdRaw.isEmpty ? null : roomIdRaw,
@@ -149,7 +151,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
               });
             }
           }
-          
+
           // 修復1：移除 Future.microtask(() => fetchRooms());，由 updateRoomLastMessage 管理即時畫面
         } else if (event == 'read_receipt') {
           final payload = eventData['data'];

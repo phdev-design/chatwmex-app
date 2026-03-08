@@ -118,10 +118,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
           child: Text(
             '您已無法在此群組傳送訊息，或此群組已解散。',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: tokens.subtleText,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: tokens.subtleText, fontSize: 14),
           ),
         ),
       );
@@ -307,7 +304,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                       borderRadius: BorderRadius.circular(24),
                     ),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 6),
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     child: state.isRecording
                         ? Row(
                             children: [
@@ -338,7 +337,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                                   controller: _textController,
                                   focusNode: _focusNode,
                                   style: TextStyle(
-                                    color: isDark ? Colors.white : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white
+                                        : Colors.black87,
                                     fontSize: 15,
                                   ),
                                   maxLines: 5,
@@ -353,8 +354,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                                     ),
                                     border: InputBorder.none,
                                     isDense: true,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(vertical: 6),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 6,
+                                    ),
                                   ),
                                   onSubmitted: (_) => _sendMessage(),
                                   onChanged: _onTextChanged,
@@ -363,8 +365,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                               Icon(
                                 Icons.emoji_emotions_outlined,
                                 size: 20,
-                                color:
-                                    isDark ? Colors.white38 : Colors.grey[500],
+                                color: isDark
+                                    ? Colors.white38
+                                    : Colors.grey[500],
                               ),
                             ],
                           ),
@@ -425,8 +428,8 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                           color: state.isRecording
                               ? tokens.accent
                               : (isDark
-                                  ? const Color(0xFF2C2C2E)
-                                  : const Color(0xFFF0F2F5)),
+                                    ? const Color(0xFF2C2C2E)
+                                    : const Color(0xFFF0F2F5)),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -447,7 +450,6 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
       ),
     );
   }
-
 
   void _sendMessage() {
     final text = _textController.text.trim();
@@ -504,7 +506,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
         return;
       }
       final uri = Uri.tryParse(url);
-      final title = apiPreview?.title ?? (uri?.host.isNotEmpty == true ? uri!.host : '網站連結');
+      final title =
+          apiPreview?.title ??
+          (uri?.host.isNotEmpty == true ? uri!.host : '網站連結');
       final description =
           apiPreview?.description ??
           (uri?.path.isNotEmpty == true ? uri!.path : url);

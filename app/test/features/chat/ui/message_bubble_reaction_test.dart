@@ -27,7 +27,10 @@ void main() {
       content: 'hello',
       senderId: 'u1',
       createdAt: DateTime.now(),
-      reactions: const {'❤️': ['u1'], '👍': ['u2', 'u3']},
+      reactions: const {
+        '❤️': ['u1'],
+        '👍': ['u2', 'u3'],
+      },
     );
     const state = ChatRoomState();
 

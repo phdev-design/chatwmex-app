@@ -92,7 +92,10 @@ class AuthRepository {
       await _storageService.delete('avatar_url');
       // Restore pending unregister if failed
       if (pendingDeviceId != null) {
-        await _storageService.save('pending_unregister_device_id', pendingDeviceId);
+        await _storageService.save(
+          'pending_unregister_device_id',
+          pendingDeviceId,
+        );
       }
       // Detach Google Drive SignIn Session completely
       try {

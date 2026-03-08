@@ -647,23 +647,32 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final pending = await LocalDbService().getPendingMessages();
     if (pending.isEmpty) return;
 
-    debugPrint('ChatRoomViewModel: Resending ${pending.length} pending messages');
+    debugPrint(
+      'ChatRoomViewModel: Resending ${pending.length} pending messages',
+    );
 
     for (final message in pending) {
       // 檢查訊息是否屬於目前的聊天室（避免多個聊天室同時同步時互相影響）
-      final isRelevant = (arg.isRoom && message.roomId == arg.roomId) ||
-          (!arg.isRoom && (message.receiverId == arg.roomId || message.senderId == arg.roomId));
-      
+      final isRelevant =
+          (arg.isRoom && message.roomId == arg.roomId) ||
+          (!arg.isRoom &&
+              (message.receiverId == arg.roomId ||
+                  message.senderId == arg.roomId));
+
       if (!isRelevant) continue;
 
       String payloadContent = message.content;
-      final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+      final isE2EEEnabled =
+          ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
       if (!arg.isRoom && isE2EEEnabled) {
         final pubKey = await _getPublicKey(arg.roomId);
         if (pubKey != null) {
           try {
-            payloadContent = await _cryptoService.encryptMessage(message.content, pubKey);
+            payloadContent = await _cryptoService.encryptMessage(
+              message.content,
+              pubKey,
+            );
           } catch (e) {
             debugPrint('Failed to encrypt pending message: $e');
             continue;
@@ -685,9 +694,14 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         // 更新 UI 狀態
         _updateMessageStatus(message.clientMsgId!, MessageStatus.sent);
         // 更新本地資料庫
-        await LocalDbService().updateMessageStatus(message.clientMsgId!, MessageStatus.sent);
+        await LocalDbService().updateMessageStatus(
+          message.clientMsgId!,
+          MessageStatus.sent,
+        );
       } catch (e) {
-        debugPrint('Failed to resend pending message ${message.clientMsgId}: $e');
+        debugPrint(
+          'Failed to resend pending message ${message.clientMsgId}: $e',
+        );
         // 保持 pending 狀態，下次重連再試
       }
     }
@@ -998,7 +1012,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       await _chatRepository.deleteMessage(messageId);
       _removeMessageFromState(messageId);
       Future.microtask(() => LocalDbService().deleteMessageLocal(messageId));
-      Future.microtask(() => ref.read(roomListViewModelProvider.notifier).fetchRooms());
+      Future.microtask(
+        () => ref.read(roomListViewModelProvider.notifier).fetchRooms(),
+      );
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -1211,7 +1227,15 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
         // 透過 WebSocket 發送已讀回執給原發送者
         for (final id in ids) {
-          final msg = state.messages.firstWhere((m) => m.id == id, orElse: () => Message(id: '', content: '', senderId: '', createdAt: DateTime.now()));
+          final msg = state.messages.firstWhere(
+            (m) => m.id == id,
+            orElse: () => Message(
+              id: '',
+              content: '',
+              senderId: '',
+              createdAt: DateTime.now(),
+            ),
+          );
           if (msg.id.isNotEmpty && msg.senderId != arg.currentUserId) {
             _wsService.send('message_read', {
               'message_id': msg.id,

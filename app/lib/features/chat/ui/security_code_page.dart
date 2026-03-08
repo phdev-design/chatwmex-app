@@ -6,7 +6,10 @@ import 'package:crypto/crypto.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
 
-final contactPublicKeyProvider = FutureProvider.family<String?, String>((ref, contactId) async {
+final contactPublicKeyProvider = FutureProvider.family<String?, String>((
+  ref,
+  contactId,
+) async {
   final cacheService = ref.watch(publicKeyCacheServiceProvider);
   return await cacheService.getPublicKey(contactId);
 });
@@ -31,20 +34,23 @@ class SecurityCodePage extends ConsumerWidget {
     return a.length.compareTo(b.length);
   }
 
-  String _generateSafetyNumber(String myPublicKeyBase64, String theirPublicKeyBase64) {
+  String _generateSafetyNumber(
+    String myPublicKeyBase64,
+    String theirPublicKeyBase64,
+  ) {
     try {
       final myBytes = base64Decode(myPublicKeyBase64);
       final theirBytes = base64Decode(theirPublicKeyBase64);
-      
+
       List<int> combined;
       if (_compareBytes(myBytes, theirBytes) <= 0) {
         combined = [...myBytes, ...theirBytes];
       } else {
         combined = [...theirBytes, ...myBytes];
       }
-      
+
       final digest = sha256.convert(combined);
-      
+
       final numbers = <String>[];
       final hashBytes = digest.bytes;
       for (int i = 0; i < 30; i += 5) {
@@ -67,7 +73,9 @@ class SecurityCodePage extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryTextColor = colorScheme.onSurface;
     final secondaryTextColor = colorScheme.onSurfaceVariant;
-    final Color bgColor = isDark ? const Color(0xFF0B141A) : colorScheme.surface;
+    final Color bgColor = isDark
+        ? const Color(0xFF0B141A)
+        : colorScheme.surface;
 
     final myPublicKeyAsync = ref.watch(cryptoServiceProvider).publicKeyBase64;
     final theirPublicKeyAsync = ref.watch(contactPublicKeyProvider(contactId));
@@ -81,7 +89,9 @@ class SecurityCodePage extends ConsumerWidget {
       ),
       body: theirPublicKeyAsync.when(
         data: (theirPubKey) {
-          if (theirPubKey == null || theirPubKey.isEmpty || myPublicKeyAsync == null) {
+          if (theirPubKey == null ||
+              theirPubKey.isEmpty ||
+              myPublicKeyAsync == null) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(32.0),
@@ -98,12 +108,18 @@ class SecurityCodePage extends ConsumerWidget {
             );
           }
 
-          final safetyNumber = _generateSafetyNumber(myPublicKeyAsync, theirPubKey);
+          final safetyNumber = _generateSafetyNumber(
+            myPublicKeyAsync,
+            theirPubKey,
+          );
           final cleanNumber = safetyNumber.replaceAll(' ', '');
 
           return SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24.0,
+                vertical: 16.0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -149,7 +165,10 @@ class SecurityCodePage extends ConsumerWidget {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(
-          child: Text('取得安全碼失敗: $err', style: TextStyle(color: colorScheme.error)),
+          child: Text(
+            '取得安全碼失敗: $err',
+            style: TextStyle(color: colorScheme.error),
+          ),
         ),
       ),
     );
@@ -157,7 +176,7 @@ class SecurityCodePage extends ConsumerWidget {
 
   Widget _buildSafetyNumberGrid(String safeNumber, Color textColor) {
     if (safeNumber.isEmpty) return const SizedBox();
-    
+
     final groups = safeNumber.split(' ');
     if (groups.length != 12) return const SizedBox();
 

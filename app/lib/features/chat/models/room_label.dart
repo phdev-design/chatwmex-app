@@ -22,11 +22,11 @@ class RoomLabel {
   );
 
   RoomLabel copyWith({String? name, bool? isEnabled, List<String>? roomIds}) =>
-    RoomLabel(
-      id: id,
-      name: name ?? this.name,
-      sortOrder: sortOrder,
-      roomIds: roomIds ?? this.roomIds,
-      isEnabled: isEnabled ?? this.isEnabled,
-    );
+      RoomLabel(
+        id: id,
+        name: name ?? this.name,
+        sortOrder: sortOrder,
+        roomIds: roomIds ?? this.roomIds,
+        isEnabled: isEnabled ?? this.isEnabled,
+      );
 }

@@ -22,12 +22,12 @@ class NetworkService {
     if (envUrl != null && envUrl.isNotEmpty) {
       return envUrl;
     }
-    
+
     if (_envBaseUrl.isNotEmpty) {
       return _envBaseUrl;
     }
 
-    return 'http://localhost:8080'; 
+    return 'http://localhost:8080';
   }
 
   static String resolveUrl(String path) {

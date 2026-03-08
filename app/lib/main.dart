@@ -21,7 +21,7 @@ import 'package:flutter/foundation.dart'; // 👉 引入 kDebugMode
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // 根據開發或正式環境載入不同的 .env 檔案
   try {
     await dotenv.load(fileName: kDebugMode ? ".env.dev" : ".env");

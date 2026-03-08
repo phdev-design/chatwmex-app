@@ -179,11 +179,11 @@ class BackupManager extends StateNotifier<BackupState>
     try {
       final result = await _googleDriveService.signIn();
       print('[BackupManager] signIn result: $result');
-      
+
       if (result) {
         final isValid = await _verifyAndLinkGoogleAccount();
         if (!isValid) return false;
-        
+
         await _syncLatestBackupDateFromDrive();
       }
       return result;
@@ -197,7 +197,7 @@ class BackupManager extends StateNotifier<BackupState>
     if (result) {
       final isValid = await _verifyAndLinkGoogleAccount();
       if (!isValid) return false;
-      
+
       await _syncLatestBackupDateFromDrive();
     }
     return result;

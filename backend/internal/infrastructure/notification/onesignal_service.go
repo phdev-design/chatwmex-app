@@ -57,7 +57,7 @@ func (s *OneSignalService) SendNotification(userID, event string, data interface
 			firstName, _ := reqMap["first_name"].(string)
 			lastName, _ := reqMap["last_name"].(string)
 			username, _ := reqMap["sender_username"].(string)
-			
+
 			if firstName != "" || lastName != "" {
 				if firstName != "" && lastName != "" {
 					senderName = firstName + " " + lastName
@@ -119,6 +119,7 @@ func (s *OneSignalService) SendNotificationToDevices(playerIDs []string, title s
 		"headings":           map[string]string{"en": title},
 		"contents":           map[string]string{"en": content},
 		"data":               data,
+		"content_available":  true,
 	}
 
 	body, err := json.Marshal(payload)

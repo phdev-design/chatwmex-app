@@ -30,26 +30,28 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final email = _emailController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
     if (_isRegister) {
       if (email.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter email')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Please enter email')));
         return;
       }
       if (!email.contains('@')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid email format')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Invalid email format')));
         return;
       }
-      await ref.read(authViewModelProvider.notifier).register(username, password, email);
+      await ref
+          .read(authViewModelProvider.notifier)
+          .register(username, password, email);
     } else {
       await ref.read(authViewModelProvider.notifier).login(username, password);
     }
@@ -64,19 +66,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (next.isAuthenticated) {
         context.go('/chat-list');
       }
-      
+
       if (next.isRegistered && !(prev?.isRegistered ?? false)) {
         // Reset registered state to avoid repeating
         ref.read(authViewModelProvider.notifier).resetRegistered();
-        
+
         // Switch back to login mode
         setState(() => _isRegister = false);
-        
+
         // Clear input fields
         _usernameController.clear();
         _passwordController.clear();
         _emailController.clear();
-        
+
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -86,11 +88,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           ),
         );
       }
-      
+
       if (next.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next.error!)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(next.error!)));
       }
     });
 
@@ -116,7 +118,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               const SizedBox(height: 24),
               Text(
                 'ChatWmex',
-                style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28),
+                style: Theme.of(
+                  context,
+                ).textTheme.displayLarge?.copyWith(fontSize: 28),
               ),
               const SizedBox(height: 8),
               Text(
@@ -139,7 +143,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       TextField(
                         controller: _usernameController,
                         decoration: InputDecoration(
-                          labelText: _isRegister ? 'Username' : 'Username or Email',
+                          labelText: _isRegister
+                              ? 'Username'
+                              : 'Username or Email',
                           prefixIcon: const Icon(Icons.person_outline),
                         ),
                       ),
@@ -177,7 +183,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () => setState(() => _isRegister = !_isRegister),
-                child: Text(_isRegister ? 'Already have an account? Sign In' : 'Don\'t have an account? Sign Up'),
+                child: Text(
+                  _isRegister
+                      ? 'Already have an account? Sign In'
+                      : 'Don\'t have an account? Sign Up',
+                ),
               ),
             ],
           ),

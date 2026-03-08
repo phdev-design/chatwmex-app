@@ -18,10 +18,10 @@ class PdfPreviewScreen extends StatefulWidget {
 
 class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
   bool _fallbackTriggered = false;
-  
+
   // 1. 建立控制器來操作 PDF (縮放、跳頁等)
   final PdfViewerController _pdfViewerController = PdfViewerController();
-  
+
   // 2. 狀態變數：紀錄頁碼與載入狀態
   int _currentPage = 0;
   int _totalPages = 0;
@@ -53,10 +53,7 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.fileName,
-          style: const TextStyle(fontSize: 16),
-        ),
+        title: Text(widget.fileName, style: const TextStyle(fontSize: 16)),
         actions: [
           // 只有當文件成功載入後，才顯示縮放按鈕
           if (_isReady) ...[
@@ -100,7 +97,7 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
               _fallbackToExternal();
             },
           ),
-          
+
           // 懸浮的底部頁碼指示器 (例如： 1 / 5)
           if (_isReady && _totalPages > 0)
             Positioned(

@@ -35,10 +35,7 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              '解除好友',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('解除好友', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -53,13 +50,16 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
     final myId = await storage.read('user_id');
     final token = await storage.read('jwt_token');
     if (mounted && myId != null && token != null) {
-      context.push('/chat', extra: {
-        'roomId': friendId,
-        'title': friendUsername,
-        'isRoom': false,
-        'currentUserId': myId,
-        'token': token,
-      });
+      context.push(
+        '/chat',
+        extra: {
+          'roomId': friendId,
+          'title': friendUsername,
+          'isRoom': false,
+          'currentUserId': myId,
+          'token': token,
+        },
+      );
     }
   }
 
@@ -88,12 +88,13 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline,
-                    size: 48,
-                    color: colorScheme.error.withValues(alpha: 0.7)),
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: colorScheme.error.withValues(alpha: 0.7),
+                ),
                 const SizedBox(height: 12),
-                Text(state.error!,
-                    style: TextStyle(color: colorScheme.error)),
+                Text(state.error!, style: TextStyle(color: colorScheme.error)),
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () =>
@@ -109,10 +110,11 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.people_outline,
-                    size: 64,
-                    color:
-                        colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                Icon(
+                  Icons.people_outline,
+                  size: 64,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   '目前沒有好友',
@@ -135,8 +137,10 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
           itemBuilder: (context, index) {
             final friend = state.friends[index];
             return ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
               leading: ChatAvatar(
                 avatarUrl: null,
                 radius: 22,
@@ -161,14 +165,14 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
                 ),
               ),
               trailing: IconButton(
-                icon: Icon(Icons.person_remove_outlined,
-                    color: colorScheme.onSurfaceVariant),
-                onPressed: () =>
-                    _confirmUnfriend(friend.id, friend.username),
+                icon: Icon(
+                  Icons.person_remove_outlined,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onPressed: () => _confirmUnfriend(friend.id, friend.username),
               ),
               onTap: () => _openChat(friend.id, friend.username),
-              onLongPress: () =>
-                  _confirmUnfriend(friend.id, friend.username),
+              onLongPress: () => _confirmUnfriend(friend.id, friend.username),
             );
           },
         );

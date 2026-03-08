@@ -147,7 +147,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     isDark: isDark,
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                          builder: (_) => const EditProfilePage()),
+                        builder: (_) => const EditProfilePage(),
+                      ),
                     ),
                   ),
                   _SettingsItem(
@@ -243,8 +244,10 @@ class _ProfileHeader extends StatelessWidget {
                         child: SizedBox(
                           width: 24,
                           height: 24,
-                          child:
-                              CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         ),
                       ),
                     ),
@@ -267,9 +270,7 @@ class _ProfileHeader extends StatelessWidget {
                     child: Icon(
                       Icons.camera_alt_rounded,
                       size: 13,
-                      color: isDark
-                          ? Colors.white70
-                          : Colors.black54,
+                      color: isDark ? Colors.white70 : Colors.black54,
                     ),
                   ),
                 ),
@@ -304,8 +305,7 @@ class _ProfileHeader extends StatelessWidget {
             icon: const Icon(Icons.edit_outlined, size: 16),
             label: const Text('編輯個人資料'),
             style: OutlinedButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -396,7 +396,11 @@ class _SubItem {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _SubItem({required this.icon, required this.label, required this.onTap});
+  const _SubItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 }
 
 class _SettingsItem extends StatelessWidget {
@@ -436,8 +440,7 @@ class _SettingsItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = labelColor ??
-        (isDark ? Colors.white : Colors.black87);
+    final textColor = labelColor ?? (isDark ? Colors.white : Colors.black87);
     final subTextColor = isDark ? Colors.white54 : Colors.grey[600]!;
     final chevronColor = isDark ? Colors.white24 : Colors.black26;
 
@@ -447,7 +450,10 @@ class _SettingsItem extends StatelessWidget {
         child: Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 2,
+            ),
             childrenPadding: EdgeInsets.zero,
             leading: _iconBox(),
             title: Text(
@@ -470,12 +476,17 @@ class _SettingsItem extends StatelessWidget {
                       : Colors.black.withValues(alpha: 0.07),
                 ),
                 ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 0,
+                  ),
                   leading: Padding(
                     padding: const EdgeInsets.only(left: 40),
-                    child: Icon(subItems[i].icon,
-                        size: 20, color: subTextColor),
+                    child: Icon(
+                      subItems[i].icon,
+                      size: 20,
+                      color: subTextColor,
+                    ),
                   ),
                   title: Text(
                     subItems[i].label,
@@ -518,11 +529,7 @@ class _SettingsItem extends StatelessWidget {
               ),
             ),
             if (showChevron)
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: chevronColor,
-              ),
+              Icon(Icons.chevron_right_rounded, size: 20, color: chevronColor),
           ],
         ),
       ),

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/core/network/network_service.dart';
 
 class NotificationService {
   static final GlobalKey<NavigatorState> navigatorKey =
@@ -11,8 +12,9 @@ class NotificationService {
   static String? currentActiveRoomId;
 
   final StorageService _storageService;
+  final NetworkService _networkService;
 
-  NotificationService(this._storageService);
+  NotificationService(this._storageService, this._networkService);
 
   Future<void> initOneSignal(String appId) async {
     OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
@@ -23,6 +25,10 @@ class NotificationService {
     });
     OneSignal.Notifications.addForegroundWillDisplayListener((event) {
       _handleForegroundNotification(event);
+      _handleMessageDelivered(event.notification.additionalData);
+    });
+    OneSignal.Notifications.addBackgroundWillDisplayListener((event) {
+      _handleMessageDelivered(event.notification.additionalData);
     });
     await handlePendingNavigation();
   }
@@ -49,10 +55,30 @@ class NotificationService {
   void _handleForegroundNotification(OSNotificationWillDisplayEvent event) {
     final data = event.notification.additionalData;
     if (data == null) return;
-    
+
     final roomId = data['room_id']?.toString() ?? '';
     if (roomId.isNotEmpty && roomId == currentActiveRoomId) {
-      event.preventDefault(); // Suspend the banner if user is in this active room
+      event
+          .preventDefault(); // Suspend the banner if user is in this active room
+    }
+  }
+
+  Future<void> _handleMessageDelivered(Map<String, dynamic>? data) async {
+    if (data == null) return;
+
+    final messageId = data['message_id']?.toString() ?? '';
+    if (messageId.isEmpty) return;
+
+    try {
+      await _networkService.client.post(
+        '/messages/delivered',
+        data: {
+          'message_ids': [messageId],
+        },
+      );
+      debugPrint('Background delivered report sent for $messageId');
+    } catch (e) {
+      debugPrint('Failed to report delivered: $e');
     }
   }
 
@@ -113,5 +139,6 @@ class NotificationService {
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
   final storage = ref.watch(storageServiceProvider);
-  return NotificationService(storage);
+  final network = ref.read(networkServiceProvider);
+  return NotificationService(storage, network);
 });

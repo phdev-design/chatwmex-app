@@ -59,16 +59,16 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
           try {
             await ref.read(networkServiceProvider).confirmQrLogin(qrValue);
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('授權成功！網頁端即將登入。')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('授權成功！網頁端即將登入。')));
               Navigator.of(context).pop();
             }
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('授權失敗: $e')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('授權失敗: $e')));
               _isProcessing = false;
               await _scannerController.start();
             }
@@ -80,9 +80,9 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('無效的 QR Code 格式')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('無效的 QR Code 格式')));
         }
         await Future.delayed(const Duration(seconds: 2));
         _isProcessing = false;
@@ -112,8 +112,9 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
                       torchState == TorchState.on
                           ? Icons.flash_on
                           : Icons.flash_off,
-                      color:
-                          torchState == TorchState.on ? Colors.yellow : Colors.grey,
+                      color: torchState == TorchState.on
+                          ? Colors.yellow
+                          : Colors.grey,
                     ),
                     iconSize: 32.0,
                     onPressed: () => _scannerController.toggleTorch(),
@@ -133,10 +134,7 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
       ),
       body: Stack(
         children: [
-          MobileScanner(
-            controller: _scannerController,
-            onDetect: _onDetect,
-          ),
+          MobileScanner(controller: _scannerController, onDetect: _onDetect),
           // 掃描框覆蓋層
           Center(
             child: Container(

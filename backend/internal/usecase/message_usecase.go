@@ -180,6 +180,7 @@ func (u *messageUsecase) pushToOfflineUsers(userIDs []string, msg *domain.Messag
 		// 👉 將原始加密內容與發送者 ID 放進隱藏資料中，供前端本地解密
 		"encrypted_content": msg.Content,
 		"sender_id":         msg.SenderID,
+		"message_id":        msg.ID,
 	}
 
 	for _, userID := range userIDs {

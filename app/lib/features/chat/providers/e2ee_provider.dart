@@ -11,7 +11,8 @@ class E2EEStateNotifier extends StateNotifier<AsyncValue<bool>> {
   Future<void> _loadState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final isEnabled = prefs.getBool('e2ee_enabled_$contactId') ?? true; // 預設為 true
+      final isEnabled =
+          prefs.getBool('e2ee_enabled_$contactId') ?? true; // 預設為 true
       if (mounted) {
         state = AsyncValue.data(isEnabled);
       }
@@ -29,6 +30,10 @@ class E2EEStateNotifier extends StateNotifier<AsyncValue<bool>> {
   }
 }
 
-final e2eeEnabledProvider = StateNotifierProvider.family<E2EEStateNotifier, AsyncValue<bool>, String>((ref, contactId) {
-  return E2EEStateNotifier(contactId);
-});
+final e2eeEnabledProvider =
+    StateNotifierProvider.family<E2EEStateNotifier, AsyncValue<bool>, String>((
+      ref,
+      contactId,
+    ) {
+      return E2EEStateNotifier(contactId);
+    });

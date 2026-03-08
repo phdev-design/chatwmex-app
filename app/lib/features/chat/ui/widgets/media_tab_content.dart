@@ -139,94 +139,89 @@ class _MediaTabContentState extends ConsumerState<MediaTabContent> {
               mainAxisSpacing: 2,
               crossAxisSpacing: 2,
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final message = mediaMessages[index];
-                final url = resolveFullUrl(message.content);
-                final heroTag = message.id;
-                final isVideo = message.type == MessageType.video;
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final message = mediaMessages[index];
+              final url = resolveFullUrl(message.content);
+              final heroTag = message.id;
+              final isVideo = message.type == MessageType.video;
 
-                if (url.isEmpty) {
-                  return _PlaceholderTile(isDark: isDark, cs: cs);
-                }
+              if (url.isEmpty) {
+                return _PlaceholderTile(isDark: isDark, cs: cs);
+              }
 
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => PhotoScreen(
-                          imageUrl: url,
-                          heroTag: heroTag,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Hero(
-                    tag: heroTag,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // Image
-                        Image.network(
-                          url,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (context, child, progress) {
-                            if (progress == null) return child;
-                            return Container(
-                              color: isDark
-                                  ? const Color(0xFF2C2C2E)
-                                  : const Color(0xFFF0F2F5),
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  value: progress.expectedTotalBytes != null
-                                      ? progress.cumulativeBytesLoaded /
+              return GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          PhotoScreen(imageUrl: url, heroTag: heroTag),
+                    ),
+                  );
+                },
+                child: Hero(
+                  tag: heroTag,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Image
+                      Image.network(
+                        url,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) return child;
+                          return Container(
+                            color: isDark
+                                ? const Color(0xFF2C2C2E)
+                                : const Color(0xFFF0F2F5),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                value: progress.expectedTotalBytes != null
+                                    ? progress.cumulativeBytesLoaded /
                                           progress.expectedTotalBytes!
-                                      : null,
-                                  color: cs.primary.withValues(alpha: 0.6),
-                                ),
-                              ),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: isDark
-                                  ? const Color(0xFF2C2C2E)
-                                  : const Color(0xFFF0F2F5),
-                              child: Icon(
-                                Icons.broken_image_outlined,
-                                size: 28,
-                                color: cs.onSurface.withValues(alpha: 0.3),
-                              ),
-                            );
-                          },
-                        ),
-                        // Video play overlay
-                        if (isVideo)
-                          Positioned(
-                            right: 6,
-                            bottom: 6,
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: const BoxDecoration(
-                                color: Colors.black54,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow_rounded,
-                                color: Colors.white,
-                                size: 18,
+                                    : null,
+                                color: cs.primary.withValues(alpha: 0.6),
                               ),
                             ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: isDark
+                                ? const Color(0xFF2C2C2E)
+                                : const Color(0xFFF0F2F5),
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              size: 28,
+                              color: cs.onSurface.withValues(alpha: 0.3),
+                            ),
+                          );
+                        },
+                      ),
+                      // Video play overlay
+                      if (isVideo)
+                        Positioned(
+                          right: 6,
+                          bottom: 6,
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                );
-              },
-              childCount: mediaMessages.length,
-            ),
+                ),
+              );
+            }, childCount: mediaMessages.length),
           ),
         ),
       );

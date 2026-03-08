@@ -127,9 +127,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('確定刪除'),
           ),
@@ -404,7 +402,9 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     });
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8),
+      backgroundColor: isDark
+          ? const Color(0xFF0D0D0D)
+          : const Color(0xFFF4F6F8),
       appBar: AppBar(
         backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black87,
@@ -506,14 +506,22 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
               if (state.typingUsers.isNotEmpty) const ChatTypingIndicator(),
               if (!widget.isRoom && !_isFriend)
                 Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.25 : 0.05,
+                        ),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -522,9 +530,11 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.person_off_outlined,
-                          size: 16,
-                          color: isDark ? Colors.white38 : Colors.grey[500]),
+                      Icon(
+                        Icons.person_off_outlined,
+                        size: 16,
+                        color: isDark ? Colors.white38 : Colors.grey[500],
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(

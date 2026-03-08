@@ -9,6 +9,7 @@ import (
 	ws "chatwmex_backend/internal/delivery/websocket"
 	"chatwmex_backend/internal/domain"
 	"chatwmex_backend/pkg/response"
+	"log"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,6 +34,7 @@ func NewMessageHandler(r *gin.Engine, mu domain.MessageUsecase, hub *ws.Hub, aut
 		api.GET("/history", handler.GetHistory)
 		api.POST("/read/batch", handler.MarkMessagesRead)
 		api.POST("/read", handler.MarkAsRead)
+		api.POST("/delivered", handler.MarkMessagesDelivered)
 		api.POST("/:id/reactions", handler.ToggleReaction)
 		api.PATCH("/:id/unsend", handler.UnsendMessage)
 		api.DELETE("/:id", handler.DeleteMessage)
@@ -208,6 +210,56 @@ func (h *MessageHandler) MarkMessagesRead(c *gin.Context) {
 	}
 
 	response.Success(c, "Messages marked as read")
+}
+
+type MarkMessagesDeliveredRequest struct {
+	MessageIDs []string `json:"message_ids" binding:"required"`
+}
+
+func (h *MessageHandler) MarkMessagesDelivered(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	var req MarkMessagesDeliveredRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(req.MessageIDs) == 0 {
+		response.Error(c, http.StatusBadRequest, "message_ids is required")
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+
+	ctx := c.Request.Context()
+	
+	// 更新資料庫的狀態為 delivered
+	for _, msgID := range req.MessageIDs {
+		err := h.MessageUsecase.UpdateMessageStatus(ctx, msgID, "delivered")
+		if err != nil {
+			log.Printf("failed to mark msg %s as delivered: %v", msgID, err)
+		}
+	}
+
+	roomMap, err := h.MessageUsecase.GetRoomMessageMap(ctx, req.MessageIDs)
+	if err == nil && h.Hub != nil {
+		for roomID, messageIDs := range roomMap {
+			if roomID == "" || len(messageIDs) == 0 {
+				continue
+			}
+			h.Hub.BroadcastRoomDeliveredReceipt(roomID, messageIDs, userIDStr)
+		}
+	}
+
+	response.Success(c, "Messages marked as delivered")
 }
 
 func (h *MessageHandler) MarkAsRead(c *gin.Context) {

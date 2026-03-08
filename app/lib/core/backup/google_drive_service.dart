@@ -71,12 +71,16 @@ class GoogleDriveService {
     try {
       debugPrint('[GoogleDrive] checking lightweight auth first...');
       _currentUser = await _signIn.attemptLightweightAuthentication();
-      debugPrint('[GoogleDrive] lightweight auth returned: ${_currentUser?.email}');
+      debugPrint(
+        '[GoogleDrive] lightweight auth returned: ${_currentUser?.email}',
+      );
 
       if (_currentUser == null) {
         debugPrint('[GoogleDrive] calling authenticate()...');
         _currentUser = await _signIn.authenticate();
-        debugPrint('[GoogleDrive] authenticate() returned: ${_currentUser?.email}');
+        debugPrint(
+          '[GoogleDrive] authenticate() returned: ${_currentUser?.email}',
+        );
       }
 
       if (_currentUser == null) {
@@ -85,9 +89,12 @@ class GoogleDriveService {
       }
 
       debugPrint('[GoogleDrive] calling authorizeScopes()...');
-      final auth = await _currentUser!.authorizationClient
-          .authorizeScopes(_driveScopes);
-      debugPrint('[GoogleDrive] authorizeScopes() done, token: ${auth.accessToken.isNotEmpty}');
+      final auth = await _currentUser!.authorizationClient.authorizeScopes(
+        _driveScopes,
+      );
+      debugPrint(
+        '[GoogleDrive] authorizeScopes() done, token: ${auth.accessToken.isNotEmpty}',
+      );
       return auth.accessToken.isNotEmpty;
     } catch (e, st) {
       debugPrint('[GoogleDrive] signIn EXCEPTION: $e\n$st');
@@ -102,13 +109,16 @@ class GoogleDriveService {
     await ensureInitialized();
     try {
       final account = await _signIn.attemptLightweightAuthentication();
-      debugPrint('[GoogleDrive] attemptLightweightAuthentication: ${account?.email}');
+      debugPrint(
+        '[GoogleDrive] attemptLightweightAuthentication: ${account?.email}',
+      );
       if (account == null) return false;
       _currentUser = account;
 
       // Verify Drive scope is already authorized (silent only, no UI prompt).
-      final auth = await account.authorizationClient
-          .authorizationForScopes(_driveScopes);
+      final auth = await account.authorizationClient.authorizationForScopes(
+        _driveScopes,
+      );
       debugPrint('[GoogleDrive] authorizationForScopes result: $auth');
       if (auth == null) {
         // Account exists but Drive was never authorized → show Connect button.
@@ -203,11 +213,12 @@ class GoogleDriveService {
     if (driveApi == null) return null;
 
     try {
-      final media = await driveApi.files.get(
-            fileId,
-            downloadOptions: drive.DownloadOptions.fullMedia,
-          )
-          as drive.Media;
+      final media =
+          await driveApi.files.get(
+                fileId,
+                downloadOptions: drive.DownloadOptions.fullMedia,
+              )
+              as drive.Media;
 
       final buffer = <int>[];
       await for (final chunk in media.stream) {
@@ -267,6 +278,7 @@ class GoogleDriveService {
       // Ignore cleanup errors
     }
   }
+
   Future<bool> deleteBackup(String fileId) async {
     try {
       final driveApi = await getDriveApi();

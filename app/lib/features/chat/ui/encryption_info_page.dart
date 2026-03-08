@@ -18,9 +18,11 @@ class EncryptionInfoPage extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final primaryTextColor = colorScheme.onSurface;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    final Color bgColor = isDark ? const Color(0xFF0B141A) : colorScheme.surface;
-    
+
+    final Color bgColor = isDark
+        ? const Color(0xFF0B141A)
+        : colorScheme.surface;
+
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
@@ -44,11 +46,7 @@ class EncryptionInfoPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 60),
-            Icon(
-              Icons.lock,
-              size: 100,
-              color: colorScheme.primary,
-            ),
+            Icon(Icons.lock, size: 100, color: colorScheme.primary),
             const SizedBox(height: 60),
             ElevatedButton(
               onPressed: () {
@@ -65,7 +63,10 @@ class EncryptionInfoPage extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: colorScheme.primaryContainer,
                 foregroundColor: colorScheme.onPrimaryContainer,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),

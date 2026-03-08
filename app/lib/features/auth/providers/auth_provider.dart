@@ -36,9 +36,9 @@ class AuthViewModel extends Notifier<AuthState> {
       // 登入後清除舊的 public key 快取，避免用錯誤的 key 解密訊息
       await ref.read(publicKeyCacheServiceProvider).clearAllCache();
 
-    // ✅ 新增：確保 room list 是全新的（防止切換帳號時看到舊對話）
-    ref.invalidate(roomListViewModelProvider);
-    
+      // ✅ 新增：確保 room list 是全新的（防止切換帳號時看到舊對話）
+      ref.invalidate(roomListViewModelProvider);
+
       try {
         await _notificationService.initOneSignal(
           "88247551-a540-4ffc-89aa-e6ea9478b7be",
@@ -60,7 +60,7 @@ class AuthViewModel extends Notifier<AuthState> {
         state = state.copyWith(
           isLoading: false,
           isAuthenticated: true,
-          error: '登入成功，但推播通知註冊失敗，可能無法收到通知：${_parseError(e)}'
+          error: '登入成功，但推播通知註冊失敗，可能無法收到通知：${_parseError(e)}',
         );
       }
     } catch (e) {

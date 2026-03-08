@@ -19,21 +19,29 @@ class FriendRequestsPage extends ConsumerWidget {
                 final req = state.requests[index];
                 return ListTile(
                   leading: const CircleAvatar(child: Icon(Icons.person)),
-                  title: Text('Request from ${req.senderUsername.isNotEmpty ? req.senderUsername : req.senderId}'),
-                  subtitle: Text('Sent at ${req.createdAt.toString().split(' ')[0]}'),
+                  title: Text(
+                    'Request from ${req.senderUsername.isNotEmpty ? req.senderUsername : req.senderId}',
+                  ),
+                  subtitle: Text(
+                    'Sent at ${req.createdAt.toString().split(' ')[0]}',
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
                         icon: const Icon(Icons.check, color: Colors.green),
                         onPressed: () {
-                          ref.read(friendViewModelProvider.notifier).acceptRequest(req.id);
+                          ref
+                              .read(friendViewModelProvider.notifier)
+                              .acceptRequest(req.id);
                         },
                       ),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.red),
                         onPressed: () {
-                          ref.read(friendViewModelProvider.notifier).rejectRequest(req.id);
+                          ref
+                              .read(friendViewModelProvider.notifier)
+                              .rejectRequest(req.id);
                         },
                       ),
                     ],

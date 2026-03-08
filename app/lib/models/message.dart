@@ -112,7 +112,8 @@ class Message extends Equatable {
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       isRead: json['is_read'] ?? false,
       // 优先從後端回傳的 status 字串解析，否則用 is_read 推斷
-      status: _parseStatus(json['status']) ??
+      status:
+          _parseStatus(json['status']) ??
           ((json['is_read'] == true) ? MessageStatus.read : MessageStatus.sent),
       readAt: json['read_at'] != null
           ? DateTime.tryParse(json['read_at'])
@@ -169,7 +170,9 @@ class Message extends Equatable {
       // 新増：將 status 持久化到 SQLite
       'status': status.name,
       // 修正：將 linkPreview 轉成 JSON 字串存入本地資料庫
-      'link_preview': linkPreview != null ? jsonEncode(linkPreview!.toJson()) : null,
+      'link_preview': linkPreview != null
+          ? jsonEncode(linkPreview!.toJson())
+          : null,
     };
   }
 
@@ -180,7 +183,7 @@ class Message extends Equatable {
               .map((e) => e.toString())
               .toList()
         : const <String>[];
-        
+
     final reactionsRaw = map['reactions'];
     Map<String, List<String>>? reactions;
     if (reactionsRaw is String && reactionsRaw.isNotEmpty) {
@@ -205,7 +208,9 @@ class Message extends Equatable {
         // 解析失敗時忽略
       }
     } else if (linkPreviewRaw is Map) {
-       parsedLinkPreview = LinkPreview.fromJson(Map<String, dynamic>.from(linkPreviewRaw));
+      parsedLinkPreview = LinkPreview.fromJson(
+        Map<String, dynamic>.from(linkPreviewRaw),
+      );
     }
 
     return Message(
@@ -224,8 +229,11 @@ class Message extends Equatable {
           : DateTime.now(),
       isRead: (map['is_read'] ?? 0) == 1,
       // 优先讀取 SQLite 中儲存的 status 字串，有效支援 pending 狀態
-      status: _parseStatus(map['status']) ??
-          ((map['is_read'] ?? 0) == 1 ? MessageStatus.read : MessageStatus.sent),
+      status:
+          _parseStatus(map['status']) ??
+          ((map['is_read'] ?? 0) == 1
+              ? MessageStatus.read
+              : MessageStatus.sent),
       readAt: map['read_at'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['read_at'] as int)
           : null,

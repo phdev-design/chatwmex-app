@@ -79,9 +79,10 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     // 👇 讓語音模塊自動讀取父元件 (MessageBubble) 所設定的文字顏色，以適應藍色/灰色背景
-    final defaultTextColor = DefaultTextStyle.of(context).style.color ?? colorScheme.onSurface;
+    final defaultTextColor =
+        DefaultTextStyle.of(context).style.color ?? colorScheme.onSurface;
     final subtleTextColor = defaultTextColor.withValues(alpha: 0.6);
 
     final maxMs = _duration.inMilliseconds == 0
@@ -96,7 +97,7 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
     final movingHead = (progress * bars.length).floor();
     final remaining = _duration - _position;
     final remainingSafe = remaining.isNegative ? Duration.zero : remaining;
-    
+
     return SizedBox(
       width: 240,
       child: Row(
@@ -127,8 +128,10 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
                             color: isHead
                                 ? colorScheme.secondary
                                 : (isActive
-                                    ? defaultTextColor
-                                    : defaultTextColor.withValues(alpha: 0.3)), // 根據主字體調整音軌顏色
+                                      ? defaultTextColor
+                                      : defaultTextColor.withValues(
+                                          alpha: 0.3,
+                                        )), // 根據主字體調整音軌顏色
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
