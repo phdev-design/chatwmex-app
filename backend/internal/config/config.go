@@ -50,6 +50,20 @@ func LoadConfig() (*Config, error) {
 	// 4. Read from Environment Variables (override config file)
 	v.AutomaticEnv()
 
+	// --- 新增這段：明確綁定環境變數 ---
+	// 確保即使找不到 .env 檔案，也能從 Docker 的 environment 中讀取設定
+	v.BindEnv("APP_ENV")
+	v.BindEnv("MONGO_URI")
+	v.BindEnv("MONGO_DB_NAME")
+	v.BindEnv("REDIS_ADDR")
+	v.BindEnv("REDIS_PASSWORD")
+	v.BindEnv("RABBITMQ_URL")
+	v.BindEnv("ENCRYPTION_KEY")
+	v.BindEnv("JWT_SECRET")
+	v.BindEnv("ONESIGNAL_APP_ID")
+	v.BindEnv("ONESIGNAL_API_KEY")
+	// ------------------------------------
+
 	if err := v.ReadInConfig(); err != nil {
 		log.Printf("Warning: Config file .env.%s not found or unreadable: %v", env, err)
 	} else {
