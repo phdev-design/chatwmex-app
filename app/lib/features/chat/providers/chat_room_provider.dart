@@ -926,6 +926,24 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  // 清除此聊天室所有歷史訊息（API + 本地 DB + State）
+  Future<void> clearHistory() async {
+    try {
+      // 1. 呼叫後端 API 清除伺服器端資料
+      await _chatRepository.clearChatHistory(arg.roomId);
+      // 2. 清空本地 SQLite 快取
+      await LocalDbService().clearRoomMessages(arg.roomId);
+      // 3. 更新 Riverpod state，清空訊息列表
+      state = state.copyWith(messages: [], hasMore: false, offset: 0);
+      // 4. 通知 RoomList 更新最後一則訊息為空
+      ref
+          .read(roomListViewModelProvider.notifier)
+          .updateRoomLastMessage(arg.roomId, '', lastMessageTime: null);
+    } catch (e) {
+      state = state.copyWith(error: '清除失敗：${e.toString()}');
+    }
+  }
+
   void deleteMessageLocal(Message msg) {
     if (msg.id.isEmpty) return;
     _removeMessageFromState(msg.id);

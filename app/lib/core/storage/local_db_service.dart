@@ -237,6 +237,17 @@ class LocalDbService {
     await db.delete('messages', where: 'id = ?', whereArgs: [messageId]);
   }
 
+  /// 清除特定聊天室（含私訊 sender/receiver 關聯）的所有本地訊息
+  Future<void> clearRoomMessages(String roomId) async {
+    if (roomId.isEmpty) return;
+    final db = await initDB();
+    await db.delete(
+      'messages',
+      where: 'room_id = ? OR sender_id = ? OR receiver_id = ?',
+      whereArgs: [roomId, roomId, roomId],
+    );
+  }
+
   Future<void> savePublicKey(String userId, String publicKey) async {
     final db = await initDB();
     await db.insert('public_keys', {

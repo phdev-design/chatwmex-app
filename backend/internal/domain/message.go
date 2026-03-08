@@ -60,6 +60,9 @@ type MessageRepository interface {
 
 	// MarkAsRead marks all messages in a conversation (room or DM) as read by userID
 	MarkAsRead(ctx context.Context, userID, conversationID string, isRoom bool) error
+
+	// ClearRoomMessages 刪除指定 Room 或私訊對話的所有訊息
+	ClearRoomMessages(ctx context.Context, roomID, userID string) error
 }
 
 // Conversation represents a summary of a chat (DM).

@@ -315,3 +315,32 @@ func (u *roomUsecase) TransferOwnership(c context.Context, roomID string, curren
 
 	return u.roomRepo.UpdateOwner(ctx, roomID, newOwnerID)
 }
+
+// ClearRoomMessages 清除聊天室所有訊息，只有已加入該聊天室的成員才能操作
+func (u *roomUsecase) ClearRoomMessages(c context.Context, roomID string, userID string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	// 驗證該用戶是否為該聊天室的成員
+	room, err := u.roomRepo.GetByID(ctx, roomID)
+	if err != nil {
+		// GetByID 失敗 —可能是私訊對話（沒有 room doc），此時直接允許
+		// 如果取不到 room 但不是骗話錯誤，我們兩對私訊使用者本人即可操作
+		// 詳細的私訊授權將在 message_repository 的 filter 中確保
+		_ = room
+	} else if room != nil {
+		// 驗證是否為成員
+		isMember := false
+		for _, mID := range room.Members {
+			if mID == userID {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			return errors.New("forbidden")
+		}
+	}
+
+	return u.messageRepo.ClearRoomMessages(ctx, roomID, userID)
+}

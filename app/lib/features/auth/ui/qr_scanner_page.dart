@@ -11,7 +11,10 @@ class QrScannerPage extends ConsumerStatefulWidget {
 }
 
 class _QrScannerPageState extends ConsumerState<QrScannerPage> {
-  final MobileScannerController _scannerController = MobileScannerController();
+  final MobileScannerController _scannerController = MobileScannerController(
+    // 7.x: 設定不重複偵測，避免同一個 QR Code 重複觸發
+    detectionSpeed: DetectionSpeed.noDuplicates,
+  );
   bool _isProcessing = false;
 
   @override
@@ -26,12 +29,12 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
       final qrValue = barcodes.first.rawValue!;
-      
-      // Stop scanner temporarily 
-      _isProcessing = true;
-      _scannerController.stop();
 
-      // Ensure it's likely a UUID (basic length check 36)
+      // 暫停掃描
+      _isProcessing = true;
+      await _scannerController.stop();
+
+      // 確認是 UUID（基本長度檢查 36 碼）
       if (qrValue.length == 36) {
         final confirm = await showDialog<bool>(
           context: context,
@@ -59,7 +62,7 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('授權成功！網頁端即將登入。')),
               );
-              Navigator.of(context).pop(); // Go back
+              Navigator.of(context).pop();
             }
           } catch (e) {
             if (mounted) {
@@ -67,13 +70,13 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
                 SnackBar(content: Text('授權失敗: $e')),
               );
               _isProcessing = false;
-              _scannerController.start();
+              await _scannerController.start();
             }
           }
         } else {
-          // User cancelled
+          // 使用者取消
           _isProcessing = false;
-          _scannerController.start();
+          await _scannerController.start();
         }
       } else {
         if (mounted) {
@@ -83,7 +86,7 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
         }
         await Future.delayed(const Duration(seconds: 2));
         _isProcessing = false;
-        _scannerController.start();
+        await _scannerController.start();
       }
     }
   }
@@ -94,35 +97,37 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
       appBar: AppBar(
         title: const Text('掃描 QR Code'),
         actions: [
-          IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: _scannerController.torchState,
-              builder: (context, state, child) {
-                switch (state as TorchState) {
-                  case TorchState.off:
-                    return const Icon(Icons.flash_off, color: Colors.grey);
-                  case TorchState.on:
-                    return const Icon(Icons.flash_on, color: Colors.yellow);
-                }
-              },
-            ),
-            iconSize: 32.0,
-            onPressed: () => _scannerController.toggleTorch(),
-          ),
-          IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: _scannerController.cameraFacingState,
-              builder: (context, state, child) {
-                switch (state as CameraFacing) {
-                  case CameraFacing.front:
-                    return const Icon(Icons.camera_front);
-                  case CameraFacing.back:
-                    return const Icon(Icons.camera_rear);
-                }
-              },
-            ),
-            iconSize: 32.0,
-            onPressed: () => _scannerController.switchCamera(),
+          // 7.x Breaking Change: torchState 和 cameraFacingState 已從 ValueNotifier
+          // 改為透過 _scannerController.stream (MobileScannerState) 取得
+          StreamBuilder<MobileScannerState>(
+            stream: _scannerController.stream,
+            builder: (context, snapshot) {
+              final torchState = snapshot.data?.torchState ?? TorchState.off;
+              final cameraIsFront =
+                  snapshot.data?.cameraDirection == CameraFacing.front;
+              return Row(
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      torchState == TorchState.on
+                          ? Icons.flash_on
+                          : Icons.flash_off,
+                      color:
+                          torchState == TorchState.on ? Colors.yellow : Colors.grey,
+                    ),
+                    iconSize: 32.0,
+                    onPressed: () => _scannerController.toggleTorch(),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      cameraIsFront ? Icons.camera_front : Icons.camera_rear,
+                    ),
+                    iconSize: 32.0,
+                    onPressed: () => _scannerController.switchCamera(),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -132,23 +137,17 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
             controller: _scannerController,
             onDetect: _onDetect,
           ),
-          // A simple scan overlay
+          // 掃描框覆蓋層
           Center(
             child: Container(
               width: 250,
               height: 250,
               decoration: BoxDecoration(
-                border: Border.all(color: Theme.of(context).primaryColor, width: 3),
+                border: Border.all(
+                  color: Theme.of(context).primaryColor,
+                  width: 3,
+                ),
                 borderRadius: BorderRadius.circular(12),
-              ),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Container(
-                      color: Colors.transparent,
-                    ),
-                  ),
-                ],
               ),
             ),
           ),

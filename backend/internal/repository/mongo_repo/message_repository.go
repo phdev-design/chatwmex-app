@@ -751,3 +751,30 @@ func (r *MessageRepository) MarkAsRead(ctx context.Context, userID, conversation
 	log.Printf("mark_read user=%s conversation=%s is_room=%v matched=%d modified=%d", userID, conversationID, isRoom, result.MatchedCount, result.ModifiedCount)
 	return nil
 }
+
+// ClearRoomMessages 將指定 Room 或私訊對話中，該 userID 可看到的所有訊息做軟刪除
+// （把 userID 加入 deleted_by，不影響對方的訊息記錄）
+func (r *MessageRepository) ClearRoomMessages(ctx context.Context, roomID, userID string) error {
+	if roomID == "" {
+		return fmt.Errorf("roomID is required")
+	}
+	// 同時涵蓋群組訊息 (room_id) 與私訊 (sender_id/receiver_id)
+	filter := bson.M{
+		"$or": []bson.M{
+			{"room_id": roomID},
+			{"sender_id": roomID, "receiver_id": userID},
+			{"sender_id": userID, "receiver_id": roomID},
+		},
+		// 只操作該用戶尚未刪除的訊息
+		"deleted_by": bson.M{"$ne": userID},
+	}
+	update := bson.M{
+		"$addToSet": bson.M{"deleted_by": userID},
+	}
+	result, err := r.collection.UpdateMany(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to clear room messages: %w", err)
+	}
+	log.Printf("clear_room_messages room=%s user=%s modified=%d", roomID, userID, result.ModifiedCount)
+	return nil
+}

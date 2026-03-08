@@ -114,6 +114,36 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     }
   }
 
+  // 顯示清除歷史訊息確認對話框
+  Future<void> _showClearHistoryDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除聊天記錄'),
+        content: const Text('確定要將此對話的所有訊息全部刪除導？此操作無法復原。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('確定刪除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      // 將清除邏輯全部封裝在 provider，不在 UI 層操作
+      await ref.read(chatRoomProvider(_params).notifier).clearHistory();
+      // 錯誤會由 ref.listen 裡的 SnackBar 機制自動顏示
+    }
+  }
+
   Future<void> _navigateToContactInfo() async {
     final state = ref.read(chatRoomProvider(_params));
     final effectiveAvatarUrl = state.roomAvatarUrl.isNotEmpty
@@ -387,6 +417,32 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           avatarUrl: effectiveAvatarUrl,
           onTap: _navigateToContactInfo,
         ),
+        actions: [
+          // 右上角選單
+          PopupMenuButton<String>(
+            icon: Icon(
+              Icons.more_vert,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            onSelected: (value) {
+              if (value == 'clear_history') {
+                _showClearHistoryDialog();
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'clear_history',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_sweep_outlined, color: Colors.redAccent),
+                    SizedBox(width: 8),
+                    Text('清除紀錄', style: TextStyle(color: Colors.redAccent)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Stack(
         children: [

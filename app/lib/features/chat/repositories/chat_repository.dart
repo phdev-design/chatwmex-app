@@ -294,6 +294,18 @@ class ChatRepository {
     }
   }
 
+  /// 呼叫後端清除指定聊天室的所有歷史訊息
+  /// 如果 API 失敗（如後端未實作），會降級為只清本地資料
+  Future<void> clearChatHistory(String roomId) async {
+    if (roomId.isEmpty) return;
+    try {
+      await _networkService.client.delete('/rooms/$roomId/messages');
+    } catch (e) {
+      // API 失敗時降級操作：只清本地，不向上層拋出
+      print('⚠️ clearChatHistory API 失敗，降級為只清本地: $e');
+    }
+  }
+
   Future<void> _cleanupOptimisticDuplicates(List<Message> latest) async {
     final idsToDelete = <String>{};
     for (final msg in latest) {

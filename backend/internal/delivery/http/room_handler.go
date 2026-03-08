@@ -37,6 +37,7 @@ func NewRoomHandler(r *gin.Engine, ru domain.RoomUsecase, uu domain.UserUsecase,
 		api.GET("/:id/members", handler.GetRoomMembers)
 		api.GET("/:id/member-profiles", handler.GetRoomMemberProfiles)
 		api.PATCH("/:id/owner", handler.TransferOwnership)
+		api.DELETE("/:id/messages", handler.ClearRoomMessages) // 清除聊天室歷史訊息
 	}
 }
 
@@ -461,4 +462,38 @@ func (h *RoomHandler) TransferOwnership(c *gin.Context) {
 	}
 
 	response.Success(c, "Ownership transferred successfully")
+}
+
+// ClearRoomMessages 處理 DELETE /api/v1/rooms/:id/messages
+func (h *RoomHandler) ClearRoomMessages(c *gin.Context) {
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	roomID := c.Param("id")
+	if roomID == "" {
+		response.Error(c, http.StatusBadRequest, "Room ID is required")
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, "Invalid user ID type")
+		return
+	}
+
+	ctx := c.Request.Context()
+	err := h.RoomUsecase.ClearRoomMessages(ctx, roomID, userIDStr)
+	if err != nil {
+		if err.Error() == "forbidden" {
+			response.Error(c, http.StatusForbidden, "Only room members can clear messages")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, "Messages cleared successfully")
 }

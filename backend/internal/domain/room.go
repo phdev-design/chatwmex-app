@@ -48,4 +48,6 @@ type RoomUsecase interface {
 	GetRoomMedia(ctx context.Context, userID, roomID, reqType, cursor string, limit int) ([]Message, bool, error)
 	UpdateRoom(ctx context.Context, roomID string, ownerID string, name *string, avatarURL *string) error
 	TransferOwnership(ctx context.Context, roomID string, currentOwnerID string, newOwnerID string) error
+	// ClearRoomMessages 清除聊天室的所有訊息（只有成員才能操作）
+	ClearRoomMessages(ctx context.Context, roomID string, userID string) error
 }

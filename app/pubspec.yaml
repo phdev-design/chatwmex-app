@@ -70,7 +70,7 @@ dependencies:
   googleapis_auth: ^1.6.0
   extension_google_sign_in_as_googleapis_auth: ^3.0.0
   flutter_dotenv: ^6.0.0
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.0.0
 
 
 dev_dependencies:
