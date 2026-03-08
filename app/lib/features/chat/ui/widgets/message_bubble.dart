@@ -387,21 +387,29 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     }
 
     final timeText = DateFormat('a h:mm').format(msg.createdAt);
+
+    // 訊息狀態顏色：已閱讀為主顏色，其餘為次要文字色
     final statusColor = msg.status == MessageStatus.read
         ? tokens.accent
         : subtleTextColor;
 
+    // 訊息狀態圖示（包含 pending 狀態）
     IconData statusIcon;
     switch (msg.status) {
+      case MessageStatus.pending:
+        statusIcon = Icons.schedule; // 離線中，時鐘圖示
+        break;
       case MessageStatus.sending:
         statusIcon = Icons.access_time;
         break;
       case MessageStatus.sent:
-        statusIcon = Icons.check;
+        statusIcon = Icons.check; // 單灰勾
         break;
       case MessageStatus.delivered:
+        statusIcon = Icons.done_all; // 雙灰勾
+        break;
       case MessageStatus.read:
-        statusIcon = Icons.done_all;
+        statusIcon = Icons.done_all; // 雙藍勾
         break;
       case MessageStatus.failed:
         statusIcon = Icons.error_outline;
@@ -415,7 +423,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                 ? Colors.redAccent
                 : statusColor,
           )
-        : const SizedBox();
+        : const SizedBox.shrink();
     final reactions = msg.isUnsent
         ? <String, List<String>>{}
         : (msg.reactions ?? {});

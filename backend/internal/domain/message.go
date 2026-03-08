@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+// MessageReceipt represents a status update for a message (delivered/read).
+type MessageReceipt struct {
+	MessageID string `json:"message_id"`
+	RoomID    string `json:"room_id"`
+	Status    string `json:"status"`    // "sent", "delivered", "read"
+	SenderID  string `json:"sender_id"` // The one who needs to be notified (original sender)
+}
+
 // Message represents a chat message.
 // Content is stored encrypted in the database but decrypted in this domain model.
 type Message struct {
@@ -19,6 +27,8 @@ type Message struct {
 	DeletedBy        []string            `json:"deleted_by,omitempty"`
 	Content          string              `json:"content"`           // Business level content (plaintext)
 	Type             string              `json:"type"`              // "text", "image", "read_receipt"
+	// Status 訊息传送狀態："sent" | "delivered" | "read"
+	Status           string              `json:"status,omitempty" bson:"status,omitempty"`
 	IsRead           bool                `json:"is_read,omitempty"` // For backwards compatibility or simple 1-on-1
 	ReadBy           []string            `json:"read_by"`           // List of UserIDs who read the message
 	LinkPreview      *LinkPreview        `json:"link_preview,omitempty" bson:"link_preview,omitempty"`
@@ -63,6 +73,9 @@ type MessageRepository interface {
 
 	// ClearRoomMessages 刪除指定 Room 或私訊對話的所有訊息
 	ClearRoomMessages(ctx context.Context, roomID, userID string) error
+
+	// UpdateMessageStatus 更新單筆訊息狀態
+	UpdateMessageStatus(ctx context.Context, messageID string, status string) error
 }
 
 // Conversation represents a summary of a chat (DM).
@@ -96,4 +109,7 @@ type MessageUsecase interface {
 	ToggleReaction(ctx context.Context, messageID string, userID string, emoji string) (*Message, error)
 	UnsendMessage(ctx context.Context, messageID string, userID string) (*Message, error)
 	DeleteMessage(ctx context.Context, messageID string, userID string) error
+
+	// UpdateMessageStatus 處理訊息狀態更新邏輯
+	UpdateMessageStatus(ctx context.Context, messageID string, status string) error
 }

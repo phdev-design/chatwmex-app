@@ -345,3 +345,10 @@ func (u *messageUsecase) DeleteMessage(ctx context.Context, messageID string, us
 	defer cancel()
 	return u.messageRepo.SoftDeleteMessage(ctx, messageID, userID)
 }
+
+func (u *messageUsecase) UpdateMessageStatus(c context.Context, messageID string, status string) error {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+
+	return u.messageRepo.UpdateMessageStatus(ctx, messageID, status)
+}

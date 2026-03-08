@@ -3,7 +3,14 @@ import 'package:equatable/equatable.dart';
 
 enum MessageType { text, image, voice, video, file }
 
-enum MessageStatus { sending, sent, delivered, read, failed }
+/// 訊息传送狀態枚裄
+/// - pending: 離線中，已存入本地，尚未發送
+/// - sending: 發送中（暂時狀態）
+/// - sent:    已到達伺服器
+/// - delivered: 已送達接收方裝置
+/// - read:    接收方已閱讀
+/// - failed:  發送失敗
+enum MessageStatus { pending, sending, sent, delivered, read, failed }
 
 class LinkPreview extends Equatable {
   final String url;
@@ -104,9 +111,9 @@ class Message extends Equatable {
       type: _parseType(json['type']),
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       isRead: json['is_read'] ?? false,
-      status: (json['is_read'] == true)
-          ? MessageStatus.read
-          : MessageStatus.sent,
+      // 优先從後端回傳的 status 字串解析，否則用 is_read 推斷
+      status: _parseStatus(json['status']) ??
+          ((json['is_read'] == true) ? MessageStatus.read : MessageStatus.sent),
       readAt: json['read_at'] != null
           ? DateTime.tryParse(json['read_at'])
           : null,
@@ -159,6 +166,8 @@ class Message extends Equatable {
       'is_read': isRead ? 1 : 0,
       'read_at': readAt?.millisecondsSinceEpoch,
       'read_by': jsonEncode(readBy),
+      // 新増：將 status 持久化到 SQLite
+      'status': status.name,
       // 修正：將 linkPreview 轉成 JSON 字串存入本地資料庫
       'link_preview': linkPreview != null ? jsonEncode(linkPreview!.toJson()) : null,
     };
@@ -214,14 +223,14 @@ class Message extends Equatable {
           ? DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int)
           : DateTime.now(),
       isRead: (map['is_read'] ?? 0) == 1,
-      status: (map['is_read'] ?? 0) == 1
-          ? MessageStatus.read
-          : MessageStatus.sent,
+      // 优先讀取 SQLite 中儲存的 status 字串，有效支援 pending 狀態
+      status: _parseStatus(map['status']) ??
+          ((map['is_read'] ?? 0) == 1 ? MessageStatus.read : MessageStatus.sent),
       readAt: map['read_at'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['read_at'] as int)
           : null,
       readBy: readByList,
-      linkPreview: parsedLinkPreview, // 修正：不再寫死為 null，填入解析結果
+      linkPreview: parsedLinkPreview,
     );
   }
 
@@ -240,6 +249,26 @@ class Message extends Equatable {
         return MessageType.file;
       default:
         return MessageType.text;
+    }
+  }
+
+  /// 解析 status 字串為枚裄，未知則回傳 null
+  static MessageStatus? _parseStatus(String? s) {
+    switch (s) {
+      case 'pending':
+        return MessageStatus.pending;
+      case 'sending':
+        return MessageStatus.sending;
+      case 'sent':
+        return MessageStatus.sent;
+      case 'delivered':
+        return MessageStatus.delivered;
+      case 'read':
+        return MessageStatus.read;
+      case 'failed':
+        return MessageStatus.failed;
+      default:
+        return null;
     }
   }
 

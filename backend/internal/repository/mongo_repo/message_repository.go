@@ -30,6 +30,7 @@ type mongoMessage struct {
 	DeletedBy        []string            `bson:"deleted_by,omitempty"`
 	Content          string              `bson:"content"` // Encrypted content
 	Type             string              `bson:"type"`
+	Status           string              `bson:"status,omitempty"`
 	IsRead           bool                `bson:"is_read"`
 	ReadBy           []string            `bson:"read_by"`
 	LinkPreview      *domain.LinkPreview `bson:"link_preview,omitempty"`
@@ -103,6 +104,7 @@ func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
 		DeletedBy:        m.DeletedBy,
 		Content:          m.Content,
 		Type:             m.Type,
+		Status:           m.Status,
 		IsRead:           m.IsRead,
 		ReadBy:           m.ReadBy,
 		LinkPreview:      m.LinkPreview,
@@ -146,6 +148,7 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 		DeletedBy:        deletedBy,
 		Content:          m.Content,
 		Type:             m.Type,
+		Status:           m.Status,
 		IsRead:           m.IsRead,
 		ReadBy:           readBy,
 		LinkPreview:      m.LinkPreview,
@@ -776,5 +779,32 @@ func (r *MessageRepository) ClearRoomMessages(ctx context.Context, roomID, userI
 		return fmt.Errorf("failed to clear room messages: %w", err)
 	}
 	log.Printf("clear_room_messages room=%s user=%s modified=%d", roomID, userID, result.ModifiedCount)
+	return nil
+}
+
+// UpdateMessageStatus 更新單筆訊息狀態
+func (r *MessageRepository) UpdateMessageStatus(ctx context.Context, messageID string, status string) error {
+	oid, err := primitive.ObjectIDFromHex(messageID)
+	if err != nil {
+		return fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	filter := bson.M{"_id": oid}
+	update := bson.M{
+		"$set": bson.M{"status": status},
+	}
+
+	// 額外邏輯：如果是 read，則同步將 is_read 設為 true
+	if status == "read" {
+		update["$set"].(bson.M)["is_read"] = true
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to update message status: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("message not found")
+	}
 	return nil
 }

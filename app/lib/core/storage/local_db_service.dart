@@ -79,8 +79,9 @@ class LocalDbService {
       'created_at INTEGER, '
       'is_read INTEGER, '
       'read_at INTEGER, '
-      'read_by TEXT, ' // 👉 記得上一行結尾要加逗號
-      'link_preview TEXT' // 👉 新增這行
+      'read_by TEXT, '
+      'status TEXT DEFAULT "sent", ' // 訊息狀態：pending/sent/delivered/read/failed
+      'link_preview TEXT' // 新増欄位
       ')',
     );
   }
@@ -117,8 +118,9 @@ class LocalDbService {
       'is_read': 'ALTER TABLE messages ADD COLUMN is_read INTEGER',
       'read_at': 'ALTER TABLE messages ADD COLUMN read_at INTEGER',
       'read_by': 'ALTER TABLE messages ADD COLUMN read_by TEXT',
-      // 👉 新增下面這一行
       'link_preview': 'ALTER TABLE messages ADD COLUMN link_preview TEXT',
+      // 新増：status 欄位，預設為 sent
+      'status': 'ALTER TABLE messages ADD COLUMN status TEXT DEFAULT "sent"',
     };
     for (final entry in missing.entries) {
       if (!existing.contains(entry.key)) {
@@ -245,6 +247,30 @@ class LocalDbService {
       'messages',
       where: 'room_id = ? OR sender_id = ? OR receiver_id = ?',
       whereArgs: [roomId, roomId, roomId],
+    );
+  }
+
+  /// 取得所有狀態為 pending 的訊息（用於重連同步）
+  Future<List<Message>> getPendingMessages() async {
+    final db = await initDB();
+    final rows = await db.query(
+      'messages',
+      where: 'status = ?',
+      whereArgs: ['pending'],
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(Message.fromMap).toList();
+  }
+
+  /// 更新單筆訊息的狀態
+  Future<void> updateMessageStatus(String id, MessageStatus status) async {
+    if (id.isEmpty) return;
+    final db = await initDB();
+    await db.update(
+      'messages',
+      {'status': status.name},
+      where: 'id = ? OR client_msg_id = ?',
+      whereArgs: [id, id],
     );
   }
 

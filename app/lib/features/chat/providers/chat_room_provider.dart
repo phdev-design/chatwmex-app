@@ -155,7 +155,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         final event = data['event'];
         final payload = data['data'];
 
-        if (event == 'chat_message') {
+        if (event == 'ws_reconnected') {
+          // 當 WebSocket 重新連線時，自動同步 pending 訊息
+          resendPendingMessages();
+        } else if (event == 'chat_message') {
           try {
             final rawMessage = Message.fromJson(payload);
             _tryDecryptMessage(rawMessage).then((message) {
@@ -168,6 +171,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                   () => LocalDbService().insertMessages([rawMessage]),
                 ); // Store encrypted locally
                 if (message.senderId != arg.currentUserId) {
+                  // 自動發送送達回執
+                  _wsService.send('message_delivered', {
+                    'message_id': message.id,
+                    'room_id': (arg.isRoom ? arg.roomId : null),
+                    'sender_id': message.senderId,
+                  });
                   if (arg.isRoom) {
                     markAsRead(message.id);
                   } else {
@@ -194,14 +203,18 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               _updateMessageStatus(clientMsgId, MessageStatus.sent);
             }
           }
-        } else if (event == 'message_delivered') {
+        } else if (event == 'message_delivered' || event == 'message_read') {
           if (payload is Map) {
             final clientMsgId = payload['client_msg_id'];
             final messageId = payload['message_id'];
+            final status = event == 'message_read'
+                ? MessageStatus.read
+                : MessageStatus.delivered;
+
             if (clientMsgId is String) {
-              _updateMessageStatus(clientMsgId, MessageStatus.delivered);
+              _updateMessageStatus(clientMsgId, status);
             } else if (messageId is String) {
-              _updateMessageStatus(messageId, MessageStatus.delivered);
+              _updateMessageStatus(messageId, status);
             }
           }
         } else if (event == 'typing_start') {
@@ -628,6 +641,58 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  /// 重新發送所有處於 pending 狀態的訊息
+  Future<void> resendPendingMessages() async {
+    // 取得所有本地資料庫中狀態為 pending 的訊息
+    final pending = await LocalDbService().getPendingMessages();
+    if (pending.isEmpty) return;
+
+    debugPrint('ChatRoomViewModel: Resending ${pending.length} pending messages');
+
+    for (final message in pending) {
+      // 檢查訊息是否屬於目前的聊天室（避免多個聊天室同時同步時互相影響）
+      final isRelevant = (arg.isRoom && message.roomId == arg.roomId) ||
+          (!arg.isRoom && (message.receiverId == arg.roomId || message.senderId == arg.roomId));
+      
+      if (!isRelevant) continue;
+
+      String payloadContent = message.content;
+      final isE2EEEnabled = ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
+
+      if (!arg.isRoom && isE2EEEnabled) {
+        final pubKey = await _getPublicKey(arg.roomId);
+        if (pubKey != null) {
+          try {
+            payloadContent = await _cryptoService.encryptMessage(message.content, pubKey);
+          } catch (e) {
+            debugPrint('Failed to encrypt pending message: $e');
+            continue;
+          }
+        }
+      }
+
+      final payload = {
+        'receiver_id': message.receiverId,
+        'room_id': message.roomId,
+        'reply_to_message_id': message.replyToMessageId,
+        'content': payloadContent,
+        'type': message.type.name,
+        'client_msg_id': message.clientMsgId,
+      };
+
+      try {
+        await _wsService.send('chat_message', payload);
+        // 更新 UI 狀態
+        _updateMessageStatus(message.clientMsgId!, MessageStatus.sent);
+        // 更新本地資料庫
+        await LocalDbService().updateMessageStatus(message.clientMsgId!, MessageStatus.sent);
+      } catch (e) {
+        debugPrint('Failed to resend pending message ${message.clientMsgId}: $e');
+        // 保持 pending 狀態，下次重連再試
+      }
+    }
+  }
+
   Future<void> sendMessage(
     String content, {
     MessageType type = MessageType.text,
@@ -648,16 +713,22 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       type: type,
       createdAt: DateTime.now(),
       isRead: true,
-      status: MessageStatus.sending,
+      // Step 1: 先標記為 pending（離線安全）
+      status: MessageStatus.pending,
       readBy: [arg.currentUserId],
     );
+
+    // Step 2: 先寫入本地 DB （道下即顯示 + 離線安全）
+    await LocalDbService().insertMessages([tempMessage]);
+
+    // Step 3: 加入訊息列表，UI 立即顯示
     _addMessage(tempMessage);
+    state = state.copyWith(isSending: true, clearReplyingTo: true);
 
     String payloadContent = content;
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
-    // 👉 判斷 E2EE 開關，若為 false 則直接傳送明文
     if (!arg.isRoom && isE2EEEnabled) {
       final pubKey = await _getPublicKey(arg.roomId);
       if (pubKey != null) {
@@ -679,12 +750,19 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     };
 
     try {
+      // Step 4: 嘗試透過 WS 發送
       await _wsService.send('chat_message', payload);
+      // Step 5: 成功後更新狀態為 sent
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
-      Future(() => LocalDbService().insertMessages([tempMessage]));
-      state = state.copyWith(clearReplyingTo: true);
+      // 同步更新本地 DB
+      final sentMsg = tempMessage.copyWith(status: MessageStatus.sent);
+      Future.microtask(() => LocalDbService().insertMessages([sentMsg]));
+      state = state.copyWith(isSending: false);
     } catch (e) {
-      _updateMessageStatus(clientMsgId, MessageStatus.failed);
+      // Step 6: 發送失敗，保留 pending 狀態不顯示錯誤
+      // 此訊息將在重連時自動重試（第三步實作）
+      print('⚠️ WS send failed, message kept as pending: $e');
+      state = state.copyWith(isSending: false);
     }
   }
 
@@ -725,7 +803,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     try {
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
-      Future(() => LocalDbService().insertMessages([message]));
+      Future.microtask(() => LocalDbService().insertMessages([message]));
       state = state.copyWith(isSending: false, clearReplyingTo: true);
     } catch (e) {
       _updateMessageStatus(clientMsgId, MessageStatus.failed);
@@ -812,7 +890,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
-      Future(() => LocalDbService().insertMessages([tempMessage]));
+      Future.microtask(() => LocalDbService().insertMessages([tempMessage]));
       state = state.copyWith(isSending: false, replyingToMessage: null);
     } catch (e) {
       _updateMessageStatus(clientMsgId, MessageStatus.failed);
@@ -861,7 +939,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final messages = [...state.messages];
     messages[index] = updated;
     state = state.copyWith(messages: messages);
-    Future(() => LocalDbService().insertMessages([updated]));
+    Future.microtask(() => LocalDbService().insertMessages([updated]));
     try {
       await _chatRepository.toggleReaction(messageId, emoji);
     } catch (e) {
@@ -888,7 +966,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final messages = [...state.messages];
     messages[index] = updated;
     state = state.copyWith(messages: messages);
-    Future(() => LocalDbService().insertMessages([updated]));
+    Future.microtask(() => LocalDbService().insertMessages([updated]));
 
     // 👇 新增：如果收回的是最新一則訊息（index == 0），同步更新 RoomList
     if (index == 0) {
@@ -919,8 +997,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     try {
       await _chatRepository.deleteMessage(messageId);
       _removeMessageFromState(messageId);
-      Future(() => LocalDbService().deleteMessageLocal(messageId));
-      Future(() => ref.read(roomListViewModelProvider.notifier).fetchRooms());
+      Future.microtask(() => LocalDbService().deleteMessageLocal(messageId));
+      Future.microtask(() => ref.read(roomListViewModelProvider.notifier).fetchRooms());
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -947,7 +1025,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   void deleteMessageLocal(Message msg) {
     if (msg.id.isEmpty) return;
     _removeMessageFromState(msg.id);
-    Future(() => LocalDbService().deleteMessageLocal(msg.id));
+    Future.microtask(() => LocalDbService().deleteMessageLocal(msg.id));
   }
 
   void _removeMessageFromState(String messageId) {
@@ -1037,7 +1115,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final messages = [...state.messages];
     messages[index] = updated;
     state = state.copyWith(messages: messages);
-    Future(() => LocalDbService().insertMessages([updated]));
+    Future.microtask(() => LocalDbService().insertMessages([updated]));
   }
 
   void _applyUnsentUpdate(String messageId) {
@@ -1048,7 +1126,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final messages = [...state.messages];
     messages[index] = updated;
     state = state.copyWith(messages: messages);
-    Future(() => LocalDbService().insertMessages([updated]));
+    Future.microtask(() => LocalDbService().insertMessages([updated]));
   }
 
   Message _attachReplyMessage(Message message) {
@@ -1130,6 +1208,18 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       try {
         await _chatRepository.markMessagesAsRead(ids);
         _applyReadReceipt(ids, arg.currentUserId);
+
+        // 透過 WebSocket 發送已讀回執給原發送者
+        for (final id in ids) {
+          final msg = state.messages.firstWhere((m) => m.id == id, orElse: () => Message(id: '', content: '', senderId: '', createdAt: DateTime.now()));
+          if (msg.id.isNotEmpty && msg.senderId != arg.currentUserId) {
+            _wsService.send('message_read', {
+              'message_id': msg.id,
+              'room_id': (arg.isRoom ? arg.roomId : null),
+              'sender_id': msg.senderId,
+            });
+          }
+        }
         ref
             .read(roomListViewModelProvider.notifier)
             .clearUnreadCount(arg.roomId);

@@ -54,6 +54,8 @@ func (c *SocketController) HandleMessage(client *Client, message []byte) {
 		c.OnTyping(client, req.Data, "typing_start")
 	case "typing_stop":
 		c.OnTyping(client, req.Data, "typing_stop")
+	case "message_delivered", "message_read":
+		c.OnMessageReceipt(client, req.Event, req.Data)
 	default:
 		log.Printf("Unknown event: %s", req.Event)
 		c.respondError(client, "error", "Unknown event type")
@@ -209,6 +211,35 @@ func (c *SocketController) OnTyping(client *Client, data []byte, event string) {
 	}
 	if payload.ReceiverID != "" {
 		c.hub.SendTypingToUser(client.userID, payload.ReceiverID, event)
+	}
+}
+
+// OnMessageReceipt handles delivery and read receipts from the recipient.
+func (c *SocketController) OnMessageReceipt(client *Client, event string, data []byte) {
+	var receipt domain.MessageReceipt
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		return
+	}
+
+	// 1. Determine status
+	status := "delivered"
+	if event == "message_read" {
+		status = "read"
+	}
+	receipt.Status = status
+
+	// 2. Update Database
+	if receipt.MessageID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := c.messageUsecase.UpdateMessageStatus(ctx, receipt.MessageID, status); err != nil {
+			log.Printf("Error updating message status: %v", err)
+		}
+	}
+
+	// 3. Notify the original sender
+	if receipt.SenderID != "" {
+		c.hub.SendNotification(receipt.SenderID, event, receipt)
 	}
 }
 
