@@ -16,20 +16,25 @@ class NotificationService {
 
   NotificationService(this._storageService, this._networkService);
 
-  Future<void> initOneSignal(String appId) async {
+Future<void> initOneSignal(String appId) async {
     OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
     OneSignal.initialize(appId);
     OneSignal.Notifications.requestPermission(true);
+    
     OneSignal.Notifications.addClickListener((event) {
       _handleNotificationClick(event);
     });
+    
     OneSignal.Notifications.addForegroundWillDisplayListener((event) {
       _handleForegroundNotification(event);
       _handleMessageDelivered(event.notification.additionalData);
     });
-    OneSignal.Notifications.addBackgroundWillDisplayListener((event) {
-      _handleMessageDelivered(event.notification.additionalData);
-    });
+
+    // 👇 刪除或註解掉以下這段程式碼 👇
+    // OneSignal.Notifications.addBackgroundWillDisplayListener((event) {
+    //   _handleMessageDelivered(event.notification.additionalData);
+    // });
+    
     await handlePendingNavigation();
   }
 
