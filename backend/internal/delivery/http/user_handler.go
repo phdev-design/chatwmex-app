@@ -205,11 +205,14 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// Usecase: return user.ID
 	// Handler: userID := mockToken
 
-	userID, err := h.UserUsecase.Login(ctx, req.Username, req.Password)
+	rawToken, err := h.UserUsecase.Login(ctx, req.Username, req.Password)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, err.Error())
 		return
 	}
+
+	// Sanitize userID from the mock token string
+	userID := strings.TrimPrefix(rawToken, "mock-jwt-token-for-")
 
 	// Generate Real JWT
 	tokenString, err := token.GenerateToken(userID, h.JWTSecret, 7*24*time.Hour)

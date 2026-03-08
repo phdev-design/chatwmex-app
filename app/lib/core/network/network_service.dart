@@ -91,6 +91,27 @@ class NetworkService {
     }
   }
 
+  Future<String> uploadAvatar(File file) async {
+    final fileName = file.path.split('/').last;
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(file.path, filename: fileName),
+    });
+
+    try {
+      final response = await _dio.put('/users/avatar', data: formData);
+      final data = response.data['data'];
+      if (data is Map<String, dynamic> && data['avatar_url'] is String) {
+        return data['avatar_url'] as String;
+      }
+      if (response.data is Map && response.data['avatar_url'] is String) {
+        return response.data['avatar_url'] as String;
+      }
+      throw Exception('Invalid upload avatar response format');
+    } catch (e) {
+      throw Exception('Upload avatar failed: $e');
+    }
+  }
+
   Dio get client => _dio;
 }
 

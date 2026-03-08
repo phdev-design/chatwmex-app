@@ -32,11 +32,14 @@ class WebSocketService {
     if (token == null) return;
 
     // Use proper IP for emulator/device
-    // Android Emulator: 10.0.2.2
-    // iOS Simulator / Real Device on LAN: Needs LAN IP or localhost (if Simulator)
-    String baseUrl = dotenv.env['WS_URL'] ?? 'ws://192.168.100.114:8080/ws';
-    if (dotenv.env['WS_URL'] == null && Platform.isAndroid) {
-      baseUrl = 'ws://10.0.2.2:8080/ws';
+    String baseUrl = dotenv.env['WS_URL'] ?? '';
+    
+    if (baseUrl.isEmpty) {
+      if (Platform.isAndroid) {
+        baseUrl = 'ws://10.0.2.2:8080/ws';
+      } else {
+        baseUrl = 'ws://localhost:8080/ws';
+      }
     }
 
     final uri = Uri.parse('$baseUrl?token=$token');
