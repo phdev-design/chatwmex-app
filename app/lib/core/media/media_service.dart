@@ -27,7 +27,15 @@ class MediaService {
 
   Future<void> startRecording(String path) async {
     if (await hasMicrophonePermission()) {
-      await _audioRecorder.start(const RecordConfig(), path: path);
+      await _audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc, // iOS + Android 通用 m4a
+          bitRate: 128000,
+          sampleRate: 44100,
+          numChannels: 1,
+        ),
+        path: path,
+      );
     } else {
       throw Exception('Microphone permission not granted');
     }
