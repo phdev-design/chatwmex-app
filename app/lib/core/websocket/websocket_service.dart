@@ -59,7 +59,7 @@ class WebSocketService {
       _channel = channel;
       _isConnected = true;
       _retryAttempts = 0;
-      print('WebSocket connected');
+      debugPrint('WebSocket connected');
 
       if (_hasConnectedOnce) {
         _streamController.add({'event': 'ws_reconnected'});
@@ -75,16 +75,16 @@ class WebSocketService {
           _handleIncomingMessage(message);
         },
         onDone: () {
-          print('WebSocket closed');
+          debugPrint('WebSocket closed');
           _handleDisconnect();
         },
         onError: (error) {
-          print('WebSocket error: $error');
+          debugPrint('WebSocket error: $error');
           _handleDisconnect();
         },
       );
     } catch (e) {
-      print('WebSocket connection failed: $e');
+      debugPrint('WebSocket connection failed: $e');
       _handleDisconnect();
     }
   }
@@ -112,7 +112,7 @@ class WebSocketService {
           _handleDecodedEvent(Map<String, dynamic>.from(decoded));
         }
       } catch (e) {
-        print('WebSocket decode error: $e');
+        debugPrint('WebSocket decode error: $e');
       }
     }
   }
@@ -139,7 +139,7 @@ class WebSocketService {
     final delay = Duration(seconds: (1 << _retryAttempts).clamp(1, 30));
     _retryAttempts++;
 
-    print('Reconnecting in ${delay.inSeconds} seconds...');
+    debugPrint('Reconnecting in ${delay.inSeconds} seconds...');
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, connect);
   }
@@ -180,7 +180,7 @@ class WebSocketService {
         );
       }
     } catch (e) {
-      print('Send failed, queuing message: $e');
+      debugPrint('Send failed, queuing message: $e');
       _messageQueue.add(payload);
       // Trigger reconnect if needed?
       if (_isConnected) _handleDisconnect();
@@ -190,7 +190,7 @@ class WebSocketService {
   void _processQueue() async {
     if (_messageQueue.isEmpty) return;
 
-    print('Processing ${_messageQueue.length} queued messages...');
+    debugPrint('Processing ${_messageQueue.length} queued messages...');
     final List<Map<String, dynamic>> queueCopy = List.from(_messageQueue);
     _messageQueue.clear();
 

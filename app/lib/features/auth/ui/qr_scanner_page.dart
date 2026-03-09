@@ -36,6 +36,7 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
 
       // 確認是 UUID（基本長度檢查 36 碼）
       if (qrValue.length == 36) {
+        if (!mounted) return;
         final confirm = await showDialog<bool>(
           context: context,
           barrierDismissible: false,
@@ -99,12 +100,11 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
         actions: [
           // 7.x Breaking Change: torchState 和 cameraFacingState 已從 ValueNotifier
           // 改為透過 _scannerController.stream (MobileScannerState) 取得
-          StreamBuilder<MobileScannerState>(
-            stream: _scannerController.stream,
-            builder: (context, snapshot) {
-              final torchState = snapshot.data?.torchState ?? TorchState.off;
-              final cameraIsFront =
-                  snapshot.data?.cameraDirection == CameraFacing.front;
+          ValueListenableBuilder<MobileScannerState>(
+            valueListenable: _scannerController,
+            builder: (context, state, child) {
+              final torchState = state.torchState;
+              final cameraIsFront = state.cameraDirection == CameraFacing.front;
               return Row(
                 children: [
                   IconButton(

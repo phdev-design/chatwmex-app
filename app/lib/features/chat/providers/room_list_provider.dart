@@ -332,7 +332,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
       final users = await _repository.searchUsers(query);
       state = state.copyWith(searchResults: users);
     } catch (e) {
-      print('Search failed: $e');
+      debugPrint('Search failed: $e');
     }
   }
 

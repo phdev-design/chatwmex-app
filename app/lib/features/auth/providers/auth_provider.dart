@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
@@ -56,7 +57,7 @@ class AuthViewModel extends Notifier<AuthState> {
         await _notificationService.handlePendingNavigation();
         state = state.copyWith(isLoading: false, isAuthenticated: true);
       } catch (e) {
-        print('Post-login device registration warning: $e');
+        debugPrint('Post-login device registration warning: $e');
         state = state.copyWith(
           isLoading: false,
           isAuthenticated: true,

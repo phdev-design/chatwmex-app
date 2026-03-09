@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/notification/notification_service.dart';
@@ -39,7 +40,7 @@ class AuthRepository {
       await _storageService.save('phone_number', phoneNumber);
       await _storageService.save('avatar_url', avatarUrl);
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -70,7 +71,7 @@ class AuthRepository {
             success = true;
             break;
           } catch (e) {
-            print('Failed to unregister device (Attempt ${i + 1}): $e');
+            debugPrint('Failed to unregister device (Attempt ${i + 1}): $e');
             if (i < 2) {
               await Future.delayed(const Duration(seconds: 1));
             }
@@ -81,7 +82,7 @@ class AuthRepository {
         }
       }
     } catch (e) {
-      print('Error during logout device unregistration: $e');
+      debugPrint('Error during logout device unregistration: $e');
     } finally {
       // ✅ 只刪認證相關資料，不要 deleteAll()，避免清除 E2EE 私鑰
       await _storageService.delete('jwt_token');
@@ -101,7 +102,7 @@ class AuthRepository {
       try {
         await _ref.read(backupManagerProvider.notifier).clearSession();
       } catch (e) {
-        print('Error clearing Google Drive session on logout: $e');
+        debugPrint('Error clearing Google Drive session on logout: $e');
       }
     }
   }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -186,8 +187,10 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     return RadioListTile<String>(
       title: Text(title, style: TextStyle(color: primaryTextColor)),
       value: title,
+      // ignore: deprecated_member_use
       groupValue: groupValue,
       activeColor: accentColor,
+      // ignore: deprecated_member_use
       onChanged: onChanged,
     );
   }
@@ -372,7 +375,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
             (room.avatarUrl as String).isNotEmpty) {
           displayAvatarUrl = room.avatarUrl as String;
         }
-      } catch (_) {}
+      } catch (_) { debugPrint('Error caught'); }
     }
 
     final colorScheme = Theme.of(context).colorScheme;
@@ -538,7 +541,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 _updateMute(null);
                               }
                             },
-                            activeColor: accentColor,
+                            activeThumbColor: accentColor,
                           ),
                         ),
                         loading: () => _InfoTile(
@@ -552,7 +555,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         ),
-                        error: (_, __) => _InfoTile(
+                        error: (_, _) => _InfoTile(
                           icon: Icons.notifications_off_rounded,
                           iconColor: const Color(0xFF8E8E93),
                           label: '將通知靜音',
@@ -687,7 +690,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                             child: LinearProgressIndicator(),
                           ),
                         ),
-                        error: (_, __) => _InfoTile(
+                        error: (_, _) => _InfoTile(
                           icon: Icons.av_timer_rounded,
                           iconColor: const Color(0xFFFF9500),
                           label: '自動刪除的訊息',
@@ -821,10 +824,12 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                             ),
                           );
                         }
+                        if (!mounted) return;
                         if (_isBlocked && mounted) context.pop();
                       } catch (e) {
                         if (mounted) {
                           ScaffoldMessenger.of(
+                            if (!mounted) return;
                             context,
                           ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
                         }
@@ -868,6 +873,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                           } catch (e) {
                             if (mounted) {
                               Navigator.pop(context); // close loading
+                              if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('無法取得群組成員：$e')),
                               );
@@ -884,6 +890,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
                           if (remainingMembers.isEmpty) {
                             final confirmed = await showDialog<bool>(
+                              if (!mounted) return;
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 backgroundColor: Theme.of(
@@ -919,6 +926,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('群組已解散')),
                                 );
+                                if (!mounted) return;
                                 context.go('/rooms');
                               }
                             } catch (e) {
@@ -931,6 +939,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                           } else {
                             final selectedUserId =
                                 await showModalBottomSheet<String>(
+                                  if (!mounted) return;
                                   context: context,
                                   backgroundColor: isDark
                                       ? const Color(0xFF1C1C1E)
@@ -1035,6 +1044,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 '該成員';
 
                             final confirmTransfer = await showDialog<bool>(
+                              if (!mounted) return;
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 backgroundColor: Theme.of(
@@ -1064,6 +1074,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
                             if (!mounted) return;
                             showDialog(
+                              if (!mounted) return;
                               context: context,
                               barrierDismissible: false,
                               builder: (_) => const Center(
@@ -1084,14 +1095,17 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
                               if (mounted) {
                                 Navigator.pop(context); // close loading
+                                if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('已成功轉交權限並退出群組')),
                                 );
+                                if (!mounted) return;
                                 context.go('/rooms');
                               }
                             } catch (e) {
                               if (mounted) {
                                 Navigator.pop(context); // close loading
+                                if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text('操作失敗：$e')),
                                 );
@@ -1136,6 +1150,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                               );
                               // Navigate back to the main chat list
                               // Assuming /rooms is the route for the main tab view where chat list lives
+                              if (!mounted) return;
                               context.go('/rooms');
                             }
                           } catch (e) {

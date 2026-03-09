@@ -403,7 +403,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     return ListView.separated(
       padding: const EdgeInsets.only(top: 8),
       itemCount: rooms.length,
-      separatorBuilder: (_, __) => Divider(
+      separatorBuilder: (_, _) => Divider(
         height: 1,
         indent: 76,
         color: isDark

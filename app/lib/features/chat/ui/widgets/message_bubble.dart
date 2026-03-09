@@ -507,8 +507,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                             style: TextStyle(color: textColor),
                                             child: content,
                                           ),
-                                    if (linkPreviewCard != null)
-                                      linkPreviewCard,
+                                    ?linkPreviewCard,
                                     const SizedBox(height: 2),
                                     Row(
                                       mainAxisSize: MainAxisSize.min,

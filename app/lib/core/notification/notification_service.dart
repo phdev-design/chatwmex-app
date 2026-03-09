@@ -142,6 +142,8 @@ Future<void> _handleMessageDelivered(Map<String, dynamic>? data) async {
       return;
     }
 
+    if (!context.mounted) return;
+
     GoRouter.of(context).go(
       '/chat',
       extra: {

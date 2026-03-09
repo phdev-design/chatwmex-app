@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:app/core/network/network_service.dart';
@@ -38,7 +39,7 @@ class ChatRepository {
       final List<dynamic> list = response.data['data'] ?? [];
       return list.map((e) => Room.fromJson(e)).toList();
     } catch (e) {
-      throw e; // 實務上建議使用自訂 Exception
+      rethrow; // 實務上建議使用自訂 Exception
     }
   }
 
@@ -51,7 +52,7 @@ class ChatRepository {
       final List<dynamic> list = response.data['data'] ?? [];
       return list.map((e) => User.fromJson(e)).toList();
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -67,7 +68,7 @@ class ChatRepository {
           .map((e) => User.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -90,7 +91,7 @@ class ChatRepository {
 
       await _networkService.client.patch('/rooms/$roomId', data: data);
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -99,7 +100,7 @@ class ChatRepository {
     try {
       await _networkService.client.delete('/rooms/$roomId/members/$memberId');
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -142,11 +143,11 @@ class ChatRepository {
       nextCursor = payload['next_cursor']?.toString() ?? '';
       hasMore = payload['has_more'] == true;
     } catch (e) {
-      print('⚠️ API 發生錯誤: $e');
+      debugPrint('⚠️ API 發生錯誤: $e');
     }
 
     if (apiMessages.isEmpty && cursor.isEmpty) {
-      print('⚠️ API 回傳空資料，嘗試從 LocalDB 撈取...');
+      debugPrint('⚠️ API 回傳空資料，嘗試從 LocalDB 撈取...');
       final cached = await _localDb.getMessagesByRoom(roomId, limit: 1000);
       final deduped = _dedupeMessages(cached);
       for (final id in deduped.removedIds) {
@@ -180,7 +181,7 @@ class ChatRepository {
         data: {'message_ids': messageIds},
       );
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -196,7 +197,7 @@ class ChatRepository {
       );
       return response.data['data']['url'] ?? response.data['url'];
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -208,7 +209,7 @@ class ChatRepository {
         data: {'emoji': emoji},
       );
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -217,7 +218,7 @@ class ChatRepository {
     try {
       await _networkService.client.patch('/messages/$messageId/unsend');
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -226,7 +227,7 @@ class ChatRepository {
     try {
       await _networkService.client.delete('/messages/$messageId');
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -264,7 +265,7 @@ class ChatRepository {
           await _localDb.insertMessages(latest);
           await _cleanupOptimisticDuplicates(latest);
         } catch (dbError) {
-          print('⚠️ 寫入 SQLite 失敗，但不影響畫面顯示: $dbError');
+          debugPrint('⚠️ 寫入 SQLite 失敗，但不影響畫面顯示: $dbError');
         }
       }
 
@@ -272,7 +273,7 @@ class ChatRepository {
       return latest;
     } catch (e) {
       // 5. 只有在「斷網」或「API 壞掉」時，才退回使用本地的快取訊息
-      print('⚠️ API 發生錯誤，退回使用本地快取: $e');
+      debugPrint('⚠️ API 發生錯誤，退回使用本地快取: $e');
 
       final cached = await _localDb.getMessagesByRoom(
         roomId,
@@ -285,7 +286,7 @@ class ChatRepository {
       }
 
       // 如果連快取都沒有，拋出錯誤讓畫面顯示 Error
-      throw e;
+      rethrow;
     }
   }
 
@@ -297,7 +298,7 @@ class ChatRepository {
       await _networkService.client.delete('/rooms/$roomId/messages');
     } catch (e) {
       // API 失敗時降級操作：只清本地，不向上層拋出
-      print('⚠️ clearChatHistory API 失敗，降級為只清本地: $e');
+      debugPrint('⚠️ clearChatHistory API 失敗，降級為只清本地: $e');
     }
   }
 
@@ -321,7 +322,7 @@ class ChatRepository {
       );
       return response.data['data']['public_key'] as String?;
     } catch (e) {
-      print('Failed to get user public key: $e');
+      debugPrint('Failed to get user public key: $e');
       return null;
     }
   }

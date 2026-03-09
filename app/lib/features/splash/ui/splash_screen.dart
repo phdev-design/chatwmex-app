@@ -49,7 +49,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           try {
             await networkService.client.delete('/devices/$pendingDeviceId');
           } catch (e) {
-            print('Failed to clear pending device unregister on splash: $e');
+            debugPrint('Failed to clear pending device unregister on splash: $e');
           } finally {
             await storage.delete('pending_unregister_device_id');
           }
@@ -72,11 +72,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
               },
             );
           } catch (e) {
-            print('Splash device register warning: $e');
+            debugPrint('Splash device register warning: $e');
           }
         }
       } catch (e) {
-        print('Init sequence failed on splash: $e');
+        debugPrint('Init sequence failed on splash: $e');
       }
       if (!mounted) return;
       context.go('/chat-list');

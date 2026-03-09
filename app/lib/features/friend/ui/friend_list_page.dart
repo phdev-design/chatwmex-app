@@ -130,7 +130,7 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
 
         return ListView.separated(
           itemCount: state.friends.length,
-          separatorBuilder: (_, __) => Divider(
+          separatorBuilder: (_, _) => Divider(
             height: 1,
             color: colorScheme.outlineVariant.withValues(alpha: 0.35),
           ),

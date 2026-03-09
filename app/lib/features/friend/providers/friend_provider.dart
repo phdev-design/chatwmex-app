@@ -129,7 +129,7 @@ class FriendViewModel extends Notifier<FriendState> {
       // Ideally show success message, no state update needed unless we track sent requests
     } catch (e) {
       // Propagate error to UI
-      throw e;
+      rethrow;
     }
   }
 
@@ -138,7 +138,7 @@ class FriendViewModel extends Notifier<FriendState> {
       await _repository.acceptFriendRequest(requestId);
       await loadAll();
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -147,7 +147,7 @@ class FriendViewModel extends Notifier<FriendState> {
       await _repository.rejectFriendRequest(requestId);
       await loadAll();
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 
@@ -156,7 +156,7 @@ class FriendViewModel extends Notifier<FriendState> {
       await _repository.unfriend(targetUserId);
       await loadAll(); // 重新整理好友清單
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
 

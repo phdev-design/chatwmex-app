@@ -129,7 +129,7 @@ class _BlacklistPageState extends ConsumerState<BlacklistPage> {
 
         return ListView.separated(
           itemCount: state.blockedUsers.length,
-          separatorBuilder: (_, __) => Divider(
+          separatorBuilder: (_, _) => Divider(
             height: 1,
             color: colorScheme.outlineVariant.withValues(alpha: 0.35),
           ),

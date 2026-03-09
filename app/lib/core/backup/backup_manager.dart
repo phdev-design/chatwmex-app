@@ -99,7 +99,7 @@ class BackupManager extends StateNotifier<BackupState>
         if (DateTime.now().difference(last).inHours < 24) {
           return; // backup was too recent
         }
-      } catch (_) {}
+      } catch (_) { debugPrint('Error caught'); }
     }
 
     if (await signInSilently()) {
@@ -175,10 +175,10 @@ class BackupManager extends StateNotifier<BackupState>
   Future<bool> signIn() async {
     if (_isAuthenticating) return false;
     _isAuthenticating = true;
-    print('[BackupManager] signIn called');
+    debugPrint('[BackupManager] signIn called');
     try {
       final result = await _googleDriveService.signIn();
-      print('[BackupManager] signIn result: $result');
+      debugPrint('[BackupManager] signIn result: $result');
 
       if (result) {
         final isValid = await _verifyAndLinkGoogleAccount();
@@ -246,7 +246,7 @@ class BackupManager extends StateNotifier<BackupState>
     final payload = {
       'backup_date': DateTime.now().toIso8601String(),
       'app_version': "1.0.0", // Hardcoded app version for now
-      if (keyBackupData != null) 'e2ee_key_backup': keyBackupData,
+      'e2ee_key_backup': ?keyBackupData,
       'conversations': messages.map((m) => m.toMap()).toList(),
     };
     return jsonEncode(payload);

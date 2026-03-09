@@ -186,7 +186,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               }
             });
           } catch (e) {
-            print('Error parsing message: $e');
+            debugPrint('Error parsing message: $e');
           }
         } else if (event == 'error') {
           if (payload is Map && payload['message'] == 'cannot_send_blocked') {
@@ -544,8 +544,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
   // 判斷字串是否看起來像我們的 E2EE 密文格式（base64，且長度 > 28bytes 對應的 base64 長度）
   bool _looksLikeE2EECiphertext(String content) {
-    if (content.length < 40)
+    if (content.length < 40) {
       return false; // < 28 bytes base64 encoded 約 40 chars
+    }
     final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
     return base64Regex.hasMatch(content.trim());
   }
@@ -613,7 +614,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         }
       }
       state = state.copyWith(userAvatarUrls: avatars);
-    } catch (_) {}
+    } catch (_) { debugPrint('Error caught'); }
   }
 
   Future<void> loadMoreMessages() async {
@@ -749,7 +750,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         try {
           payloadContent = await _cryptoService.encryptMessage(content, pubKey);
         } catch (e) {
-          print('Failed to encrypt message: $e');
+          debugPrint('Failed to encrypt message: $e');
         }
       }
     }
@@ -775,7 +776,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     } catch (e) {
       // Step 6: 發送失敗，保留 pending 狀態不顯示錯誤
       // 此訊息將在重連時自動重試（第三步實作）
-      print('⚠️ WS send failed, message kept as pending: $e');
+      debugPrint('⚠️ WS send failed, message kept as pending: $e');
       state = state.copyWith(isSending: false);
     }
   }
@@ -801,7 +802,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             pubKey,
           );
         } catch (e) {
-          print('Failed to encrypt retry: $e');
+          debugPrint('Failed to encrypt retry: $e');
         }
       }
     }
@@ -889,7 +890,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         if (pubKey != null) {
           try {
             payloadContent = await _cryptoService.encryptMessage(url, pubKey);
-          } catch (e) {}
+          } catch (e) { debugPrint(e.toString()); }
         }
       }
 
