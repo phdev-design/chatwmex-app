@@ -4,7 +4,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/network/network_service.dart';
-
+import 'package:dio/dio.dart';
 class NotificationService {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
@@ -68,7 +68,7 @@ class NotificationService {
     }
   }
 
-  Future<void> _handleMessageDelivered(Map<String, dynamic>? data) async {
+Future<void> _handleMessageDelivered(Map<String, dynamic>? data) async {
     if (data == null) return;
 
     final messageId = data['message_id']?.toString() ?? '';
@@ -82,7 +82,20 @@ class NotificationService {
         },
       );
       debugPrint('Background delivered report sent for $messageId');
+      
+    } on DioException catch (e) {
+      // 專門捕捉 Dio 的網路錯誤
+      if (e.type == DioExceptionType.receiveTimeout || 
+          e.type == DioExceptionType.connectionTimeout) {
+        // 系統在背景限制了網路連線，這是正常現象，我們只印出 Log 忽略它
+        debugPrint('系統限制背景連線 (Timeout)，略過回報訊息 $messageId');
+      } else {
+        // 其他的 API 錯誤（例如 404, 500 等）
+        debugPrint('Dio API 錯誤 (回報訊息狀態): ${e.message}');
+      }
+      
     } catch (e) {
+      // 捕捉其他非網路相關的例外錯誤
       debugPrint('Failed to report delivered: $e');
     }
   }
