@@ -444,132 +444,140 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              Expanded(
-                child: state.isLoading && state.messages.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                        controller: _scrollController,
-                        reverse: true,
-                        itemCount: state.messages.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == state.messages.length) {
-                            return _buildE2EEBanner(context);
-                          }
-                          final msg = state.messages[index];
-                          final isMe = msg.senderId == widget.currentUserId;
-                          final showDate =
-                              index == state.messages.length - 1 ||
-                              !_isSameDay(
-                                msg.createdAt,
-                                state.messages[index + 1].createdAt,
-                              );
-                          return AutoScrollTag(
-                            key: ValueKey('msg-${msg.id}'),
-                            controller: _scrollController,
-                            index: index,
-                            child: Column(
-                              children: [
-                                if (showDate)
-                                  ChatDateDivider(date: msg.createdAt),
-                                VisibilityDetector(
-                                  key: ValueKey('visible-${msg.id}'),
-                                  onVisibilityChanged: (info) {
-                                    if (!isMe && info.visibleFraction > 0.6) {
-                                      ref
-                                          .read(
-                                            chatRoomProvider(_params).notifier,
-                                          )
-                                          .markAsRead(msg.id);
-                                    }
-                                  },
-                                  child: MessageBubble(
-                                    msg: msg,
-                                    isMe: isMe,
-                                    state: state,
-                                    params: _params,
-                                    isRoom: widget.isRoom,
-                                    currentUserId: widget.currentUserId,
-                                    title: widget.title,
-                                    onScrollToMessage: _scrollToMessage,
+      // 👉 加入 GestureDetector，攔截背景空白區域點擊事件來收起鍵盤
+      body: GestureDetector(
+        onTap: () {
+          FocusScope.of(context).unfocus(); // 點擊空白處取消焦點隱藏鍵盤
+        },
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                Expanded(
+                  child: state.isLoading && state.messages.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView.builder(
+                          // 👉 加入這行，當滑動列表時自動收起鍵盤
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                          controller: _scrollController,
+                          reverse: true,
+                          itemCount: state.messages.length + 1,
+                          itemBuilder: (context, index) {
+                            if (index == state.messages.length) {
+                              return _buildE2EEBanner(context);
+                            }
+                            final msg = state.messages[index];
+                            final isMe = msg.senderId == widget.currentUserId;
+                            final showDate =
+                                index == state.messages.length - 1 ||
+                                !_isSameDay(
+                                  msg.createdAt,
+                                  state.messages[index + 1].createdAt,
+                                );
+                            return AutoScrollTag(
+                              key: ValueKey('msg-${msg.id}'),
+                              controller: _scrollController,
+                              index: index,
+                              child: Column(
+                                children: [
+                                  if (showDate)
+                                    ChatDateDivider(date: msg.createdAt),
+                                  VisibilityDetector(
+                                    key: ValueKey('visible-${msg.id}'),
+                                    onVisibilityChanged: (info) {
+                                      if (!isMe && info.visibleFraction > 0.6) {
+                                        ref
+                                            .read(
+                                              chatRoomProvider(_params).notifier,
+                                            )
+                                            .markAsRead(msg.id);
+                                      }
+                                    },
+                                    child: MessageBubble(
+                                      msg: msg,
+                                      isMe: isMe,
+                                      state: state,
+                                      params: _params,
+                                      isRoom: widget.isRoom,
+                                      currentUserId: widget.currentUserId,
+                                      title: widget.title,
+                                      onScrollToMessage: _scrollToMessage,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              if (state.typingUsers.isNotEmpty) const ChatTypingIndicator(),
-              if (!widget.isRoom && !_isFriend)
-                Container(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: isDark ? 0.25 : 0.05,
+                                ],
+                              ),
+                            );
+                          },
                         ),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.person_off_outlined,
-                        size: 16,
-                        color: isDark ? Colors.white38 : Colors.grey[500],
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '你們已不再是好友，請重新發送交友申請才能繼續對話。',
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.grey[600],
-                            fontSize: 13,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                ChatInputBar(
-                  params: _params,
-                  isRoom: widget.isRoom,
-                  title: widget.title,
-                  currentUserId: widget.currentUserId,
-                  isMember: _isMember,
                 ),
-            ],
-          ),
-          if (_showNewMessageBanner && !_isAtBottom)
-            Positioned(
-              right: 16,
-              bottom: 96,
-              child: ChatUnreadBanner(
-                unreadCount: _unreadCount,
-                arrowOffset: _arrowOffset,
-                onTap: _goToBottom,
-              ),
+                if (state.typingUsers.isNotEmpty) const ChatTypingIndicator(),
+                if (!widget.isRoom && !_isFriend)
+                  Container(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.25 : 0.05,
+                          ),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.person_off_outlined,
+                          size: 16,
+                          color: isDark ? Colors.white38 : Colors.grey[500],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '你們已不再是好友，請重新發送交友申請才能繼續對話。',
+                            style: TextStyle(
+                              color: isDark ? Colors.white54 : Colors.grey[600],
+                              fontSize: 13,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ChatInputBar(
+                    params: _params,
+                    isRoom: widget.isRoom,
+                    title: widget.title,
+                    currentUserId: widget.currentUserId,
+                    isMember: _isMember,
+                  ),
+              ],
             ),
-        ],
+            if (_showNewMessageBanner && !_isAtBottom)
+              Positioned(
+                right: 16,
+                bottom: 96,
+                child: ChatUnreadBanner(
+                  unreadCount: _unreadCount,
+                  arrowOffset: _arrowOffset,
+                  onTap: _goToBottom,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
