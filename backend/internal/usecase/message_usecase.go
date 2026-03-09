@@ -197,7 +197,13 @@ func (u *messageUsecase) pushToOfflineUsers(userIDs []string, msg *domain.Messag
 		if len(playerIDs) == 0 {
 			continue
 		}
-		_ = u.pushService.SendNotificationToDevices(playerIDs, title, content, data)
+        
+        // 👉 加入了錯誤處理與日誌記錄
+		if err := u.pushService.SendNotificationToDevices(playerIDs, title, content, data); err != nil {
+			log.Printf("❌ 推播發送失敗 (針對 user %s): %v\n", userID, err)
+		} else {
+			log.Printf("✅ 推播發送成功 (針對 user %s)\n", userID)
+		}
 	}
 }
 
