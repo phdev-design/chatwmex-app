@@ -103,8 +103,9 @@ cd ..
 
 echo "🔨 [4/6] 開始建置 $APP_NAME Release IPA..."
 
-# 執行 Flutter 官方的 IPA 建置指令前，先確保不會產生 Multiple commands produce Info.plist 錯誤 (Xcode 16 + Flutter Bug)
-sed -i '' 's/GENERATE_INFOPLIST_FILE = YES;/GENERATE_INFOPLIST_FILE = NO;/g' ios/Runner.xcodeproj/project.pbxproj
+# 【重要修改】：已註解掉下方這行 sed 指令。
+# 全域關閉 GENERATE_INFOPLIST_FILE 會導致 NotificationExtension 無法生成 Info.plist，進而抓不到 Bundle ID 造成打包失敗。
+# sed -i '' 's/GENERATE_INFOPLIST_FILE = YES;/GENERATE_INFOPLIST_FILE = NO;/g' ios/Runner.xcodeproj/project.pbxproj
 
 # 執行 Flutter 官方的 IPA 建置指令，建議加上 obfuscate 混淆程式碼
 flutter build ipa --release --obfuscate --split-debug-info=./build/app/outputs/symbols || { echo "❌ 建置 IPA 失敗，請檢查程式碼錯誤。"; exit 1; }

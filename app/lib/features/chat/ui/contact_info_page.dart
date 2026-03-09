@@ -828,10 +828,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         if (_isBlocked && mounted) context.pop();
                       } catch (e) {
                         if (mounted) {
-                          ScaffoldMessenger.of(
-                            if (!mounted) return;
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('操作失敗：$e')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('操作失敗：$e'))
+                          );
                         }
                       }
                     },
@@ -889,8 +888,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                               .toList();
 
                           if (remainingMembers.isEmpty) {
+                            if (!mounted) return;
                             final confirmed = await showDialog<bool>(
-                              if (!mounted) return;
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 backgroundColor: Theme.of(
@@ -937,9 +936,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                               }
                             }
                           } else {
+                            if (!mounted) return;
                             final selectedUserId =
                                 await showModalBottomSheet<String>(
-                                  if (!mounted) return;
                                   context: context,
                                   backgroundColor: isDark
                                       ? const Color(0xFF1C1C1E)
@@ -1043,8 +1042,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 )['username'] ??
                                 '該成員';
 
+                            if (!mounted) return;
                             final confirmTransfer = await showDialog<bool>(
-                              if (!mounted) return;
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 backgroundColor: Theme.of(
@@ -1074,7 +1073,6 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
                             if (!mounted) return;
                             showDialog(
-                              if (!mounted) return;
                               context: context,
                               barrierDismissible: false,
                               builder: (_) => const Center(
