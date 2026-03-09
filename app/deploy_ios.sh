@@ -103,6 +103,9 @@ cd ..
 
 echo "🔨 [4/6] 開始建置 $APP_NAME Release IPA..."
 
+# 執行 Flutter 官方的 IPA 建置指令前，先確保不會產生 Multiple commands produce Info.plist 錯誤 (Xcode 16 + Flutter Bug)
+sed -i '' 's/GENERATE_INFOPLIST_FILE = YES;/GENERATE_INFOPLIST_FILE = NO;/g' ios/Runner.xcodeproj/project.pbxproj
+
 # 執行 Flutter 官方的 IPA 建置指令，建議加上 obfuscate 混淆程式碼
 flutter build ipa --release --obfuscate --split-debug-info=./build/app/outputs/symbols || { echo "❌ 建置 IPA 失敗，請檢查程式碼錯誤。"; exit 1; }
 
