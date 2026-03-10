@@ -609,10 +609,19 @@ func (r *MessageRepository) GetRoomMessageMap(ctx context.Context, messageIDs []
 		if err := cursor.Decode(&msg); err != nil {
 			return nil, err
 		}
-		if msg.RoomID == "" {
+		
+		// 👇 關鍵修改：判斷如果是私訊 (RoomID 為空)，就將回執發送給訊息的「發送者」
+		targetID := msg.RoomID
+		if targetID == "" {
+			targetID = msg.SenderID
+		}
+
+		// 防呆機制
+		if targetID == "" {
 			continue
 		}
-		roomMap[msg.RoomID] = append(roomMap[msg.RoomID], msg.ID.Hex())
+
+		roomMap[targetID] = append(roomMap[targetID], msg.ID.Hex())
 	}
 	if err := cursor.Err(); err != nil {
 		return nil, err

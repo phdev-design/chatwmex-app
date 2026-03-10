@@ -120,6 +120,8 @@ func (s *OneSignalService) SendNotificationToDevices(playerIDs []string, title s
 		"contents":           map[string]string{"en": content},
 		"data":               data,
 		"content_available":  true,
+		"mutable_content":    true, // ✅ 新增：必須設為 true 才能喚醒 iOS NotificationExtension
+
 	}
 
 	body, err := json.Marshal(payload)

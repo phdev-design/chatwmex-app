@@ -332,43 +332,6 @@ func (h *Hub) handleChatEvent(eventBytes []byte) {
 	}
 }
 
-func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
-	cancel()
-	if err != nil {
-		return
-	}
-
-	payload := map[string]interface{}{
-		"event": "messages_read_receipt",
-		"data": map[string]interface{}{
-			"room_id":         event.RoomID,
-			"message_ids":     event.MessageIDs,
-			"read_by_user_id": event.ReadByUserID,
-		},
-	}
-	messageBytes, err := json.Marshal(payload)
-	if err != nil {
-		return
-	}
-
-	for _, memberID := range members {
-		if memberID == event.ReadByUserID {
-			continue
-		}
-		if destClient, ok := h.userClients[memberID]; ok {
-			select {
-			case destClient.send <- messageBytes:
-			default:
-				close(destClient.send)
-				delete(h.clients, destClient)
-				delete(h.userClients, destClient.userID)
-			}
-		}
-	}
-}
-
 func (h *Hub) BroadcastRoomDeliveredReceipt(roomID string, messageIDs []string, readerID string) {
 	event := chatEvent{
 		Type:         "messages_delivered_receipt",
@@ -388,20 +351,99 @@ func (h *Hub) broadcastRoomDeliveredReceiptLocal(event chatEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
 	cancel()
-	if err != nil {
-		return
+
+	// 如果 err != nil 或者 members 為空，表示這是一個私訊。
+	// 在 message_handler.go 配合 GetRoomMessageMap，傳進來的 event.RoomID 實際上是【發送者(B)】的 UserID。
+	// 而 event.ReadByUserID 是【接收者(A)】的 UserID。
+	isPrivateMsg := err != nil || len(members) == 0
+
+	// 決定傳給前端的 room_id。
+	// 如果是群組，就是原來的 RoomID。
+	// 如果是私訊，對於發送者(B)來說，這個對話的 ID 就是接收者(A)的 ID。
+	frontendRoomID := event.RoomID
+	if isPrivateMsg {
+		frontendRoomID = event.ReadByUserID
 	}
 
 	payload := map[string]interface{}{
 		"event": "messages_delivered_receipt",
 		"data": map[string]interface{}{
-			"room_id":              event.RoomID,
+			"room_id":              frontendRoomID, // 修正：給前端對方(A)的 ID，而不是自己的 ID
 			"message_ids":          event.MessageIDs,
 			"delivered_by_user_id": event.ReadByUserID,
 		},
 	}
-	messageBytes, err := json.Marshal(payload)
-	if err != nil {
+	messageBytes, errMarshal := json.Marshal(payload)
+	if errMarshal != nil {
+		return
+	}
+
+	if isPrivateMsg {
+		// 發送給發送者(B)
+		if destClient, ok := h.userClients[event.RoomID]; ok {
+			select {
+			case destClient.send <- messageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
+		}
+		return
+	}
+
+	for _, memberID := range members {
+		if memberID == event.ReadByUserID {
+			continue
+		}
+		if destClient, ok := h.userClients[memberID]; ok {
+			select {
+			case destClient.send <- messageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
+		}
+	}
+}
+
+func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	members, err := h.roomUsecase.GetRoomMembers(ctx, event.RoomID)
+	cancel()
+
+	isPrivateMsg := err != nil || len(members) == 0
+
+	frontendRoomID := event.RoomID
+	if isPrivateMsg {
+		frontendRoomID = event.ReadByUserID
+	}
+
+	payload := map[string]interface{}{
+		"event": "messages_read_receipt",
+		"data": map[string]interface{}{
+			"room_id":         frontendRoomID, // 修正：給前端對方(A)的 ID
+			"message_ids":     event.MessageIDs,
+			"read_by_user_id": event.ReadByUserID,
+		},
+	}
+	messageBytes, errMarshal := json.Marshal(payload)
+	if errMarshal != nil {
+		return
+	}
+
+	if isPrivateMsg {
+		// 發送給發送者(B)
+		if destClient, ok := h.userClients[event.RoomID]; ok {
+			select {
+			case destClient.send <- messageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
+		}
 		return
 	}
 
