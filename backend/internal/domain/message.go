@@ -13,6 +13,15 @@ type MessageReceipt struct {
 	SenderID  string `json:"sender_id"` // The one who needs to be notified (original sender)
 }
 
+// DeliveredReceiptNotification represents a queued delivery receipt for offline users.
+type DeliveredReceiptNotification struct {
+	SenderID          string    `json:"sender_id"`            // 原始訊息發送者，需要收到通知的人
+	MessageIDs        []string  `json:"message_ids"`          // 已被 delivered 的訊息 IDs
+	DeliveredByUserID string    `json:"delivered_by_user_id"` // 誰 delivered 了這些訊息
+	ConversationID    string    `json:"conversation_id"`      // 前端用來識別對話的 ID
+	CreatedAt         time.Time `json:"created_at"`
+}
+
 // Message represents a chat message.
 // Content is stored encrypted in the database but decrypted in this domain model.
 type Message struct {
@@ -25,15 +34,15 @@ type Message struct {
 	Reactions        map[string][]string `json:"reactions,omitempty"`
 	IsUnsent         bool                `json:"is_unsent,omitempty"`
 	DeletedBy        []string            `json:"deleted_by,omitempty"`
-	Content          string              `json:"content"`           // Business level content (plaintext)
-	Type             string              `json:"type"`              // "text", "image", "read_receipt"
+	Content          string              `json:"content"` // Business level content (plaintext)
+	Type             string              `json:"type"`    // "text", "image", "read_receipt"
 	// Status 訊息传送狀態："sent" | "delivered" | "read"
-	Status           string              `json:"status,omitempty" bson:"status,omitempty"`
-	IsRead           bool                `json:"is_read,omitempty"` // For backwards compatibility or simple 1-on-1
-	ReadBy           []string            `json:"read_by"`           // List of UserIDs who read the message
-	LinkPreview      *LinkPreview        `json:"link_preview,omitempty" bson:"link_preview,omitempty"`
-	ExpiresAt        *time.Time          `json:"expires_at,omitempty"` // For disappearing messages (MongoDB TTL)
-	CreatedAt        time.Time           `json:"created_at"`
+	Status      string       `json:"status,omitempty" bson:"status,omitempty"`
+	IsRead      bool         `json:"is_read,omitempty"` // For backwards compatibility or simple 1-on-1
+	ReadBy      []string     `json:"read_by"`           // List of UserIDs who read the message
+	LinkPreview *LinkPreview `json:"link_preview,omitempty" bson:"link_preview,omitempty"`
+	ExpiresAt   *time.Time   `json:"expires_at,omitempty"` // For disappearing messages (MongoDB TTL)
+	CreatedAt   time.Time    `json:"created_at"`
 }
 
 type LinkPreview struct {
@@ -76,6 +85,10 @@ type MessageRepository interface {
 
 	// UpdateMessageStatus 更新單筆訊息狀態
 	UpdateMessageStatus(ctx context.Context, messageID string, status string) error
+
+	// Delivered Receipt Offline Queue
+	StoreDeliveredReceiptNotification(ctx context.Context, notification *DeliveredReceiptNotification) error
+	FetchAndClearDeliveredReceiptNotifications(ctx context.Context, userID string) ([]*DeliveredReceiptNotification, error)
 }
 
 // Conversation represents a summary of a chat (DM).
@@ -112,4 +125,8 @@ type MessageUsecase interface {
 
 	// UpdateMessageStatus 處理訊息狀態更新邏輯
 	UpdateMessageStatus(ctx context.Context, messageID string, status string) error
+
+	// Delivered Receipt Offline Queue
+	StoreDeliveredReceiptNotification(ctx context.Context, notification *DeliveredReceiptNotification) error
+	FetchAndClearDeliveredReceiptNotifications(ctx context.Context, userID string) ([]*DeliveredReceiptNotification, error)
 }

@@ -16,6 +16,7 @@ import (
 
 const messageCollectionName = "messages"
 const offlineCollectionName = "offline_messages"
+const deliveredReceiptCollectionName = "delivered_receipt_notifications"
 
 // mongoMessage is the DTO for storing messages in MongoDB.
 // It is internal to this package and should not be exposed.
@@ -44,17 +45,28 @@ type offlineMessage struct {
 	Message mongoMessage       `bson:"message"`
 }
 
+type mongoDeliveredReceiptNotification struct {
+	ID                primitive.ObjectID `bson:"_id,omitempty"`
+	SenderID          string             `bson:"sender_id"`
+	MessageIDs        []string           `bson:"message_ids"`
+	DeliveredByUserID string             `bson:"delivered_by_user_id"`
+	ConversationID    string             `bson:"conversation_id"`
+	CreatedAt         time.Time          `bson:"created_at"`
+}
+
 // MessageRepository implements domain.MessageRepository for MongoDB.
 type MessageRepository struct {
-	collection        *mongo.Collection
-	offlineCollection *mongo.Collection
+	collection                 *mongo.Collection
+	offlineCollection          *mongo.Collection
+	deliveredReceiptCollection *mongo.Collection
 }
 
 // NewMessageRepository creates a new instance of MessageRepository.
 func NewMessageRepository(db *mongo.Database) domain.MessageRepository {
 	repo := &MessageRepository{
-		collection:        db.Collection(messageCollectionName),
-		offlineCollection: db.Collection(offlineCollectionName),
+		collection:                 db.Collection(messageCollectionName),
+		offlineCollection:          db.Collection(offlineCollectionName),
+		deliveredReceiptCollection: db.Collection(deliveredReceiptCollectionName),
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -87,7 +99,23 @@ func (r *MessageRepository) EnsureIndexes(ctx context.Context) error {
 			Options: options.Index().SetBackground(background).SetName("expires_at_ttl_idx").SetExpireAfterSeconds(0),
 		},
 	}
-	_, err := r.collection.Indexes().CreateMany(ctx, models)
+	if _, err := r.collection.Indexes().CreateMany(ctx, models); err != nil {
+		return err
+	}
+
+	// Indexes for delivered_receipt_notifications collection
+	sevenDays := int32(7 * 24 * 60 * 60)
+	receiptModels := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "sender_id", Value: 1}},
+			Options: options.Index().SetBackground(background).SetName("sender_id_idx"),
+		},
+		{
+			Keys:    bson.D{{Key: "created_at", Value: 1}},
+			Options: options.Index().SetBackground(background).SetName("created_at_ttl_idx").SetExpireAfterSeconds(sevenDays),
+		},
+	}
+	_, err := r.deliveredReceiptCollection.Indexes().CreateMany(ctx, receiptModels)
 	return err
 }
 
@@ -609,7 +637,7 @@ func (r *MessageRepository) GetRoomMessageMap(ctx context.Context, messageIDs []
 		if err := cursor.Decode(&msg); err != nil {
 			return nil, err
 		}
-		
+
 		// 👇 關鍵修改：判斷如果是私訊 (RoomID 為空)，就將回執發送給訊息的「發送者」
 		targetID := msg.RoomID
 		if targetID == "" {
@@ -816,4 +844,55 @@ func (r *MessageRepository) UpdateMessageStatus(ctx context.Context, messageID s
 		return fmt.Errorf("message not found")
 	}
 	return nil
+}
+
+// StoreDeliveredReceiptNotification saves a delivered receipt notification for offline users.
+func (r *MessageRepository) StoreDeliveredReceiptNotification(ctx context.Context, notification *domain.DeliveredReceiptNotification) error {
+	doc := mongoDeliveredReceiptNotification{
+		ID:                primitive.NewObjectID(),
+		SenderID:          notification.SenderID,
+		MessageIDs:        notification.MessageIDs,
+		DeliveredByUserID: notification.DeliveredByUserID,
+		ConversationID:    notification.ConversationID,
+		CreatedAt:         notification.CreatedAt,
+	}
+	_, err := r.deliveredReceiptCollection.InsertOne(ctx, doc)
+	if err != nil {
+		return fmt.Errorf("failed to store delivered receipt notification: %w", err)
+	}
+	return nil
+}
+
+// FetchAndClearDeliveredReceiptNotifications retrieves and deletes pending delivered receipt notifications for a user.
+func (r *MessageRepository) FetchAndClearDeliveredReceiptNotifications(ctx context.Context, userID string) ([]*domain.DeliveredReceiptNotification, error) {
+	filter := bson.M{"sender_id": userID}
+
+	cursor, err := r.deliveredReceiptCollection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find delivered receipt notifications: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var notifications []*domain.DeliveredReceiptNotification
+	for cursor.Next(ctx) {
+		var doc mongoDeliveredReceiptNotification
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		notifications = append(notifications, &domain.DeliveredReceiptNotification{
+			SenderID:          doc.SenderID,
+			MessageIDs:        doc.MessageIDs,
+			DeliveredByUserID: doc.DeliveredByUserID,
+			ConversationID:    doc.ConversationID,
+			CreatedAt:         doc.CreatedAt,
+		})
+	}
+
+	// Delete fetched notifications
+	_, err = r.deliveredReceiptCollection.DeleteMany(ctx, filter)
+	if err != nil {
+		log.Printf("failed to delete delivered receipt notifications: %v", err)
+	}
+
+	return notifications, nil
 }

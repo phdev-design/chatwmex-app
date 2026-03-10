@@ -197,8 +197,8 @@ func (u *messageUsecase) pushToOfflineUsers(userIDs []string, msg *domain.Messag
 		if len(playerIDs) == 0 {
 			continue
 		}
-        
-        // 👉 加入了錯誤處理與日誌記錄
+
+		// 👉 加入了錯誤處理與日誌記錄
 		if err := u.pushService.SendNotificationToDevices(playerIDs, title, content, data); err != nil {
 			log.Printf("❌ 推播發送失敗 (針對 user %s): %v\n", userID, err)
 		} else {
@@ -354,8 +354,32 @@ func (u *messageUsecase) DeleteMessage(ctx context.Context, messageID string, us
 }
 
 func (u *messageUsecase) UpdateMessageStatus(c context.Context, messageID string, status string) error {
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+		err := u.messageRepo.UpdateMessageStatus(ctx, messageID, status)
+		cancel()
+
+		if err == nil {
+			return nil
+		}
+		if strings.Contains(err.Error(), "message not found") && i < maxRetries-1 {
+			time.Sleep(time.Duration(300*(i+1)) * time.Millisecond) // 300ms, 600ms
+			continue
+		}
+		return err
+	}
+	return nil
+}
+
+func (u *messageUsecase) StoreDeliveredReceiptNotification(c context.Context, notification *domain.DeliveredReceiptNotification) error {
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
+	return u.messageRepo.StoreDeliveredReceiptNotification(ctx, notification)
+}
 
-	return u.messageRepo.UpdateMessageStatus(ctx, messageID, status)
+func (u *messageUsecase) FetchAndClearDeliveredReceiptNotifications(c context.Context, userID string) ([]*domain.DeliveredReceiptNotification, error) {
+	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
+	defer cancel()
+	return u.messageRepo.FetchAndClearDeliveredReceiptNotifications(ctx, userID)
 }

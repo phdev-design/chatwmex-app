@@ -52,13 +52,6 @@ class NotificationService: UNNotificationServiceExtension {
         }
     }
 
-    override func serviceExtensionTimeWillExpire() {
-        // 系統即將終止 Extension，立即顯示通知
-        if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
-            contentHandler(bestAttemptContent)
-        }
-    }
-
     // MARK: - Private
 
     private func reportDelivered(messageId: String, jwtToken: String, completion: @escaping () -> Void) {

@@ -16,27 +16,26 @@ class NotificationService {
 
   NotificationService(this._storageService, this._networkService);
 
-  Future<void> initOneSignal(String appId) async {
-    OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-    OneSignal.initialize(appId);
-    OneSignal.Notifications.requestPermission(true);
+Future<void> initOneSignal(String appId) async {
+  OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
+  OneSignal.initialize(appId);
+  OneSignal.Notifications.requestPermission(true);
 
-    OneSignal.Notifications.addClickListener((event) {
-      _handleNotificationClick(event);
-    });
+  OneSignal.Notifications.addClickListener((event) {
+    _handleNotificationClick(event);
+  });
 
-    OneSignal.Notifications.addForegroundWillDisplayListener((event) {
-      _handleForegroundNotification(event);
-      _handleMessageDelivered(event.notification.additionalData);
-    });
+  // ✅ 一個 listener 處理所有事
+  OneSignal.Notifications.addForegroundWillDisplayListener((event) {
+    _handleForegroundNotification(event);
+    final data = event.notification.additionalData;
+    if (data != null) {
+      _handleMessageDelivered(Map<String, dynamic>.from(data));
+    }
+  });
 
-    // 👇 刪除或註解掉以下這段程式碼 👇
-    // OneSignal.Notifications.addBackgroundWillDisplayListener((event) {
-    //   _handleMessageDelivered(event.notification.additionalData);
-    // });
-
-    await handlePendingNavigation();
-  }
+  await handlePendingNavigation();
+}
 
   Future<String?> getSubscriptionId() async {
     return OneSignal.User.pushSubscription.id;

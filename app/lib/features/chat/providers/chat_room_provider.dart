@@ -282,6 +282,20 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               );
             }
           }
+        } else if (event == 'messages_delivered_receipt') {
+          if (payload is Map) {
+            final roomId = payload['room_id'];
+            final messageIds = payload['message_ids'];
+            if (roomId is String &&
+                messageIds is List &&
+                roomId == arg.roomId) {
+              for (final msgId in messageIds) {
+                if (msgId is String) {
+                  _updateMessageStatus(msgId, MessageStatus.delivered);
+                }
+              }
+            }
+          }
         } else if (event == 'message_reaction') {
           if (payload is Map) {
             final roomId = payload['room_id'];
@@ -614,7 +628,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         }
       }
       state = state.copyWith(userAvatarUrls: avatars);
-    } catch (_) { debugPrint('Error caught'); }
+    } catch (_) {
+      debugPrint('Error caught');
+    }
   }
 
   Future<void> loadMoreMessages() async {
@@ -890,7 +906,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         if (pubKey != null) {
           try {
             payloadContent = await _cryptoService.encryptMessage(url, pubKey);
-          } catch (e) { debugPrint(e.toString()); }
+          } catch (e) {
+            debugPrint(e.toString());
+          }
         }
       }
 

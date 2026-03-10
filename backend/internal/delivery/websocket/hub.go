@@ -105,6 +105,23 @@ func (h *Hub) Run() {
 					bytes, _ := json.Marshal(resp)
 					client.send <- bytes
 				}
+
+				// 推送所有待通知的 delivered receipts
+				receipts, err := h.messageUsecase.FetchAndClearDeliveredReceiptNotifications(ctx, uid)
+				if err == nil {
+					for _, receipt := range receipts {
+						resp := map[string]interface{}{
+							"event": "messages_delivered_receipt",
+							"data": map[string]interface{}{
+								"room_id":              receipt.ConversationID,
+								"message_ids":          receipt.MessageIDs,
+								"delivered_by_user_id": receipt.DeliveredByUserID,
+							},
+						}
+						bytes, _ := json.Marshal(resp)
+						client.send <- bytes
+					}
+				}
 			}(client.userID)
 			log.Printf("Client connected: %s", client.userID)
 
@@ -388,6 +405,22 @@ func (h *Hub) broadcastRoomDeliveredReceiptLocal(event chatEvent) {
 				delete(h.clients, destClient)
 				delete(h.userClients, destClient.userID)
 			}
+		} else {
+			// sender 不在線，把這個 receipt 存入離線佇列
+			go func() {
+				notification := &domain.DeliveredReceiptNotification{
+					SenderID:          event.RoomID,
+					MessageIDs:        event.MessageIDs,
+					DeliveredByUserID: event.ReadByUserID,
+					ConversationID:    event.ReadByUserID,
+					CreatedAt:         time.Now(),
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				if err := h.messageUsecase.StoreDeliveredReceiptNotification(ctx, notification); err != nil {
+					log.Printf("failed to store delivered receipt notification: %v", err)
+				}
+			}()
 		}
 		return
 	}
