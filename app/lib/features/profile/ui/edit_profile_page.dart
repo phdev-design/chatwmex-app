@@ -26,31 +26,81 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
-      ref.read(profileViewModelProvider.notifier).loadProfile();
-    });
+    
+    // 修正：如果在進入頁面時 Profile 已經載入過，直接綁定現有資料
+    final currentState = ref.read(profileViewModelProvider);
+    if (currentState.username.isNotEmpty) {
+      _populateFields(currentState);
+      _didBindInitialData = true;
+    } else {
+      Future.microtask(() {
+        ref.read(profileViewModelProvider.notifier).loadProfile();
+      });
+    }
+  }
+
+  void _populateFields(ProfileState state) {
+    _usernameController.text = state.username;
+    _emailController.text = state.email;
+    _phoneController.text = state.phoneNumber;
+    _firstNameController.text = state.firstName;
+    _lastNameController.text = state.lastName;
+    _bioController.text = state.bio;
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _usernameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _bioController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      ref.read(profileViewModelProvider.notifier).updateProfile(
+            _emailController.text.trim(),
+            _phoneController.text.trim(),
+            _firstNameController.text.trim(),
+            _lastNameController.text.trim(),
+            _bioController.text.trim(),
+          );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(profileViewModelProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // 與 profile_page 一致的背景色與卡片色
+    final bgColor = isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
+    final cardColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final hintColor = isDark ? Colors.white38 : Colors.black38;
+    final iconColor = isDark ? Colors.white54 : Colors.grey[600];
 
     ref.listen(profileViewModelProvider, (prev, next) {
+      // 若進入時未綁定，等 API 讀取完畢後補綁定
       if (!_didBindInitialData && !next.isLoading && next.username.isNotEmpty) {
-        _usernameController.text = next.username;
-        _emailController.text = next.email;
-        _phoneController.text = next.phoneNumber;
-        _firstNameController.text = next.firstName;
-        _lastNameController.text = next.lastName;
-        _bioController.text = next.bio;
+        _populateFields(next);
         _didBindInitialData = true;
       }
+
       if (next.successMessage != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.successMessage!)));
-        context.pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.successMessage!),
+            backgroundColor: Colors.green,
+          ),
+        );
+        ref.read(profileViewModelProvider.notifier).clearMessages();
+        if (mounted) context.pop(); // 儲存成功後返回上一頁
       }
+      
       if (next.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(next.error!), backgroundColor: Colors.red),
@@ -61,21 +111,25 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
     final inputDecorationTheme = InputDecoration(
       filled: true,
-      fillColor: const Color(0xFF1C1C1E),
-      labelStyle: const TextStyle(color: Colors.white70),
-      hintStyle: const TextStyle(color: Colors.white38),
+      fillColor: cardColor, // 適應深/淺色模式
+      labelStyle: TextStyle(color: iconColor),
+      hintStyle: TextStyle(color: hintColor),
       floatingLabelBehavior: FloatingLabelBehavior.auto,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white24),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white24 : Colors.grey.shade300,
+        ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white24),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white24 : Colors.grey.shade300,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.blueAccent),
+        borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -84,11 +138,23 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000), // Match existing dark theme
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Edit Profile'),
-        backgroundColor: const Color(0xFF000000),
+        title: Text(
+          '編輯個人資料',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 17,
+            color: textColor,
+          ),
+        ),
+        backgroundColor: bgColor,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: textColor),
+          onPressed: () => context.pop(),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -98,26 +164,20 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildSectionTitle('基本資訊', isDark),
+                const SizedBox(height: 8),
                 // 1. First Name
                 TextFormField(
                   controller: _firstNameController,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: textColor),
                   decoration: inputDecorationTheme.copyWith(
-                    labelText: 'First Name',
-                    hintText: 'Enter your first name',
-                    prefixIcon: const Icon(
-                      Icons.person_outline,
-                      color: Colors.white54,
-                    ),
+                    labelText: '名字 (First Name)',
+                    hintText: '請輸入名字',
+                    prefixIcon: Icon(Icons.badge_outlined, color: iconColor),
                   ),
                   maxLength: 50,
                   validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Required';
-                    }
-                    if (!RegExp(r'^[a-zA-Z]+$').hasMatch(value.trim())) {
-                      return 'Letters only';
-                    }
+                    if (value == null || value.trim().isEmpty) return '此欄位必填';
                     return null;
                   },
                 ),
@@ -126,95 +186,32 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 // 2. Last Name
                 TextFormField(
                   controller: _lastNameController,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: textColor),
                   decoration: inputDecorationTheme.copyWith(
-                    labelText: 'Last Name',
-                    hintText: 'Enter your last name',
-                    prefixIcon: const Icon(
-                      Icons.person_outline,
-                      color: Colors.white54,
-                    ),
+                    labelText: '姓氏 (Last Name)',
+                    hintText: '請輸入姓氏',
+                    prefixIcon: Icon(Icons.badge_outlined, color: iconColor),
                   ),
                   maxLength: 50,
                   validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Required';
-                    }
-                    if (!RegExp(r'^[a-zA-Z]+$').hasMatch(value.trim())) {
-                      return 'Letters only';
-                    }
+                    if (value == null || value.trim().isEmpty) return '此欄位必填';
                     return null;
                   },
                 ),
                 const SizedBox(height: 16),
 
-                // 3. Username
-                TextFormField(
-                  controller: _usernameController,
-                  style: const TextStyle(color: Colors.white54),
-                  decoration: inputDecorationTheme.copyWith(
-                    labelText: 'Username',
-                    prefixIcon: const Icon(Icons.person, color: Colors.white54),
-                    fillColor: const Color(0xFF151515),
-                  ),
-                  readOnly: true,
-                ),
-                const SizedBox(height: 16),
-
-                // 4. Email
-                TextFormField(
-                  controller: _emailController,
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: inputDecorationTheme.copyWith(
-                    labelText: 'Email',
-                    prefixIcon: const Icon(Icons.email, color: Colors.white54),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Invalid email format';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // 5. Phone Number
-                TextFormField(
-                  controller: _phoneController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: inputDecorationTheme.copyWith(
-                    labelText: 'Phone Number',
-                    prefixIcon: const Icon(Icons.phone, color: Colors.white54),
-                    hintText: '+1234567890',
-                  ),
-                  keyboardType: TextInputType.phone,
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      if (!RegExp(r'^\+?[0-9]{10,15}$').hasMatch(value)) {
-                        return 'Invalid phone number format';
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // 6. Bio
+                // 3. Bio
                 ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _bioController,
                   builder: (context, value, child) {
                     return TextFormField(
                       controller: _bioController,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: textColor),
                       decoration: inputDecorationTheme.copyWith(
-                        labelText: 'Bio',
-                        hintText: 'Tell us a bit about yourself...',
+                        labelText: '個人簡介 (Bio)',
+                        hintText: '介紹一下你自己...',
                         counterText: '${value.text.length} / 150',
-                        counterStyle: const TextStyle(color: Colors.white54),
+                        counterStyle: TextStyle(color: iconColor),
                       ),
                       minLines: 3,
                       maxLines: 6,
@@ -224,25 +221,85 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                   },
                 ),
                 const SizedBox(height: 32),
+                
+                _buildSectionTitle('帳號聯絡資訊', isDark),
+                const SizedBox(height: 8),
 
+                // 4. Username (Read Only)
+                TextFormField(
+                  controller: _usernameController,
+                  style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
+                  decoration: inputDecorationTheme.copyWith(
+                    labelText: '使用者名稱 (Username)',
+                    prefixIcon: Icon(Icons.person_outline, color: iconColor),
+                    fillColor: isDark ? const Color(0xFF151515) : Colors.grey.shade100,
+                  ),
+                  readOnly: true, // 不允許修改
+                ),
+                const SizedBox(height: 16),
+
+                // 5. Email
+                TextFormField(
+                  controller: _emailController,
+                  style: TextStyle(color: textColor),
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: inputDecorationTheme.copyWith(
+                    labelText: '電子郵件 (Email)',
+                    prefixIcon: Icon(Icons.email_outlined, color: iconColor),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return '請輸入電子郵件';
+                    if (!value.contains('@')) return '電子郵件格式無效';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // 6. Phone Number
+                TextFormField(
+                  controller: _phoneController,
+                  style: TextStyle(color: textColor),
+                  decoration: inputDecorationTheme.copyWith(
+                    labelText: '電話號碼 (Phone)',
+                    prefixIcon: Icon(Icons.phone_outlined, color: iconColor),
+                    hintText: '+1234567890',
+                  ),
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    if (value != null && value.isNotEmpty) {
+                      if (!RegExp(r'^\+?[0-9]{8,15}$').hasMatch(value)) {
+                        return '電話號碼格式無效';
+                      }
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 40),
+
+                // Save Button
                 SizedBox(
                   width: double.infinity,
-                  height: 50,
+                  height: 52,
                   child: ElevatedButton(
                     onPressed: state.isLoading ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
+                      backgroundColor: const Color(0xFF0056B3), // 統一的主題藍色
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                      elevation: 2,
                     ),
                     child: state.isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
                         : const Text(
-                            'Save Changes',
+                            '儲存變更',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
                           ),
@@ -257,28 +314,19 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     );
   }
 
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      ref
-          .read(profileViewModelProvider.notifier)
-          .updateProfile(
-            _emailController.text.trim(),
-            _phoneController.text.trim(),
-            _firstNameController.text.trim(),
-            _lastNameController.text.trim(),
-            _bioController.text.trim(),
-          );
-    }
-  }
-
-  @override
-  void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _usernameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _bioController.dispose();
-    super.dispose();
+  // 小標題 UI 元件
+  Widget _buildSectionTitle(String title, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: isDark ? Colors.white54 : Colors.grey[600],
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
   }
 }

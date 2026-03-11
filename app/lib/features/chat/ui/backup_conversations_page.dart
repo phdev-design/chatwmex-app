@@ -38,7 +38,6 @@ class _BackupConversationsPageState
   Future<void> _handleSignIn() async {
     try {
       final success = await ref.read(backupManagerProvider.notifier).signIn();
-      debugPrint('[BackupPage] signIn result: $success'); // 加這行
       debugPrint('[BackupPage] signIn result: $success');
       if (mounted) setState(() => _isAuthenticated = success);
     } catch (e, st) {
@@ -71,6 +70,14 @@ class _BackupConversationsPageState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(backupManagerProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // 統一主題配色
+    final bgColor = isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
+    final cardColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white54 : Colors.grey[600]!;
+    final primaryBlue = const Color(0xFF007AFF); // iOS 風格藍色
 
     ref.listen<BackupState>(backupManagerProvider, (prev, next) {
       if (next.error != null && next.error!.isNotEmpty) {
@@ -88,100 +95,128 @@ class _BackupConversationsPageState
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000), // Match dark theme
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('備份對話'),
-        backgroundColor: const Color(0xFF000000),
+        title: Text(
+          '備份對話',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 17,
+            color: textColor,
+          ),
+        ),
+        backgroundColor: bgColor,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: textColor),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: SafeArea(
         child: Column(
           children: [
             const SizedBox(height: 40),
             // Drive Icon
-            const Center(
-              child: Icon(Icons.add_to_drive, color: Colors.white, size: 80),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Google Drive 備份',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: primaryBlue.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.add_to_drive_rounded, color: primaryBlue, size: 60),
               ),
             ),
-            const SizedBox(height: 8),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 32.0),
+            const SizedBox(height: 24),
+            Text(
+              'Google Drive 備份',
+              style: TextStyle(
+                color: textColor,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 36.0),
               child: Text(
                 '將您的對話記錄安全地備份至 Google Drive。如果您遺失手機或更換設備，可以輕鬆還原。',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 14),
+                style: TextStyle(color: subTextColor, fontSize: 14, height: 1.5),
               ),
             ),
             const SizedBox(height: 48),
 
             if (!_isAuthenticated) ...[
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: SizedBox(
                   width: double.infinity,
-                  height: 50,
+                  height: 52,
                   child: ElevatedButton.icon(
                     onPressed: _handleSignIn,
-                    icon: const Icon(Icons.login),
+                    icon: const Icon(Icons.login_rounded, size: 20),
                     label: const Text(
                       '連接 Google Drive',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
+                      backgroundColor: primaryBlue,
                       foregroundColor: Colors.white,
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                   ),
                 ),
               ),
             ] else ...[
-              // Authenticated State
+              // Authenticated State (卡片式設定區塊)
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(12),
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Column(
                   children: [
                     ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      title: const Text(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      title: Text(
                         '上次備份',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(color: textColor, fontWeight: FontWeight.w500),
                       ),
-                      subtitle: Text(
+                      trailing: Text(
                         _formatLastBackup(state.lastBackupDate),
-                        style: TextStyle(color: Colors.grey[400]),
+                        style: TextStyle(color: subTextColor, fontSize: 14),
                       ),
                     ),
-                    const Divider(color: Colors.white12, height: 1),
+                    Divider(
+                      height: 1,
+                      indent: 16,
+                      color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.07),
+                    ),
                     SwitchListTile(
-                      activeThumbColor: Colors.blueAccent,
-                      title: const Text(
+                      activeColor: primaryBlue,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      title: Text(
                         '自動備份',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(color: textColor, fontWeight: FontWeight.w500),
                       ),
                       subtitle: Text(
                         '當應用程式開啟時自動背景備份',
-                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                        style: TextStyle(color: subTextColor, fontSize: 12),
                       ),
                       value: state.autoBackupEnabled,
                       onChanged: state.isBackingUp
@@ -196,11 +231,13 @@ class _BackupConversationsPageState
                 ),
               ),
               const Spacer(),
+              
+              // 底部按鈕區
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: SizedBox(
                   width: double.infinity,
-                  height: 50,
+                  height: 52,
                   child: OutlinedButton(
                     onPressed: state.isBackingUp
                         ? null
@@ -212,29 +249,30 @@ class _BackupConversationsPageState
                             );
                           },
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.blueAccent),
-                      foregroundColor: Colors.blueAccent,
+                      side: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
+                      foregroundColor: textColor,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: const Text('查看備份記錄', style: TextStyle(fontSize: 16)),
+                    child: const Text('查看備份記錄', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: SizedBox(
                   width: double.infinity,
-                  height: 50,
+                  height: 52,
                   child: ElevatedButton(
                     onPressed: state.isBackingUp ? null : _handleBackupNow,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
+                      backgroundColor: primaryBlue,
                       foregroundColor: Colors.white,
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                     child: state.isBackingUp
@@ -254,7 +292,7 @@ class _BackupConversationsPageState
                                 '備份中...',
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -263,13 +301,13 @@ class _BackupConversationsPageState
                             '立即備份',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
             ],
           ],
         ),
@@ -287,6 +325,8 @@ class _BackupConversationsPageState
     }
   }
 }
+
+// ─── 密碼輸入彈窗 ─────────────────────────────────────────────────────────────
 
 class _BackupPasswordDialog extends StatefulWidget {
   const _BackupPasswordDialog();
@@ -319,52 +359,77 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dialogBgColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final hintColor = isDark ? Colors.white54 : Colors.black54;
+    final primaryBlue = const Color(0xFF007AFF);
+
+    final inputDecorationTheme = InputDecoration(
+      filled: true,
+      fillColor: isDark ? const Color(0xFF2C2C2E) : Colors.grey.shade100,
+      labelStyle: TextStyle(color: hintColor, fontSize: 14),
+      errorStyle: const TextStyle(color: Colors.redAccent),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: primaryBlue, width: 1.5),
+      ),
+    );
+
     return AlertDialog(
-      backgroundColor: const Color(0xFF1C1C1E),
-      title: const Text('設定備份密碼', style: TextStyle(color: Colors.white)),
+      backgroundColor: dialogBgColor,
+      surfaceTintColor: Colors.transparent, // 移除 Material 3 預設的染色
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        '設定備份密碼',
+        style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 18),
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '此密碼用於加密您的 E2EE 金鑰，還原時需要輸入相同密碼才能解密訊息。請妥善保存此密碼。',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: hintColor, fontSize: 13.5, height: 1.4),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             TextField(
               controller: _pwdController,
               obscureText: _obscurePwd,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: inputDecorationTheme.copyWith(
                 labelText: '密碼',
-                labelStyle: const TextStyle(color: Colors.white54),
                 errorText: _error,
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscurePwd ? Icons.visibility : Icons.visibility_off,
-                    color: Colors.white54,
+                    _obscurePwd ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                    color: hintColor,
+                    size: 20,
                   ),
                   onPressed: () => setState(() => _obscurePwd = !_obscurePwd),
                 ),
               ),
               onChanged: (_) => setState(() => _error = null),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _confirmController,
               obscureText: _obscureConfirm,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: inputDecorationTheme.copyWith(
                 labelText: '確認密碼',
-                labelStyle: const TextStyle(color: Colors.white54),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureConfirm ? Icons.visibility : Icons.visibility_off,
-                    color: Colors.white54,
+                    _obscureConfirm ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                    color: hintColor,
+                    size: 20,
                   ),
-                  onPressed: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
+                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                 ),
               ),
               onChanged: (_) => setState(() => _error = null),
@@ -372,15 +437,22 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
           ],
         ),
       ),
+      actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       actions: [
         TextButton(
-          onPressed: () =>
-              Navigator.of(context).pop(null), // return null for skip
-          child: const Text('略過（不備份金鑰）', style: TextStyle(color: Colors.grey)),
+          onPressed: () => Navigator.of(context).pop(null), // return null for skip
+          child: Text('略過 (不備份金鑰)', style: TextStyle(color: hintColor, fontWeight: FontWeight.w500)),
         ),
-        TextButton(
+        ElevatedButton(
           onPressed: _submit,
-          child: const Text('確認', style: TextStyle(color: Colors.blueAccent)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryBlue,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+          child: const Text('確認', style: TextStyle(fontWeight: FontWeight.w600)),
         ),
       ],
     );
