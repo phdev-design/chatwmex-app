@@ -136,7 +136,14 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.Default()
-	uploadsRootDir := filepath.Join("cmd", "server", "uploads")
+	
+	// Determine uploads directory based on working directory
+	uploadsRootDir := "uploads"
+	if _, err := os.Stat(uploadsRootDir); os.IsNotExist(err) {
+		// If running from backend root, use cmd/server/uploads
+		uploadsRootDir = filepath.Join("cmd", "server", "uploads")
+	}
+	
 	if err := os.MkdirAll(filepath.Join(uploadsRootDir, "avatars"), 0o755); err != nil {
 		log.Fatalf("failed to create uploads directory: %v", err)
 	}
@@ -146,6 +153,8 @@ func main() {
 	if err := os.MkdirAll(filepath.Join(uploadsRootDir, "audio"), 0o755); err != nil {
 		log.Fatalf("failed to create uploads directory: %v", err)
 	}
+	
+	log.Printf("Serving uploads from: %s", uploadsRootDir)
 	r.Static("/uploads", uploadsRootDir)
 
 	// 6. Initialize Handlers & Routes
