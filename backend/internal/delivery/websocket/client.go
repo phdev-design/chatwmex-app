@@ -19,7 +19,8 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	// Increased to 8KB to accommodate link preview data (URL, title, description, image URL)
+	maxMessageSize = 8192
 )
 
 var (
@@ -70,9 +71,14 @@ func (c *Client) readPump() {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("WebSocket error for user %s: %v", c.userID, err)
 			}
 			break
+		}
+
+		// Log message size for debugging
+		if len(message) > 1024 {
+			log.Printf("📦 [WebSocket] Large message received from user %s: %d bytes", c.userID, len(message))
 		}
 
 		// Delegate to Controller

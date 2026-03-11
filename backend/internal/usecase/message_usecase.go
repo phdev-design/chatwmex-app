@@ -72,6 +72,13 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 		return errors.New("receiver ID or room ID must be provided")
 	}
 
+	// 🔥 新增：記錄 LinkPreview 資訊
+	if msg.LinkPreview != nil {
+		log.Printf("📎 [MessageUsecase] 收到訊息附帶 Link Preview: URL=%s, Title=%s", msg.LinkPreview.URL, msg.LinkPreview.Title)
+	} else {
+		log.Printf("📝 [MessageUsecase] 收到純文字訊息，無 Link Preview")
+	}
+
 	pushTargets := make([]string, 0)
 
 	// 👉 自動刪除訊息：判斷此對話是否開啟計時器

@@ -213,6 +213,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         (preview.url.isNotEmpty ||
             preview.title.isNotEmpty ||
             preview.description.isNotEmpty);
+    
+    // 🔥 新增：記錄 Link Preview 狀態
+    if (msg.type == MessageType.text && msg.content.contains('http')) {
+      if (hasPreview) {
+        print('✅ [MessageBubble] 訊息 ${msg.id} 有 Link Preview: ${preview!.url}');
+      } else {
+        print('⚠️ [MessageBubble] 訊息 ${msg.id} 包含 URL 但沒有 Link Preview');
+      }
+    }
+    
     Widget? linkPreviewCard;
     if (hasPreview) {
       final previewUrl = resolveFullUrl(preview.url);
@@ -223,6 +233,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
           ? preview.description
           : preview.url;
       final previewImageUrl = resolveFullUrl(preview.imageUrl);
+      
+      // 🔥 調試：記錄 Link Preview 詳細資訊
+      print('🔍 [MessageBubble] Link Preview 詳細資訊:');
+      print('   URL: ${preview.url}');
+      print('   Title: "${preview.title}" (isEmpty: ${preview.title.isEmpty})');
+      print('   Description: "${preview.description}" (isEmpty: ${preview.description.isEmpty})');
+      print('   ImageURL: ${preview.imageUrl}');
+      print('   Resolved URL: $previewUrl');
+      print('   Resolved ImageURL: $previewImageUrl');
+      
       linkPreviewCard = GestureDetector(
         onTap: () async {
           final uri = Uri.tryParse(previewUrl);
@@ -239,6 +259,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
             decoration: BoxDecoration(
               color: tokens.replyBackground,
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: colorScheme.outlineVariant,
+                width: 1,
+              ),
             ),
             child: Row(
               children: [
@@ -256,11 +280,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                             previewImageUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
-                              return Icon(Icons.link, color: subtleTextColor);
+                              return Icon(Icons.link, color: colorScheme.primary);
                             },
                           ),
                         )
-                      : Icon(Icons.link, color: subtleTextColor),
+                      : Icon(Icons.link, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -273,7 +297,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: textColor,
+                          color: colorScheme.onSurface,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -281,9 +305,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                       const SizedBox(height: 2),
                       Text(
                         previewDescription,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: subtleTextColor, fontSize: 11),
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
@@ -507,7 +534,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                             style: TextStyle(color: textColor),
                                             child: content,
                                           ),
-                                    ?linkPreviewCard,
+                                    if (linkPreviewCard != null) linkPreviewCard,
                                     const SizedBox(height: 2),
                                     Row(
                                       mainAxisSize: MainAxisSize.min,

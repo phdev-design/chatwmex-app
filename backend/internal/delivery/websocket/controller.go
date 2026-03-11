@@ -41,6 +41,8 @@ type WSResponse struct {
 func (c *SocketController) HandleMessage(client *Client, message []byte) {
 	var req WSRequest
 	if err := json.Unmarshal(message, &req); err != nil {
+		log.Printf("❌ [WebSocket] JSON parse error from user %s: %v | Raw message (first 200 chars): %s", 
+			client.userID, err, string(message[:min(200, len(message))]))
 		c.respondError(client, "error", "Invalid JSON format")
 		return
 	}
@@ -62,12 +64,29 @@ func (c *SocketController) HandleMessage(client *Client, message []byte) {
 	}
 }
 
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // OnChatMessage handles chat messages (text, image, voice, video).
 func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 	var msg domain.Message
 	if err := json.Unmarshal(data, &msg); err != nil {
+		log.Printf("❌ [WebSocket] Message parse error from user %s: %v | Raw data (first 200 chars): %s", 
+			client.userID, err, string(data[:min(200, len(data))]))
 		c.respondError(client, "error", "Invalid message format")
 		return
+	}
+
+	// 🔥 新增：記錄收到的訊息資訊
+	if msg.LinkPreview != nil {
+		log.Printf("📎 [WebSocket] 收到訊息附帶 Link Preview: URL=%s, Title=%s", msg.LinkPreview.URL, msg.LinkPreview.Title)
+	} else {
+		log.Printf("📝 [WebSocket] 收到純文字訊息，無 Link Preview")
 	}
 
 	// Validate common fields

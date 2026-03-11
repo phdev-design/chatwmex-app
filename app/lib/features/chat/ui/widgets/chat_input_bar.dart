@@ -454,7 +454,26 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isNotEmpty) {
-      ref.read(chatRoomProvider(widget.params).notifier).sendMessage(text);
+      // 🔥 修復：將 link preview 數據傳遞給 sendMessage
+      LinkPreview? linkPreview;
+      if (_previewData != null && !_isUrlPreviewCancelled) {
+        linkPreview = LinkPreview(
+          url: _previewData!.url,
+          title: _previewData!.title,
+          description: _previewData!.description,
+          imageUrl: _previewData?.imageUrl,
+        );
+        print('📎 [ChatInput] 發送訊息附帶 Link Preview:');
+        print('   URL: ${linkPreview.url}');
+        print('   Title: "${linkPreview.title}"');
+        print('   Description: "${linkPreview.description}"');
+        print('   ImageURL: ${linkPreview.imageUrl}');
+      }
+      
+      ref.read(chatRoomProvider(widget.params).notifier).sendMessage(
+        text,
+        linkPreview: linkPreview,
+      );
       _textController.clear();
       _debounceTimer?.cancel();
       setState(() {

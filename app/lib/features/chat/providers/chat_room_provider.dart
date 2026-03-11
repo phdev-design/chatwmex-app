@@ -15,7 +15,7 @@ import 'package:equatable/equatable.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
-import 'package:app/features/chat/providers/e2ee_provider.dart'; // 👉 新增
+import 'package:app/features/chat/providers/e2ee_provider.dart';
 
 // State for the Chat Room
 class ChatRoomState {
@@ -110,15 +110,13 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   late final WebSocketService _wsService;
   late final ChatRepository _chatRepository;
   late final CryptoService _cryptoService;
-  late final PublicKeyCacheService _publicKeyCacheService; // 👉 替換舊 cache 變數
+  late final PublicKeyCacheService _publicKeyCacheService;
   Timer? _typingTimer;
   bool _typingSent = false;
 
-  // 👉 針對單人對話的批次已讀 (_markConversationAsRead) 狀態變數
   Timer? _markConversationReadTimer;
   DateTime? _lastMarkConversationReadTime;
 
-  // 👉 針對群組多筆訊息的批次已讀 (_markAsRead) 狀態變數
   Timer? _readBatchTimer;
   DateTime? _lastReadBatchTime;
 
@@ -131,7 +129,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     _wsService = ref.watch(webSocketServiceProvider);
     _chatRepository = ref.watch(chatRepositoryProvider);
     _cryptoService = ref.watch(cryptoServiceProvider);
-    _publicKeyCacheService = ref.watch(publicKeyCacheServiceProvider); // 👉 初始化
+    _publicKeyCacheService = ref.watch(publicKeyCacheServiceProvider);
     var initialRoomAvatarUrl = '';
     if (!arg.isRoom) {
       final rooms = ref.read(roomListViewModelProvider).rooms;
@@ -141,22 +139,16 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           break;
         }
       }
-      // debugPrint(
-      //   'chat_room init dm room_id=${arg.roomId} initial_room_avatar_url=$initialRoomAvatarUrl rooms_count=${rooms.length}',
-      // );
     }
 
-    // Connect WebSocket
     _wsService.connect();
 
-    // Listen to WS events
     final subscription = _wsService.events.listen((data) {
       if (data is Map) {
         final event = data['event'];
         final payload = data['data'];
 
         if (event == 'ws_reconnected') {
-          // 當 WebSocket 重新連線時，自動同步 pending 訊息
           resendPendingMessages();
         } else if (event == 'chat_message') {
           try {
@@ -169,9 +161,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                 _addMessage(message);
                 Future(
                   () => LocalDbService().insertMessages([rawMessage]),
-                ); // Store encrypted locally
+                );
                 if (message.senderId != arg.currentUserId) {
-                  // 自動發送送達回執
                   _wsService.send('message_delivered', {
                     'message_id': message.id,
                     'room_id': (arg.isRoom ? arg.roomId : null),
@@ -218,7 +209,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             }
           }
         } else if (event == 'typing_start') {
-          // Basic typing indicator logic
           final roomId = payload['room_id'];
           final userId = payload['user_id'];
 
@@ -227,8 +217,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               state = state.copyWith(
                 typingUsers: [...state.typingUsers, userId],
               );
-
-              // Auto clear after 3 seconds
               Future.delayed(const Duration(seconds: 3), () {
                 if (state.typingUsers.contains(userId)) {
                   state = state.copyWith(
@@ -341,7 +329,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     ref.onDispose(() {
       subscription.cancel();
       _typingTimer?.cancel();
-      _markConversationReadTimer?.cancel(); // 👉 清理新增的計時器
+      _markConversationReadTimer?.cancel();
       _readBatchTimer?.cancel();
     });
 
@@ -353,7 +341,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     );
   }
 
-void _addMessage(Message msg) {
+  void _addMessage(Message msg) {
     final hydrated = _attachReplyMessage(msg);
     final existingIndex = state.messages.indexWhere((m) {
       if (hydrated.clientMsgId != null && hydrated.clientMsgId!.isNotEmpty) {
@@ -368,12 +356,12 @@ void _addMessage(Message msg) {
       state = state.copyWith(messages: updated);
       return;
     }
-    // ✅ 新訊息加入時，offset 也同步 +1
     state = state.copyWith(
       messages: [hydrated, ...state.messages],
       offset: state.offset + 1,
     );
   }
+
   void _applyUserAvatarUpdated(
     ChatRoomParams arg,
     String userId,
@@ -385,9 +373,6 @@ void _addMessage(Message msg) {
     if (!arg.isRoom && arg.roomId == userId) {
       roomAvatarUrl = avatarUrl;
     }
-    debugPrint(
-      'chat_room user_profile_updated dm=${!arg.isRoom} room_id=${arg.roomId} event_user_id=$userId room_avatar_url=$roomAvatarUrl',
-    );
     state = state.copyWith(
       userAvatarUrls: avatars,
       roomAvatarUrl: roomAvatarUrl,
@@ -417,6 +402,7 @@ void _addMessage(Message msg) {
       status: MessageStatus.sent,
       readAt: existing.readAt,
       readBy: existing.readBy,
+      linkPreview: existing.linkPreview, // 🔥 保留預覽
     );
     final messages = [...state.messages];
     messages[index] = updated;
@@ -448,6 +434,7 @@ void _addMessage(Message msg) {
       status: status,
       readAt: existing.readAt,
       readBy: existing.readBy,
+      linkPreview: existing.linkPreview, // 🔥 保留預覽
     );
     final messages = [...state.messages];
     messages[index] = updated;
@@ -477,6 +464,7 @@ void _addMessage(Message msg) {
           status: MessageStatus.read,
           readAt: readAt ?? DateTime.now(),
           readBy: readBy,
+          linkPreview: m.linkPreview, // 🔥 保留預覽
         );
       }
       return m;
@@ -506,6 +494,7 @@ void _addMessage(Message msg) {
           status: m.status,
           readAt: m.readAt,
           readBy: [...m.readBy, readByUserId],
+          linkPreview: m.linkPreview, // 🔥 保留預覽
         );
         updatedMessages.add(newMessage);
         return newMessage;
@@ -518,7 +507,6 @@ void _addMessage(Message msg) {
     }
   }
 
-  // 統一使用 _publicKeyCacheService 下的快取與 API 機制
   Future<String?> _getPublicKey(String userId) async {
     if (arg.isRoom) return null;
     return await _publicKeyCacheService.getPublicKey(userId);
@@ -528,7 +516,6 @@ void _addMessage(Message msg) {
     if (arg.isRoom) return m;
     if (m.isUnsent || m.content.isEmpty) return m;
 
-    // 👉 判斷 E2EE 開關，若為 false 直接跳過解密，以明文顯示
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
     if (!isE2EEEnabled) return m;
@@ -543,26 +530,20 @@ void _addMessage(Message msg) {
 
     final decrypted = await _cryptoService.decryptMessage(m.content, pubKey);
 
-    // 解密成功：回傳解密後的內容
     if (decrypted != m.content) {
       return m.copyWith(content: decrypted);
     }
 
-    // 解密後內容與密文相同，代表：
-    // A) 原本就是舊版明文（非 base64），直接顯示即可
-    // B) 解密失敗（金鑰不匹配），顯示 placeholder
-    // 判斷依據：純文字通常不會以 base64 字元集組成且長度是4的倍數
     final looksLikeCiphertext = _looksLikeE2EECiphertext(m.content);
     if (looksLikeCiphertext) {
       return m.copyWith(content: '🔒 此訊息無法解密（金鑰已更新）');
     }
-    return m; // 原本就是明文，直接顯示
+    return m;
   }
 
-  // 判斷字串是否看起來像我們的 E2EE 密文格式（base64，且長度 > 28bytes 對應的 base64 長度）
   bool _looksLikeE2EECiphertext(String content) {
     if (content.length < 40) {
-      return false; // < 28 bytes base64 encoded 約 40 chars
+      return false;
     }
     final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
     return base64Regex.hasMatch(content.trim());
@@ -572,8 +553,6 @@ void _addMessage(Message msg) {
     final futures = messages.map((m) => _tryDecryptMessage(m));
     return Future.wait(futures);
   }
-
-  // --- API Logic ---
 
   Future<void> loadHistory({int limit = 50, int offset = 0}) async {
     if (offset == 0) {
@@ -661,18 +640,11 @@ void _addMessage(Message msg) {
     }
   }
 
-  /// 重新發送所有處於 pending 狀態的訊息
   Future<void> resendPendingMessages() async {
-    // 取得所有本地資料庫中狀態為 pending 的訊息
     final pending = await LocalDbService().getPendingMessages();
     if (pending.isEmpty) return;
 
-    debugPrint(
-      'ChatRoomViewModel: Resending ${pending.length} pending messages',
-    );
-
     for (final message in pending) {
-      // 檢查訊息是否屬於目前的聊天室（避免多個聊天室同時同步時互相影響）
       final isRelevant =
           (arg.isRoom && message.roomId == arg.roomId) ||
           (!arg.isRoom &&
@@ -707,13 +679,18 @@ void _addMessage(Message msg) {
         'content': payloadContent,
         'type': message.type.name,
         'client_msg_id': message.clientMsgId,
+        // 🔥 修復：加上 link_preview 屬性
+        if (message.linkPreview != null) 'link_preview': {
+          'url': message.linkPreview!.url,
+          'title': message.linkPreview!.title,
+          'description': message.linkPreview!.description,
+          if (message.linkPreview!.imageUrl != null) 'image_url': message.linkPreview!.imageUrl,
+        },
       };
 
       try {
         await _wsService.send('chat_message', payload);
-        // 更新 UI 狀態
         _updateMessageStatus(message.clientMsgId!, MessageStatus.sent);
-        // 更新本地資料庫
         await LocalDbService().updateMessageStatus(
           message.clientMsgId!,
           MessageStatus.sent,
@@ -722,7 +699,6 @@ void _addMessage(Message msg) {
         debugPrint(
           'Failed to resend pending message ${message.clientMsgId}: $e',
         );
-        // 保持 pending 狀態，下次重連再試
       }
     }
   }
@@ -730,6 +706,7 @@ void _addMessage(Message msg) {
   Future<void> sendMessage(
     String content, {
     MessageType type = MessageType.text,
+    dynamic linkPreview, // 🔥 接收 link preview 參數 (使用 dynamic 以對應 Message 內的型別)
   }) async {
     final clientMsgId = const Uuid().v4();
     final replyToId = state.replyingToMessage?.id;
@@ -747,15 +724,12 @@ void _addMessage(Message msg) {
       type: type,
       createdAt: DateTime.now(),
       isRead: true,
-      // Step 1: 先標記為 pending（離線安全）
       status: MessageStatus.pending,
       readBy: [arg.currentUserId],
+      linkPreview: linkPreview, // 🔥 儲存 link preview
     );
 
-    // Step 2: 先寫入本地 DB （道下即顯示 + 離線安全）
     await LocalDbService().insertMessages([tempMessage]);
-
-    // Step 3: 加入訊息列表，UI 立即顯示
     _addMessage(tempMessage);
     state = state.copyWith(isSending: true, clearReplyingTo: true);
 
@@ -781,20 +755,24 @@ void _addMessage(Message msg) {
       'content': payloadContent,
       'type': type.toString().split('.').last,
       'client_msg_id': clientMsgId,
+      // 🔥 將 link preview 加入 payload
+      if (linkPreview != null) 'link_preview': {
+        'url': linkPreview.url,
+        'title': linkPreview.title,
+        'description': linkPreview.description,
+        if (linkPreview.imageUrl != null) 'image_url': linkPreview.imageUrl,
+      },
     };
 
+    print('📤 [ChatRoom] 發送訊息 payload: ${payload.containsKey('link_preview') ? '包含 Link Preview' : '純文字'}');
+
     try {
-      // Step 4: 嘗試透過 WS 發送
       await _wsService.send('chat_message', payload);
-      // Step 5: 成功後更新狀態為 sent
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
-      // 同步更新本地 DB
       final sentMsg = tempMessage.copyWith(status: MessageStatus.sent);
       Future.microtask(() => LocalDbService().insertMessages([sentMsg]));
       state = state.copyWith(isSending: false);
     } catch (e) {
-      // Step 6: 發送失敗，保留 pending 狀態不顯示錯誤
-      // 此訊息將在重連時自動重試（第三步實作）
       debugPrint('⚠️ WS send failed, message kept as pending: $e');
       state = state.copyWith(isSending: false);
     }
@@ -811,7 +789,6 @@ void _addMessage(Message msg) {
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
-    // 👉 判斷 E2EE 開關，若為 false 則直接傳送明文
     if (!arg.isRoom && isE2EEEnabled) {
       final pubKey = await _getPublicKey(arg.roomId);
       if (pubKey != null) {
@@ -833,6 +810,13 @@ void _addMessage(Message msg) {
       'content': payloadContent,
       'type': message.type.toString().split('.').last,
       'client_msg_id': clientMsgId,
+      // 🔥 修復：加上 link_preview 屬性
+      if (message.linkPreview != null) 'link_preview': {
+        'url': message.linkPreview!.url,
+        'title': message.linkPreview!.title,
+        'description': message.linkPreview!.description,
+        if (message.linkPreview!.imageUrl != null) 'image_url': message.linkPreview!.imageUrl,
+      },
     };
     try {
       await _wsService.send('chat_message', payload);
@@ -1004,7 +988,6 @@ void _addMessage(Message msg) {
     state = state.copyWith(messages: messages);
     Future.microtask(() => LocalDbService().insertMessages([updated]));
 
-    // 👇 新增：如果收回的是最新一則訊息（index == 0），同步更新 RoomList
     if (index == 0) {
       ref
           .read(roomListViewModelProvider.notifier)
@@ -1042,16 +1025,11 @@ void _addMessage(Message msg) {
     }
   }
 
-  // 清除此聊天室所有歷史訊息（API + 本地 DB + State）
   Future<void> clearHistory() async {
     try {
-      // 1. 呼叫後端 API 清除伺服器端資料
       await _chatRepository.clearChatHistory(arg.roomId);
-      // 2. 清空本地 SQLite 快取
       await LocalDbService().clearRoomMessages(arg.roomId);
-      // 3. 更新 Riverpod state，清空訊息列表
       state = state.copyWith(messages: [], hasMore: false, offset: 0);
-      // 4. 通知 RoomList 更新最後一則訊息為空
       ref
           .read(roomListViewModelProvider.notifier)
           .updateRoomLastMessage(arg.roomId, '', lastMessageTime: null);
@@ -1194,7 +1172,6 @@ void _addMessage(Message msg) {
     _markConversationReadTimer = Timer(
       const Duration(milliseconds: 800),
       () async {
-        // 2 秒冷卻時間：如果短時間內針對同一個對話已經送過，跳過不送
         final now = DateTime.now();
         if (_lastMarkConversationReadTime != null &&
             now.difference(_lastMarkConversationReadTime!).inSeconds < 2) {
@@ -1227,8 +1204,6 @@ void _addMessage(Message msg) {
     _readBatchTimer = Timer(const Duration(milliseconds: 800), () async {
       if (_pendingReadMessageIds.isEmpty) return;
 
-      // 2 秒冷卻時間：如果短時間內剛剛送過一個 batch，且新的 batch 未滿特定數量，則考慮延遲或丟棄
-      // 這裡採用如果不到 2 秒則直接取消執行這回，等待下一次 trigger
       final now = DateTime.now();
       if (_lastReadBatchTime != null &&
           now.difference(_lastReadBatchTime!).inSeconds < 2) {
@@ -1247,7 +1222,6 @@ void _addMessage(Message msg) {
         await _chatRepository.markMessagesAsRead(ids);
         _applyReadReceipt(ids, arg.currentUserId);
 
-        // 透過 WebSocket 發送已讀回執給原發送者
         for (final id in ids) {
           final msg = state.messages.firstWhere(
             (m) => m.id == id,
@@ -1295,7 +1269,6 @@ void _addMessage(Message msg) {
   }
 }
 
-// Provider Definition
 final chatRoomProvider =
     NotifierProvider.family<ChatRoomViewModel, ChatRoomState, ChatRoomParams>(
       ChatRoomViewModel.new,

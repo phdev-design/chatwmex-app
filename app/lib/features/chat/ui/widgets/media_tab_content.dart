@@ -142,7 +142,7 @@ class _MediaTabContentState extends ConsumerState<MediaTabContent> {
               final isVideo = message.type == MessageType.video;
 
               if (url.isEmpty) {
-                return _PlaceholderTile(isDark: isDark, cs: cs);
+                return _DecryptionFailedTile(cs: cs);
               }
 
               return GestureDetector(
@@ -252,7 +252,50 @@ class _MediaTabContentState extends ConsumerState<MediaTabContent> {
   }
 }
 
-// ── Placeholder tile ──────────────────────────────────────────────────────────
+// ── Decryption failed tile ───────────────────────────────────────────────────
+
+class _DecryptionFailedTile extends StatelessWidget {
+  final ColorScheme cs;
+
+  const _DecryptionFailedTile({required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        border: Border.all(
+          color: cs.error.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 32,
+            color: cs.error.withValues(alpha: 0.6),
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              '檔案未能解密',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Placeholder tile (deprecated) ─────────────────────────────────────────────
 
 class _PlaceholderTile extends StatelessWidget {
   final bool isDark;
