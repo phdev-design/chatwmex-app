@@ -104,11 +104,7 @@ class _MediaTabContentState extends ConsumerState<MediaTabContent> {
     final slivers = <Widget>[];
 
     for (final entry in grouped.entries) {
-      final mediaMessages = entry.value
-          .where(
-            (m) => m.type == MessageType.image || m.type == MessageType.video,
-          )
-          .toList();
+      final mediaMessages = entry.value;
       if (mediaMessages.isEmpty) continue;
 
       // Section header

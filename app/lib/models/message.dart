@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 
-enum MessageType { text, image, voice, video, file }
+enum MessageType { text, image, voice, video, file, link, document }
 
 /// 訊息传送狀態枚裄
 /// - pending: 離線中，已存入本地，尚未發送
@@ -253,8 +253,11 @@ class Message extends Equatable {
       case 'video':
         return MessageType.video;
       case 'file':
-      case 'document':
         return MessageType.file;
+      case 'document':
+        return MessageType.document;
+      case 'link':
+        return MessageType.link;
       default:
         return MessageType.text;
     }

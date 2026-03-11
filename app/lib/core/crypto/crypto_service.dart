@@ -154,14 +154,6 @@ class CryptoService {
     String encryptedOrPlainText,
     String senderPublicKeyBase64,
   ) async {
-    // 🔍 DEBUG 診斷 - 確認金鑰狀態
-    final currentKey = await _secureStorage.read(key: 'e2ee_private_key');
-    final historyRaw = await _secureStorage.read(
-      key: 'e2ee_private_key_history',
-    );
-    debugPrint('🔍 currentKey exists: ${currentKey != null}');
-    debugPrint('🔍 historyKeys raw: $historyRaw');
-    debugPrint('🔍 _keyPair initialized: $isInitialized');
     // Step 1: 先用當前金鑰解密（原有邏輯）
     try {
       final decodedBytes = base64Decode(encryptedOrPlainText);
@@ -215,17 +207,15 @@ class CryptoService {
               secretBox,
               secretKey: sharedSecret,
             );
-            debugPrint('✅ 歷史金鑰解密成功');
             return utf8.decode(plainTextBytes);
           } catch (_) {
-            continue; // 這把歷史金鑰也不對，試下一把
+            continue;
           }
         }
       }
-    } catch (_) { debugPrint('Error caught'); }
+    } catch (_) {}
 
     // Step 3: 所有金鑰都失敗
-    debugPrint('⚠️ 解密判定：此為舊版明文訊息或解密失敗，直接顯示原文。');
     return encryptedOrPlainText;
   }
 
@@ -329,6 +319,72 @@ class CryptoService {
     _keyPair = keyPair;
     final pubKey = await keyPair.extractPublicKey();
     _publicKeyBase64 = base64Encode(pubKey.bytes);
+  }
+
+  /// 使用對稱金鑰解密（用於群組聊天）
+  /// 直接使用當前用戶的私鑰作為對稱金鑰
+  Future<String> decryptWithSymmetricKey(String encryptedOrPlainText) async {
+    if (!isInitialized) {
+      throw StateError('CryptoService not initialized');
+    }
+
+    // Step 1: 先用當前私鑰解密
+    try {
+      final decodedBytes = base64Decode(encryptedOrPlainText);
+      if (decodedBytes.length < 28) return encryptedOrPlainText;
+
+      final nonce = decodedBytes.sublist(0, 12);
+      final macBytes = decodedBytes.sublist(12, 28);
+      final cipherText = decodedBytes.sublist(28);
+
+      // 使用當前私鑰作為對稱金鑰
+      final privateKeyBytes = await _keyPair!.extractPrivateKeyBytes();
+      final symmetricKey = SecretKey(privateKeyBytes);
+
+      final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes));
+      final plainTextBytes = await _aesGcm.decrypt(
+        secretBox,
+        secretKey: symmetricKey,
+      );
+      return utf8.decode(plainTextBytes);
+    } catch (_) {
+      // 當前金鑰解密失敗，繼續嘗試歷史金鑰
+    }
+
+    // Step 2: 嘗試所有歷史私鑰
+    try {
+      final decodedBytes = base64Decode(encryptedOrPlainText);
+      if (decodedBytes.length >= 28) {
+        final nonce = decodedBytes.sublist(0, 12);
+        final macBytes = decodedBytes.sublist(12, 28);
+        final cipherText = decodedBytes.sublist(28);
+
+        final historyKeys = await _loadHistoryPrivateKeys();
+
+        for (final histPrivKeyBase64 in historyKeys.reversed) {
+          try {
+            final histPrivKeyBytes = base64Decode(histPrivKeyBase64);
+            final symmetricKey = SecretKey(histPrivKeyBytes);
+
+            final secretBox = SecretBox(
+              cipherText,
+              nonce: nonce,
+              mac: Mac(macBytes),
+            );
+            final plainTextBytes = await _aesGcm.decrypt(
+              secretBox,
+              secretKey: symmetricKey,
+            );
+            return utf8.decode(plainTextBytes);
+          } catch (_) {
+            continue;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Step 3: 所有金鑰都失敗
+    return encryptedOrPlainText;
   }
 
   // Clear keys for logout — 只清記憶體，保留 SecureStorage 讓舊訊息可繼續解密
