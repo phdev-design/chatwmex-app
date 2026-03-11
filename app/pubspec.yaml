@@ -72,6 +72,9 @@ dependencies:
   flutter_dotenv: ^6.0.0
   mobile_scanner: ^7.0.0
   shared_preference_app_group: ^1.1.1
+  share_plus: ^10.1.4
+  image_cropper: ^9.0.0
+  gal: ^2.3.0
 
 
 dev_dependencies:

@@ -56,6 +56,8 @@
 	<string>我們需要存取您的麥克風，以便您可以錄製語音訊息。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>需要相簿權限以上傳頭像或從相簿選擇照片傳送至聊天室。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+    <string>我們需要相簿權限，以便將圖片儲存到您的設備中。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
