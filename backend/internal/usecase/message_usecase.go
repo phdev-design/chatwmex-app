@@ -15,15 +15,16 @@ import (
 )
 
 type messageUsecase struct {
-	messageRepo    domain.MessageRepository
-	roomRepo       domain.RoomRepository
-	onlineRepo     domain.OnlineRepository
-	userRepo       domain.UserRepository
-	deviceRepo     domain.DeviceRepository
-	pushService    domain.PushNotificationService
-	settingUsecase domain.ChatSettingUsecase // 👉 新增設定的 Usecase
-	redisClient    *redis.Client
-	contextTimeout time.Duration
+	messageRepo          domain.MessageRepository
+	roomRepo             domain.RoomRepository
+	onlineRepo           domain.OnlineRepository
+	userRepo             domain.UserRepository
+	deviceRepo           domain.DeviceRepository
+	pushService          domain.PushNotificationService
+	notificationProducer domain.NotificationProducer // NEW: RabbitMQ producer for async notifications
+	settingUsecase       domain.ChatSettingUsecase   // 👉 新增設定的 Usecase
+	redisClient          *redis.Client
+	contextTimeout       time.Duration
 }
 
 // NewMessageUsecase creates a new instance of MessageUsecase.
@@ -34,20 +35,22 @@ func NewMessageUsecase(
 	userRepo domain.UserRepository,
 	deviceRepo domain.DeviceRepository,
 	pushService domain.PushNotificationService,
-	settingUsecase domain.ChatSettingUsecase, // 👉 加入參數
+	notificationProducer domain.NotificationProducer, // NEW: RabbitMQ producer
+	settingUsecase domain.ChatSettingUsecase,         // 👉 加入參數
 	redisClient *redis.Client,
 	timeout time.Duration,
 ) domain.MessageUsecase {
 	return &messageUsecase{
-		messageRepo:    repo,
-		roomRepo:       roomRepo,
-		onlineRepo:     onlineRepo,
-		userRepo:       userRepo,
-		deviceRepo:     deviceRepo,
-		pushService:    pushService,
-		settingUsecase: settingUsecase, // 👉 設定依賴
-		redisClient:    redisClient,
-		contextTimeout: timeout,
+		messageRepo:          repo,
+		roomRepo:             roomRepo,
+		onlineRepo:           onlineRepo,
+		userRepo:             userRepo,
+		deviceRepo:           deviceRepo,
+		pushService:          pushService,
+		notificationProducer: notificationProducer, // NEW
+		settingUsecase:       settingUsecase,       // 👉 設定依賴
+		redisClient:          redisClient,
+		contextTimeout:       timeout,
 	}
 }
 
@@ -156,11 +159,18 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 		return err
 	}
 
-	if u.pushService != nil && len(pushTargets) > 0 {
-		targetsCopy := append([]string(nil), pushTargets...)
-		messageCopy := *msg
-		go u.pushToOfflineUsers(targetsCopy, &messageCopy)
+	// 6) Send push notifications asynchronously via RabbitMQ
+	if u.notificationProducer != nil && len(pushTargets) > 0 {
+		pushMsg := u.buildPushNotificationMessage(ctx, pushTargets, msg)
+		if pushMsg != nil {
+			// Publish asynchronously - don't block on errors
+			if err := u.notificationProducer.Publish(ctx, pushMsg); err != nil {
+				log.Printf("Failed to publish notification to queue: %v", err)
+				// Continue - message was already stored successfully
+			}
+		}
 	}
+
 	return nil
 }
 
@@ -204,6 +214,55 @@ func (u *messageUsecase) pushToOfflineUsers(userIDs []string, msg *domain.Messag
 		} else {
 			log.Printf("✅ 推播發送成功 (針對 user %s)\n", userID)
 		}
+	}
+}
+
+// buildPushNotificationMessage creates a PushNotificationMessage from user IDs and message
+func (u *messageUsecase) buildPushNotificationMessage(
+	ctx context.Context,
+	userIDs []string,
+	msg *domain.Message,
+) *domain.PushNotificationMessage {
+	// Collect player IDs from device repository
+	playerIDs := make([]string, 0)
+	for _, userID := range userIDs {
+		devices, err := u.deviceRepo.GetByUserID(ctx, userID)
+		if err != nil || len(devices) == 0 {
+			continue
+		}
+		for _, device := range devices {
+			if device != nil && device.ID != "" {
+				playerIDs = append(playerIDs, device.ID)
+			}
+		}
+	}
+
+	if len(playerIDs) == 0 {
+		return nil
+	}
+
+	// Build title and content
+	title, content := u.buildPushContent(ctx, msg)
+
+	// Create data payload
+	roomID := msg.RoomID
+	if roomID == "" {
+		roomID = msg.SenderID
+	}
+	data := map[string]interface{}{
+		"room_id":           roomID,
+		"is_room":           msg.RoomID != "",
+		"room_name":         title,
+		"encrypted_content": msg.Content,
+		"sender_id":         msg.SenderID,
+		"message_id":        msg.ID,
+	}
+
+	return &domain.PushNotificationMessage{
+		PlayerIDs: playerIDs,
+		Title:     title,
+		Content:   content,
+		Data:      data,
 	}
 }
 

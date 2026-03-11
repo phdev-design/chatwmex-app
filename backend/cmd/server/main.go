@@ -97,6 +97,25 @@ func main() {
 			pushService = ps
 		}
 	}
+
+	// Initialize NotificationProducer for async push notifications
+	var notificationProducer domain.NotificationProducer
+	if cfg.RabbitMQURL != "" {
+		producer, err := rabbitmq.NewNotificationProducer(cfg)
+		if err != nil {
+			log.Fatalf("Failed to initialize NotificationProducer: %v", err)
+		}
+		notificationProducer = producer
+		defer func() {
+			if err := notificationProducer.Close(); err != nil {
+				log.Printf("Error closing NotificationProducer: %v", err)
+			}
+		}()
+		log.Println("NotificationProducer initialized successfully")
+	} else {
+		log.Println("Warning: RabbitMQ URL not configured, async push notifications will be disabled")
+	}
+
 	messageUsecase := usecase.NewMessageUsecase(
 		messageRepo,
 		roomRepo,
@@ -104,7 +123,8 @@ func main() {
 		userRepo,
 		deviceRepo,
 		pushService,
-		chatSettingUsecase, // 👉 加入參數
+		notificationProducer, // NEW: Pass NotificationProducer
+		chatSettingUsecase,   // 👉 加入參數
 		redisClient,
 		timeout,
 	)
@@ -159,6 +179,32 @@ func main() {
 	socketController := websocket.NewSocketController(hub, messageUsecase, friendRepo)
 
 	go hub.Run()
+
+	// Initialize NotificationConsumer for async push notification processing
+	var notificationConsumer *rabbitmq.NotificationConsumer
+	if cfg.RabbitMQURL != "" && pushService != nil {
+		consumer, err := rabbitmq.NewNotificationConsumer(cfg, pushService)
+		if err != nil {
+			log.Fatalf("Failed to initialize NotificationConsumer: %v", err)
+		}
+		notificationConsumer = consumer
+
+		// Start consumer in background
+		consumerCtx, consumerCancel := context.WithCancel(context.Background())
+		defer consumerCancel()
+
+		if err := notificationConsumer.Start(consumerCtx); err != nil {
+			log.Fatalf("Failed to start NotificationConsumer: %v", err)
+		}
+		defer func() {
+			if err := notificationConsumer.Stop(); err != nil {
+				log.Printf("Error stopping NotificationConsumer: %v", err)
+			}
+		}()
+		log.Println("NotificationConsumer started successfully")
+	} else {
+		log.Println("Warning: NotificationConsumer not started (RabbitMQ or OneSignal not configured)")
+	}
 
 	// Initialize FriendUsecase (Requires Hub/NotificationService for notifications)
 	// We passed Hub to FriendUsecase before because Hub implemented NotificationService (via SendNotification method stub)
