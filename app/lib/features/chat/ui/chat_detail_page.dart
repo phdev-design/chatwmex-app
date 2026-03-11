@@ -247,22 +247,28 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage>
     }
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final atBottom = (_scrollController.offset <= 40);
-    if (atBottom != _isAtBottom) {
-      setState(() {
-        _isAtBottom = atBottom;
-      });
-    }
-    if (atBottom && (_showNewMessageBanner || _unreadCount > 0)) {
-      setState(() {
-        _showNewMessageBanner = false;
-        _unreadCount = 0;
-      });
-      ref.read(chatRoomProvider(_params).notifier).markConversationAsRead();
-    }
+void _onScroll() {
+  if (!_scrollController.hasClients) return;
+
+  final position = _scrollController.position;
+  final atBottom = (_scrollController.offset <= 40);
+
+  if (atBottom != _isAtBottom) {
+    setState(() { _isAtBottom = atBottom; });
   }
+  if (atBottom && (_showNewMessageBanner || _unreadCount > 0)) {
+    setState(() {
+      _showNewMessageBanner = false;
+      _unreadCount = 0;
+    });
+    ref.read(chatRoomProvider(_params).notifier).markConversationAsRead();
+  }
+
+  // ✅ 新增：偵測滑到頂部（舊訊息方向），觸發載入更多
+  if (position.pixels >= position.maxScrollExtent - 300) {
+    ref.read(chatRoomProvider(_params).notifier).loadMoreMessages();
+  }
+}
 
   void _goToBottom() {
     if (!_scrollController.hasClients) return;
