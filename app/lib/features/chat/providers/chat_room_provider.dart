@@ -42,7 +42,7 @@ class ChatRoomState {
     this.isConnected = false,
     this.isLoadingMore = false,
     this.hasMore = true,
-    this.offset = 50,
+    this.offset = 0,
     this.replyingToMessage,
     this.isRecording = false,
     this.userAvatarUrls = const {},
@@ -353,7 +353,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     );
   }
 
-  void _addMessage(Message msg) {
+void _addMessage(Message msg) {
     final hydrated = _attachReplyMessage(msg);
     final existingIndex = state.messages.indexWhere((m) {
       if (hydrated.clientMsgId != null && hydrated.clientMsgId!.isNotEmpty) {
@@ -368,9 +368,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       state = state.copyWith(messages: updated);
       return;
     }
-    state = state.copyWith(messages: [hydrated, ...state.messages]);
+    // ✅ 新訊息加入時，offset 也同步 +1
+    state = state.copyWith(
+      messages: [hydrated, ...state.messages],
+      offset: state.offset + 1,
+    );
   }
-
   void _applyUserAvatarUpdated(
     ChatRoomParams arg,
     String userId,
