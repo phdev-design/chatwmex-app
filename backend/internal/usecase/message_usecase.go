@@ -289,7 +289,7 @@ func (u *messageUsecase) buildPushContent(ctx context.Context, msg *domain.Messa
 	// 👉 判斷如果是 E2EE 密文（通常大於一定長度，且不含一般中英文字型特徵，或者簡單的長度/Base64判斷）
 	// 在後端由於不負責解密，最安全的做法是：如果是 text，全部統一顯示「您收到了一則新訊息」或「🔒 一則加密訊息」。
 	if msg.Type == "text" {
-		content = "🔒 一則加密訊息"
+		content = "一則訊息通知"
 	} else if msg.Type == "image" {
 		content = "傳送了一張圖片"
 	} else if msg.Type == "audio" || msg.Type == "voice" {
