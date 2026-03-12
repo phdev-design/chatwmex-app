@@ -1,40 +1,53 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:app/core/network/network_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app/core/media/audio_cache_service.dart';
+import 'package:app/models/message.dart';
 
-class AudioMessageBubble extends StatefulWidget {
-  final String audioUrl;
-
-  const AudioMessageBubble({super.key, required this.audioUrl});
-
-  @override
-  State<AudioMessageBubble> createState() => _AudioMessageBubbleState();
+enum AudioPlaybackState {
+  stopped,
+  loading,
+  playing,
+  paused,
+  error,
 }
 
-class _AudioMessageBubbleState extends State<AudioMessageBubble> {
+class AudioMessageBubble extends ConsumerStatefulWidget {
+  final Message message;
+
+  const AudioMessageBubble({super.key, required this.message});
+
+  @override
+  ConsumerState<AudioMessageBubble> createState() => _AudioMessageBubbleState();
+}
+
+class _AudioMessageBubbleState extends ConsumerState<AudioMessageBubble> {
   late final AudioPlayer _player;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
-  bool _isPlaying = false;
-  late String _resolvedUrl;
+  AudioPlaybackState _playbackState = AudioPlaybackState.stopped;
+  String? _error;
+  String? _cachedFilePath;
 
   @override
   void initState() {
     super.initState();
     _player = AudioPlayer();
-    _resolvedUrl = NetworkService.resolveUrl(widget.audioUrl);
+    
     _player.onDurationChanged.listen((duration) {
       if (!mounted) return;
       setState(() => _duration = duration);
     });
+    
     _player.onPositionChanged.listen((position) {
       if (!mounted) return;
       setState(() => _position = position);
     });
+    
     _player.onPlayerComplete.listen((_) {
       if (!mounted) return;
       setState(() {
-        _isPlaying = false;
+        _playbackState = AudioPlaybackState.stopped;
         _position = Duration.zero;
       });
     });
@@ -43,13 +56,14 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
   @override
   void didUpdateWidget(covariant AudioMessageBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.audioUrl != widget.audioUrl) {
-      _resolvedUrl = NetworkService.resolveUrl(widget.audioUrl);
+    if (oldWidget.message.id != widget.message.id) {
       _player.stop();
       setState(() {
-        _isPlaying = false;
+        _playbackState = AudioPlaybackState.stopped;
         _position = Duration.zero;
         _duration = Duration.zero;
+        _cachedFilePath = null;
+        _error = null;
       });
     }
   }
@@ -61,13 +75,87 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
   }
 
   Future<void> _togglePlay() async {
-    if (_isPlaying) {
+    if (_playbackState == AudioPlaybackState.playing) {
       await _player.pause();
-      setState(() => _isPlaying = false);
-    } else {
-      await _player.play(UrlSource(_resolvedUrl));
-      setState(() => _isPlaying = true);
+      setState(() => _playbackState = AudioPlaybackState.paused);
+      return;
     }
+
+    if (_playbackState == AudioPlaybackState.paused) {
+      await _player.resume();
+      setState(() => _playbackState = AudioPlaybackState.playing);
+      return;
+    }
+
+    // Load and play audio
+    await _loadAndPlay();
+  }
+
+  Future<void> _loadAndPlay() async {
+    setState(() {
+      _playbackState = AudioPlaybackState.loading;
+      _error = null;
+    });
+
+    try {
+      // Get cached or download audio
+      final audioCacheService = ref.read(audioCacheServiceProvider);
+      
+      // Check if message has encryption key (encrypted audio)
+      final fileKey = widget.message.fileKey;
+      final audioUrl = widget.message.content;
+      
+      if (fileKey == null || fileKey.isEmpty) {
+        // Legacy unencrypted audio - play directly from URL
+        await _player.play(UrlSource(audioUrl));
+        setState(() => _playbackState = AudioPlaybackState.playing);
+        return;
+      }
+
+      // Encrypted audio - download, decrypt, and cache
+      final localPath = await audioCacheService.getOrDownloadAudio(
+        messageId: widget.message.id,
+        audioUrl: audioUrl,
+        fileKey: fileKey,
+      );
+
+      _cachedFilePath = localPath;
+
+      // Play from local file
+      await _player.play(DeviceFileSource(localPath));
+      
+      if (!mounted) return;
+      setState(() => _playbackState = AudioPlaybackState.playing);
+    } on AudioCacheException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _playbackState = AudioPlaybackState.error;
+        _error = _getErrorMessage(e);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _playbackState = AudioPlaybackState.error;
+        _error = 'Failed to play audio: ${e.toString()}';
+      });
+    }
+  }
+
+  String _getErrorMessage(AudioCacheException e) {
+    switch (e.type) {
+      case AudioCacheErrorType.networkError:
+        return 'Network error. Tap to retry.';
+      case AudioCacheErrorType.decryptionError:
+        return 'Cannot decrypt audio.';
+      case AudioCacheErrorType.fileIOError:
+        return 'File error. Tap to retry.';
+      case AudioCacheErrorType.invalidFormat:
+        return 'Invalid audio format.';
+    }
+  }
+
+  Future<void> _retry() async {
+    await _loadAndPlay();
   }
 
   String _formatDuration(Duration duration) {
@@ -85,6 +173,62 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
         DefaultTextStyle.of(context).style.color ?? colorScheme.onSurface;
     final subtleTextColor = defaultTextColor.withValues(alpha: 0.6);
 
+    // Show error state
+    if (_playbackState == AudioPlaybackState.error) {
+      return SizedBox(
+        width: 240,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.error_outline),
+              color: colorScheme.error,
+              onPressed: _retry,
+              visualDensity: VisualDensity.compact,
+            ),
+            Expanded(
+              child: Text(
+                _error ?? 'Error playing audio',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show loading state
+    if (_playbackState == AudioPlaybackState.loading) {
+      return SizedBox(
+        width: 240,
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(defaultTextColor),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Loading...',
+                style: TextStyle(fontSize: 12, color: subtleTextColor),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Normal playback UI
     final maxMs = _duration.inMilliseconds == 0
         ? 1.0
         : _duration.inMilliseconds.toDouble();
@@ -103,8 +247,12 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
       child: Row(
         children: [
           IconButton(
-            icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-            color: defaultTextColor, // 動態套用播放鍵顏色
+            icon: Icon(
+              _playbackState == AudioPlaybackState.playing
+                  ? Icons.pause
+                  : Icons.play_arrow,
+            ),
+            color: defaultTextColor,
             onPressed: _togglePlay,
             visualDensity: VisualDensity.compact,
           ),
@@ -119,7 +267,8 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
                     children: List.generate(bars.length, (index) {
                       final height = bars[index].toDouble();
                       final isActive = index < activeCount;
-                      final isHead = index == movingHead && _isPlaying;
+                      final isHead = index == movingHead &&
+                          _playbackState == AudioPlaybackState.playing;
                       return Expanded(
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 1),
@@ -128,10 +277,8 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
                             color: isHead
                                 ? colorScheme.secondary
                                 : (isActive
-                                      ? defaultTextColor
-                                      : defaultTextColor.withValues(
-                                          alpha: 0.3,
-                                        )), // 根據主字體調整音軌顏色
+                                    ? defaultTextColor
+                                    : defaultTextColor.withValues(alpha: 0.3)),
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),

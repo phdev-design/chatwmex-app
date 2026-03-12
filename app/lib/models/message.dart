@@ -66,6 +66,9 @@ class Message extends Equatable {
   final DateTime? readAt;
   final List<String> readBy;
   final LinkPreview? linkPreview;
+  /// For encrypted audio/image/video messages
+  /// Stores the symmetric encryption key (base64 encoded)
+  final String? fileKey;
 
   const Message({
     required this.id,
@@ -85,6 +88,7 @@ class Message extends Equatable {
     this.readAt,
     this.readBy = const [],
     this.linkPreview,
+    this.fileKey,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -128,6 +132,7 @@ class Message extends Equatable {
               Map<String, dynamic>.from(json['link_preview']),
             )
           : null,
+      fileKey: json['file_key'],
     );
   }
 
@@ -148,6 +153,7 @@ class Message extends Equatable {
       'read_at': readAt?.toIso8601String(),
       'read_by': readBy,
       'link_preview': linkPreview?.toJson(),
+      'file_key': fileKey,
     };
   }
 
@@ -173,6 +179,7 @@ class Message extends Equatable {
       'link_preview': linkPreview != null
           ? jsonEncode(linkPreview!.toJson())
           : null,
+      'file_key': fileKey,
     };
   }
 
@@ -239,6 +246,7 @@ class Message extends Equatable {
           : null,
       readBy: readByList,
       linkPreview: parsedLinkPreview,
+      fileKey: map['file_key'],
     );
   }
 
@@ -301,6 +309,7 @@ class Message extends Equatable {
     readAt,
     readBy,
     linkPreview,
+    fileKey,
   ];
 
   Message copyWith({
@@ -321,6 +330,7 @@ class Message extends Equatable {
     DateTime? readAt,
     List<String>? readBy,
     LinkPreview? linkPreview,
+    String? fileKey,
   }) {
     return Message(
       id: id ?? this.id,
@@ -340,6 +350,7 @@ class Message extends Equatable {
       readAt: readAt ?? this.readAt,
       readBy: readBy ?? this.readBy,
       linkPreview: linkPreview ?? this.linkPreview,
+      fileKey: fileKey ?? this.fileKey,
     );
   }
 }

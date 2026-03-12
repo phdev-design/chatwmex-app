@@ -113,7 +113,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         ),
       );
     } else if (msg.type == MessageType.voice) {
-      content = AudioMessageBubble(audioUrl: msg.content);
+      content = AudioMessageBubble(message: msg);
     } else if (msg.type == MessageType.file) {
       final fileUrl = resolveFullUrl(msg.content);
       final parsed = Uri.tryParse(fileUrl);

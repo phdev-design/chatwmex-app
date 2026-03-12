@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
@@ -136,6 +137,23 @@ class MediaService {
   Future<String> getTemporaryAudioPath() async {
     final directory = await getTemporaryDirectory();
     return '${directory.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+  }
+
+  /// Gets audio file bytes from a file path
+  Future<Uint8List> getAudioBytes(String filePath) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw Exception('Audio file not found: $filePath');
+    }
+    return await file.readAsBytes();
+  }
+
+  /// Validates audio file duration (optional - can be implemented later)
+  /// Returns true if duration is between 1 and 120 seconds
+  Future<bool> validateAudioDuration(String filePath) async {
+    // TODO: Implement duration validation if needed
+    // For now, we'll rely on the recording logic to enforce duration limits
+    return true;
   }
 
   void dispose() {

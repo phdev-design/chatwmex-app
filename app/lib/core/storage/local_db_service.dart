@@ -81,7 +81,8 @@ class LocalDbService {
       'read_at INTEGER, '
       'read_by TEXT, '
       'status TEXT DEFAULT "sent", ' // 訊息狀態：pending/sent/delivered/read/failed
-      'link_preview TEXT' // 新増欄位
+      'link_preview TEXT, ' // 連結預覽
+      'file_key TEXT' // 加密檔案金鑰（用於音訊/圖片/影片）
       ')',
     );
   }
@@ -121,6 +122,8 @@ class LocalDbService {
       'link_preview': 'ALTER TABLE messages ADD COLUMN link_preview TEXT',
       // 新増：status 欄位，預設為 sent
       'status': 'ALTER TABLE messages ADD COLUMN status TEXT DEFAULT "sent"',
+      // 新増：file_key 欄位，用於加密音訊/圖片/影片
+      'file_key': 'ALTER TABLE messages ADD COLUMN file_key TEXT',
     };
     for (final entry in missing.entries) {
       if (!existing.contains(entry.key)) {

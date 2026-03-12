@@ -1,11 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/storage/local_db_service.dart';
+import 'package:app/core/crypto/crypto_service.dart';
+import 'package:app/core/websocket/websocket_service.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/models/message.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 class PaginatedMessages {
   final List<Message> messages;
@@ -22,8 +26,15 @@ class PaginatedMessages {
 class ChatRepository {
   final NetworkService _networkService;
   final LocalDbService _localDb;
+  final CryptoService _cryptoService;
+  final WebSocketService _webSocketService;
 
-  ChatRepository(this._networkService, this._localDb);
+  ChatRepository(
+    this._networkService,
+    this._localDb,
+    this._cryptoService,
+    this._webSocketService,
+  );
 
   Future<List<Room>> getMyRooms({String query = ''}) async {
     try {
@@ -399,6 +410,103 @@ class ChatRepository {
     }
     return RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(msg.id);
   }
+
+  /// Sends an encrypted audio message
+  /// 1. Generates random file key
+  /// 2. Encrypts audio file
+  /// 3. Uploads encrypted file
+  /// 4. Sends message via WebSocket with URL and key
+  Future<Message> sendAudioMessage({
+    required String audioFilePath,
+    required String roomId,
+    String? receiverId,
+  }) async {
+    try {
+      // 1. Read audio file bytes
+      final audioFile = File(audioFilePath);
+      if (!await audioFile.exists()) {
+        throw Exception('Audio file not found: $audioFilePath');
+      }
+      final audioBytes = await audioFile.readAsBytes();
+
+      // 2. Generate random encryption key
+      final fileKey = await _cryptoService.generateRandomKey();
+
+      // 3. Encrypt audio bytes
+      final encryptedBytes = await _cryptoService.encryptBytes(
+        Uint8List.fromList(audioBytes),
+        fileKey,
+      );
+
+      // 4. Upload encrypted audio
+      final audioUrl = await _uploadEncryptedAudio(encryptedBytes);
+
+      // 5. Create message object for local optimistic update
+      final clientMsgId = const Uuid().v4();
+      final now = DateTime.now();
+      
+      final message = Message(
+        id: clientMsgId, // Will be replaced by server ID
+        clientMsgId: clientMsgId,
+        content: audioUrl,
+        senderId: '', // Will be filled by server
+        receiverId: receiverId,
+        roomId: roomId,
+        type: MessageType.voice,
+        createdAt: now,
+        status: MessageStatus.sending,
+        fileKey: fileKey,
+      );
+
+      // 6. Store optimistic message in local DB
+      try {
+        await _localDb.insertMessages([message]);
+      } catch (e) {
+        debugPrint('⚠️ Failed to store optimistic message: $e');
+      }
+
+      // 7. Send message via WebSocket
+      await _webSocketService.send('chat_message', {
+        'client_msg_id': clientMsgId,
+        'type': 'voice',
+        'content': audioUrl,
+        'file_key': fileKey,
+        'room_id': roomId,
+        'receiver_id': receiverId,
+      });
+
+      debugPrint('✅ Encrypted audio message sent: $audioUrl');
+      return message;
+    } catch (e) {
+      debugPrint('❌ Failed to send audio message: $e');
+      rethrow;
+    }
+  }
+
+  /// Helper: Encrypts and uploads audio file
+  Future<String> _uploadEncryptedAudio(Uint8List encryptedBytes) async {
+    try {
+      // Create temporary file for encrypted audio
+      final tempDir = await Directory.systemTemp.createTemp('encrypted_audio_');
+      final tempFile = File('${tempDir.path}/encrypted_audio.m4a');
+      await tempFile.writeAsBytes(encryptedBytes);
+
+      // Upload using existing uploadMedia method
+      final audioUrl = await uploadMedia(tempFile, 'voice');
+
+      // Clean up temporary file
+      try {
+        await tempFile.delete();
+        await tempDir.delete();
+      } catch (e) {
+        debugPrint('⚠️ Failed to clean up temp file: $e');
+      }
+
+      return audioUrl;
+    } catch (e) {
+      throw Exception('Failed to upload encrypted audio: $e');
+    }
+  }
 }
 
 class _DedupedResult {
@@ -410,5 +518,7 @@ class _DedupedResult {
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   final network = ref.watch(networkServiceProvider);
-  return ChatRepository(network, LocalDbService());
+  final crypto = ref.watch(cryptoServiceProvider);
+  final webSocket = ref.watch(webSocketServiceProvider);
+  return ChatRepository(network, LocalDbService(), crypto, webSocket);
 });

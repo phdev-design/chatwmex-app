@@ -860,61 +860,44 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final path = await mediaService.stopRecording();
     if (path == null || path.isEmpty) return;
 
-    final clientMsgId = const Uuid().v4();
     final replyToId = state.replyingToMessage?.id;
     state = state.copyWith(isSending: true);
+    
     try {
-      final url = await _chatRepository.uploadMedia(File(path), 'audio');
-      final tempMessage = Message(
-        id: clientMsgId,
-        clientMsgId: clientMsgId,
-        content: url,
-        senderId: arg.currentUserId,
+      // Use the new encrypted audio sending method
+      final message = await _chatRepository.sendAudioMessage(
+        audioFilePath: path,
+        roomId: arg.isRoom ? arg.roomId : '',
         receiverId: arg.isRoom ? null : arg.roomId,
-        roomId: arg.isRoom ? arg.roomId : null,
-        replyToMessageId: replyToId,
-        replyToMessage: state.replyingToMessage,
-        reactions: null,
-        isUnsent: false,
-        type: MessageType.voice,
-        createdAt: DateTime.now(),
-        isRead: true,
-        status: MessageStatus.sending,
-        readBy: [arg.currentUserId],
       );
-      _addMessage(tempMessage);
 
-      String payloadContent = url;
-      final isE2EEEnabled =
-          ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
-
-      if (!arg.isRoom && isE2EEEnabled) {
-        final pubKey = await _getPublicKey(arg.roomId);
-        if (pubKey != null) {
-          try {
-            payloadContent = await _cryptoService.encryptMessage(url, pubKey);
-          } catch (e) {
-            debugPrint(e.toString());
-          }
-        }
+      // Update the optimistic message with reply info if needed
+      if (replyToId != null) {
+        final updatedMessage = message.copyWith(
+          replyToMessageId: replyToId,
+          replyToMessage: state.replyingToMessage,
+        );
+        _addMessage(updatedMessage);
+      } else {
+        _addMessage(message);
       }
 
-      final payload = {
-        'receiver_id': arg.isRoom ? null : arg.roomId,
-        'room_id': arg.isRoom ? arg.roomId : null,
-        'reply_to_message_id': replyToId,
-        'content': payloadContent,
-        'type': 'audio',
-        'client_msg_id': clientMsgId,
-      };
+      // Clean up reply state
+      if (replyToId != null) {
+        state = state.copyWith(replyingToMessage: null);
+      }
 
-      await _wsService.send('chat_message', payload);
-      _updateMessageStatus(clientMsgId, MessageStatus.sent);
-      Future.microtask(() => LocalDbService().insertMessages([tempMessage]));
-      state = state.copyWith(isSending: false, replyingToMessage: null);
+      state = state.copyWith(isSending: false);
+      
+      // Clean up temporary audio file
+      try {
+        await File(path).delete();
+      } catch (e) {
+        debugPrint('⚠️ Failed to delete temp audio file: $e');
+      }
     } catch (e) {
-      _updateMessageStatus(clientMsgId, MessageStatus.failed);
       state = state.copyWith(isSending: false, error: e.toString());
+      debugPrint('❌ Failed to send audio message: $e');
     }
   }
 

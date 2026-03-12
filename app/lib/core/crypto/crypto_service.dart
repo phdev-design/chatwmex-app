@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -393,6 +394,68 @@ class CryptoService {
     _publicKeyBase64 = null;
     _currentUserId = null;
     // ✅ 不刪除 SecureStorage，各帳號的 key 和 history 永久保留
+  }
+
+  // --- Audio/File Encryption Methods ---
+
+  /// Generates a random 256-bit AES key for file encryption
+  /// Returns base64-encoded key string
+  Future<String> generateRandomKey() async {
+    final random = Random.secure();
+    final keyBytes = List<int>.generate(32, (_) => random.nextInt(256));
+    return base64Encode(keyBytes);
+  }
+
+  /// Encrypts bytes using AES-GCM with the provided key
+  /// Returns: nonce (12 bytes) + MAC (16 bytes) + ciphertext
+  Future<Uint8List> encryptBytes(Uint8List plainBytes, String keyBase64) async {
+    final keyBytes = base64Decode(keyBase64);
+    final secretKey = SecretKey(keyBytes);
+
+    final secretBox = await _aesGcm.encrypt(
+      plainBytes,
+      secretKey: secretKey,
+    );
+
+    // Combine nonce + mac + cipherText
+    final combinedBytes = Uint8List.fromList([
+      ...secretBox.nonce,
+      ...secretBox.mac.bytes,
+      ...secretBox.cipherText,
+    ]);
+
+    return combinedBytes;
+  }
+
+  /// Decrypts bytes using AES-GCM with the provided key
+  /// Expects: nonce (12 bytes) + MAC (16 bytes) + ciphertext
+  Future<Uint8List> decryptBytes(Uint8List encryptedBytes, String keyBase64) async {
+    if (encryptedBytes.length < 28) {
+      throw Exception('Invalid encrypted data: too short');
+    }
+
+    final nonce = encryptedBytes.sublist(0, 12);
+    final macBytes = encryptedBytes.sublist(12, 28);
+    final cipherText = encryptedBytes.sublist(28);
+
+    final keyBytes = base64Decode(keyBase64);
+    final secretKey = SecretKey(keyBytes);
+
+    final secretBox = SecretBox(
+      cipherText,
+      nonce: nonce,
+      mac: Mac(macBytes),
+    );
+
+    try {
+      final plainTextBytes = await _aesGcm.decrypt(
+        secretBox,
+        secretKey: secretKey,
+      );
+      return Uint8List.fromList(plainTextBytes);
+    } catch (e) {
+      throw Exception('Decryption failed: invalid key or corrupted data');
+    }
   }
 }
 
