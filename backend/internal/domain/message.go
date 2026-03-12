@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// 🔐 E2EE Auto-Resend Control Message Types
+// 這些訊息類型不會寫入資料庫，僅用於 WebSocket 即時通訊
+const (
+	MessageTypeReEncryptRequest  = "re_encrypt_request"
+	MessageTypeReEncryptResponse = "re_encrypt_response"
+)
+
 // MessageReceipt represents a status update for a message (delivered/read).
 type MessageReceipt struct {
 	MessageID string `json:"message_id"`

@@ -1,7 +1,18 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 
-enum MessageType { text, image, voice, video, file, link, document }
+enum MessageType { 
+  text, 
+  image, 
+  voice, 
+  video, 
+  file, 
+  link, 
+  document,
+  // 🔐 E2EE Auto-Resend Control Messages (不顯示在 UI，僅供內部邏輯使用)
+  reEncryptRequest,   // 接收方請求重新加密
+  reEncryptResponse,  // 發送方回傳重新加密的訊息
+}
 
 /// 訊息传送狀態枚裄
 /// - pending: 離線中，已存入本地，尚未發送
@@ -10,7 +21,16 @@ enum MessageType { text, image, voice, video, file, link, document }
 /// - delivered: 已送達接收方裝置
 /// - read:    接收方已閱讀
 /// - failed:  發送失敗
-enum MessageStatus { pending, sending, sent, delivered, read, failed }
+/// - decryptingRetry: 🔐 解密失敗，正在請求重新加密（顯示「正在同步金鑰...」）
+enum MessageStatus { 
+  pending, 
+  sending, 
+  sent, 
+  delivered, 
+  read, 
+  failed,
+  decryptingRetry,  // 🔐 新增：解密重試中
+}
 
 class LinkPreview extends Equatable {
   final String url;
@@ -69,6 +89,11 @@ class Message extends Equatable {
   /// For encrypted audio/image/video messages
   /// Stores the symmetric encryption key (base64 encoded)
   final String? fileKey;
+  
+  /// 🔐 E2EE Auto-Resend: 解密重試計數器
+  /// 記錄此訊息已嘗試重新加密的次數（最多 2 次）
+  /// null 表示從未失敗過，0 表示第一次失敗
+  final int? decryptRetryCount;
 
   const Message({
     required this.id,
@@ -89,6 +114,7 @@ class Message extends Equatable {
     this.readBy = const [],
     this.linkPreview,
     this.fileKey,
+    this.decryptRetryCount,  // 🔐 新增
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -133,6 +159,7 @@ class Message extends Equatable {
             )
           : null,
       fileKey: json['file_key'],
+      decryptRetryCount: json['decrypt_retry_count'],  // 🔐 新增
     );
   }
 
@@ -154,6 +181,7 @@ class Message extends Equatable {
       'read_by': readBy,
       'link_preview': linkPreview?.toJson(),
       'file_key': fileKey,
+      'decrypt_retry_count': decryptRetryCount,  // 🔐 新增
     };
   }
 
@@ -180,6 +208,7 @@ class Message extends Equatable {
           ? jsonEncode(linkPreview!.toJson())
           : null,
       'file_key': fileKey,
+      'decrypt_retry_count': decryptRetryCount,  // 🔐 新增
     };
   }
 
@@ -247,6 +276,7 @@ class Message extends Equatable {
       readBy: readByList,
       linkPreview: parsedLinkPreview,
       fileKey: map['file_key'],
+      decryptRetryCount: map['decrypt_retry_count'],  // 🔐 新增
     );
   }
 
@@ -266,6 +296,11 @@ class Message extends Equatable {
         return MessageType.document;
       case 'link':
         return MessageType.link;
+      // 🔐 E2EE Auto-Resend Control Messages
+      case 're_encrypt_request':
+        return MessageType.reEncryptRequest;
+      case 're_encrypt_response':
+        return MessageType.reEncryptResponse;
       default:
         return MessageType.text;
     }
@@ -286,6 +321,8 @@ class Message extends Equatable {
         return MessageStatus.read;
       case 'failed':
         return MessageStatus.failed;
+      case 'decrypting_retry':  // 🔐 新增
+        return MessageStatus.decryptingRetry;
       default:
         return null;
     }
@@ -310,6 +347,7 @@ class Message extends Equatable {
     readBy,
     linkPreview,
     fileKey,
+    decryptRetryCount,  // 🔐 新增
   ];
 
   Message copyWith({
@@ -331,6 +369,7 @@ class Message extends Equatable {
     List<String>? readBy,
     LinkPreview? linkPreview,
     String? fileKey,
+    int? decryptRetryCount,  // 🔐 新增
   }) {
     return Message(
       id: id ?? this.id,
@@ -351,6 +390,7 @@ class Message extends Equatable {
       readBy: readBy ?? this.readBy,
       linkPreview: linkPreview ?? this.linkPreview,
       fileKey: fileKey ?? this.fileKey,
+      decryptRetryCount: decryptRetryCount ?? this.decryptRetryCount,  // 🔐 新增
     );
   }
 }

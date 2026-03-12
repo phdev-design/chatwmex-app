@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/features/chat/utils/chat_url_utils.dart';
 
 class RoomMediaState {
   final bool isLoading;
@@ -211,6 +212,23 @@ class RoomMediaNotifier
     return result;
   }
 
+  /// 🔍 過濾有效媒體訊息：移除無法解析為有效 URL 的訊息
+  /// 
+  /// 此方法用於過濾掉解密失敗或無效的媒體訊息。
+  /// 使用 resolveFullUrl 檢查每個訊息的內容是否能解析為有效的 URL。
+  /// 
+  /// 過濾條件：
+  /// - 保留：resolveFullUrl(message.content) 返回非空字串
+  /// - 移除：resolveFullUrl(message.content) 返回空字串
+  /// 
+  /// 這確保了狀態中的訊息數量與實際渲染的項目數量一致。
+  List<Message> _filterValidMedia(List<Message> messages) {
+    return messages.where((msg) {
+      final resolvedUrl = resolveFullUrl(msg.content);
+      return resolvedUrl.isNotEmpty;
+    }).toList();
+  }
+
   Future<void> loadInitial() async {
     if (state.isLoading) return;
     state = state.copyWith(
@@ -229,9 +247,10 @@ class RoomMediaNotifier
         limit: 20,
       );
       final decrypted = await _decryptMediaContent(result.messages);
+      final filtered = _filterValidMedia(decrypted);
       state = state.copyWith(
         isLoading: false,
-        messages: decrypted,
+        messages: filtered,
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
       );
@@ -251,9 +270,10 @@ class RoomMediaNotifier
         limit: 20,
       );
       final decrypted = await _decryptMediaContent(result.messages);
+      final filtered = _filterValidMedia(decrypted);
       final existingIds = state.messages.map((m) => m.id).toSet();
       final merged = [...state.messages];
-      for (final msg in decrypted) {
+      for (final msg in filtered) {
         if (!existingIds.contains(msg.id)) {
           merged.add(msg);
         }

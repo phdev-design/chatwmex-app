@@ -6,6 +6,25 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// 🔐 E2EE Auto-Resend: 解密失敗異常
+/// 當解密失敗時拋出此異常，攜帶訊息 ID 與發送方 ID 以便發起重新加密請求
+class DecryptionFailureException implements Exception {
+  final String messageId;
+  final String senderId;
+  final String originalCiphertext;
+  final String reason;
+
+  DecryptionFailureException({
+    required this.messageId,
+    required this.senderId,
+    required this.originalCiphertext,
+    this.reason = 'MAC verification failed or key mismatch',
+  });
+
+  @override
+  String toString() => 'DecryptionFailureException: $reason (messageId: $messageId, senderId: $senderId)';
+}
+
 class CryptoService {
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -151,10 +170,20 @@ class CryptoService {
     return base64Encode(combinedBytes);
   }
 
+  /// 🔐 E2EE Auto-Resend: 解密訊息（一對一聊天）
+  /// 
+  /// 解密流程：
+  /// 1. 先用當前金鑰解密
+  /// 2. 失敗則嘗試所有歷史金鑰
+  /// 3. 全部失敗則拋出 DecryptionFailureException（需攜帶 messageId 與 senderId）
+  /// 
+  /// 注意：此方法需要從外部傳入 messageId 與 senderId 以便拋出異常
   Future<String> decryptMessage(
     String encryptedOrPlainText,
-    String senderPublicKeyBase64,
-  ) async {
+    String senderPublicKeyBase64, {
+    String? messageId,
+    String? senderId,
+  }) async {
     // Step 1: 先用當前金鑰解密（原有邏輯）
     try {
       final decodedBytes = base64Decode(encryptedOrPlainText);
@@ -216,7 +245,18 @@ class CryptoService {
       }
     } catch (_) {}
 
-    // Step 3: 所有金鑰都失敗
+    // Step 3: 所有金鑰都失敗 - 拋出異常以觸發自動重新加密機制
+    // 如果有提供 messageId 與 senderId，則拋出 DecryptionFailureException
+    if (messageId != null && senderId != null) {
+      throw DecryptionFailureException(
+        messageId: messageId,
+        senderId: senderId,
+        originalCiphertext: encryptedOrPlainText,
+        reason: 'All decryption attempts failed (current + history keys)',
+      );
+    }
+
+    // 向後兼容：如果沒有提供 messageId/senderId，則返回原文（舊行為）
     return encryptedOrPlainText;
   }
 
@@ -322,9 +362,20 @@ class CryptoService {
     _publicKeyBase64 = base64Encode(pubKey.bytes);
   }
 
-  /// 使用對稱金鑰解密（用於群組聊天）
+  /// 🔐 E2EE Auto-Resend: 使用對稱金鑰解密（用於群組聊天）
   /// 直接使用當前用戶的私鑰作為對稱金鑰
-  Future<String> decryptWithSymmetricKey(String encryptedOrPlainText) async {
+  /// 
+  /// 解密流程：
+  /// 1. 先用當前私鑰解密
+  /// 2. 失敗則嘗試所有歷史私鑰
+  /// 3. 全部失敗則拋出 DecryptionFailureException（需攜帶 messageId 與 senderId）
+  /// 
+  /// 注意：此方法需要從外部傳入 messageId 與 senderId 以便拋出異常
+  Future<String> decryptWithSymmetricKey(
+    String encryptedOrPlainText, {
+    String? messageId,
+    String? senderId,
+  }) async {
     if (!isInitialized) {
       throw StateError('CryptoService not initialized');
     }
@@ -384,7 +435,18 @@ class CryptoService {
       }
     } catch (_) {}
 
-    // Step 3: 所有金鑰都失敗
+    // Step 3: 所有金鑰都失敗 - 拋出異常以觸發自動重新加密機制
+    // 如果有提供 messageId 與 senderId，則拋出 DecryptionFailureException
+    if (messageId != null && senderId != null) {
+      throw DecryptionFailureException(
+        messageId: messageId,
+        senderId: senderId,
+        originalCiphertext: encryptedOrPlainText,
+        reason: 'All symmetric decryption attempts failed (current + history keys)',
+      );
+    }
+
+    // 向後兼容：如果沒有提供 messageId/senderId，則返回原文（舊行為）
     return encryptedOrPlainText;
   }
 

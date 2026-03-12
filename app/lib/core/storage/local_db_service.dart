@@ -82,7 +82,8 @@ class LocalDbService {
       'read_by TEXT, '
       'status TEXT DEFAULT "sent", ' // 訊息狀態：pending/sent/delivered/read/failed
       'link_preview TEXT, ' // 連結預覽
-      'file_key TEXT' // 加密檔案金鑰（用於音訊/圖片/影片）
+      'file_key TEXT, ' // 加密檔案金鑰（用於音訊/圖片/影片）
+      'decrypt_retry_count INTEGER DEFAULT 0' // 🔐 E2EE 解密重試計數器
       ')',
     );
   }
@@ -124,6 +125,8 @@ class LocalDbService {
       'status': 'ALTER TABLE messages ADD COLUMN status TEXT DEFAULT "sent"',
       // 新増：file_key 欄位，用於加密音訊/圖片/影片
       'file_key': 'ALTER TABLE messages ADD COLUMN file_key TEXT',
+      // 🔐 新增：decrypt_retry_count 欄位，用於 E2EE 解密重試計數
+      'decrypt_retry_count': 'ALTER TABLE messages ADD COLUMN decrypt_retry_count INTEGER DEFAULT 0',
     };
     for (final entry in missing.entries) {
       if (!existing.contains(entry.key)) {
@@ -302,5 +305,60 @@ class LocalDbService {
   Future<void> clearAllPublicKeys() async {
     final db = await initDB();
     await db.delete('public_keys');
+  }
+
+  // 🔐 ========== E2EE Auto-Resend Support Methods ==========
+
+  /// 根據訊息 ID 取得單筆訊息（包含原始明文內容）
+  /// 用於發送方收到 re_encrypt_request 時，從本地資料庫撈取原始訊息
+  Future<Message?> getMessageById(String messageId) async {
+    if (messageId.isEmpty) return null;
+    final db = await initDB();
+    
+    final rows = await db.query(
+      'messages',
+      where: 'id = ? OR client_msg_id = ?',
+      whereArgs: [messageId, messageId],
+      limit: 1,
+    );
+    
+    if (rows.isEmpty) return null;
+    return Message.fromMap(rows.first);
+  }
+
+  /// 更新訊息的解密重試計數器
+  /// 每次解密失敗時呼叫，用於追蹤重試次數（最多 2 次）
+  Future<void> updateDecryptRetryCount(String messageId, int retryCount) async {
+    if (messageId.isEmpty) return;
+    final db = await initDB();
+    
+    await db.update(
+      'messages',
+      {'decrypt_retry_count': retryCount},
+      where: 'id = ? OR client_msg_id = ?',
+      whereArgs: [messageId, messageId],
+    );
+  }
+
+  /// 更新訊息內容與狀態（用於接收到 re_encrypt_response 後更新本地訊息）
+  /// 將解密成功的明文內容寫回資料庫，並重置重試計數器
+  Future<void> updateMessageContentAndStatus({
+    required String messageId,
+    required String newContent,
+    required MessageStatus newStatus,
+  }) async {
+    if (messageId.isEmpty) return;
+    final db = await initDB();
+    
+    await db.update(
+      'messages',
+      {
+        'content': newContent,
+        'status': newStatus.name,
+        'decrypt_retry_count': 0,  // 重置重試計數器
+      },
+      where: 'id = ? OR client_msg_id = ?',
+      whereArgs: [messageId, messageId],
+    );
   }
 }

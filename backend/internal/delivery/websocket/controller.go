@@ -58,6 +58,11 @@ func (c *SocketController) HandleMessage(client *Client, message []byte) {
 		c.OnTyping(client, req.Data, "typing_stop")
 	case "message_delivered", "message_read":
 		c.OnMessageReceipt(client, req.Event, req.Data)
+	// 🔐 E2EE Auto-Resend Control Messages (不寫入資料庫，僅轉發)
+	case "re_encrypt_request":
+		c.OnReEncryptRequest(client, req.Data)
+	case "re_encrypt_response":
+		c.OnReEncryptResponse(client, req.Data)
 	default:
 		log.Printf("Unknown event: %s", req.Event)
 		c.respondError(client, "error", "Unknown event type")
@@ -280,4 +285,71 @@ func (c *SocketController) respondSuccess(client *Client, event string, data int
 	}
 	respBytes, _ := json.Marshal(resp)
 	client.send <- respBytes
+}
+
+// 🔐 ========== E2EE Auto-Resend Control Message Handlers ==========
+
+// OnReEncryptRequest handles re-encryption requests from receivers who failed to decrypt.
+// This is an ephemeral control message that is NOT persisted to the database.
+// It is only forwarded to the original sender via WebSocket.
+func (c *SocketController) OnReEncryptRequest(client *Client, data []byte) {
+	type ReEncryptRequestPayload struct {
+		MessageID  string `json:"message_id"`   // 需要重新加密的訊息 ID
+		SenderID   string `json:"sender_id"`    // 原始發送方 ID
+		ReceiverID string `json:"receiver_id"`  // 請求方 ID (當前 client)
+	}
+	
+	var payload ReEncryptRequestPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		log.Printf("❌ [E2EE] Invalid re_encrypt_request payload from user %s: %v", client.userID, err)
+		c.respondError(client, "error", "Invalid re_encrypt_request format")
+		return
+	}
+	
+	// 驗證必要欄位
+	if payload.MessageID == "" || payload.SenderID == "" {
+		log.Printf("❌ [E2EE] Missing required fields in re_encrypt_request from user %s", client.userID)
+		c.respondError(client, "error", "Missing message_id or sender_id")
+		return
+	}
+	
+	// 設定請求方 ID（當前用戶）
+	payload.ReceiverID = client.userID
+	
+	log.Printf("🔐 [E2EE] Re-encrypt request: messageID=%s, from=%s, to=%s", 
+		payload.MessageID, payload.ReceiverID, payload.SenderID)
+	
+	// 轉發給原始發送方（不寫入資料庫）
+	c.hub.SendNotification(payload.SenderID, "re_encrypt_request", payload)
+}
+
+// OnReEncryptResponse handles re-encrypted message responses from senders.
+// This is an ephemeral control message that is NOT persisted to the database.
+// It is only forwarded to the original receiver via WebSocket.
+func (c *SocketController) OnReEncryptResponse(client *Client, data []byte) {
+	type ReEncryptResponsePayload struct {
+		MessageID      string `json:"message_id"`       // 原始訊息 ID
+		ReceiverID     string `json:"receiver_id"`      // 接收方 ID
+		ReEncryptedContent string `json:"re_encrypted_content"` // 重新加密的密文
+	}
+	
+	var payload ReEncryptResponsePayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		log.Printf("❌ [E2EE] Invalid re_encrypt_response payload from user %s: %v", client.userID, err)
+		c.respondError(client, "error", "Invalid re_encrypt_response format")
+		return
+	}
+	
+	// 驗證必要欄位
+	if payload.MessageID == "" || payload.ReceiverID == "" || payload.ReEncryptedContent == "" {
+		log.Printf("❌ [E2EE] Missing required fields in re_encrypt_response from user %s", client.userID)
+		c.respondError(client, "error", "Missing required fields")
+		return
+	}
+	
+	log.Printf("🔐 [E2EE] Re-encrypt response: messageID=%s, from=%s, to=%s", 
+		payload.MessageID, client.userID, payload.ReceiverID)
+	
+	// 轉發給接收方（不寫入資料庫）
+	c.hub.SendNotification(payload.ReceiverID, "re_encrypt_response", payload)
 }

@@ -68,7 +68,34 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     final isDecryptionFailure = msg.type == MessageType.image && 
                                  msg.content.startsWith(decryptionFailurePrefix);
     
-    if (msg.type == MessageType.image && !isDecryptionFailure) {
+    // 🔐 E2EE Auto-Resend: 檢查是否正在重試解密
+    final isDecryptingRetry = msg.status == MessageStatus.decryptingRetry;
+    
+    if (isDecryptingRetry) {
+      // 顯示正在同步金鑰的載入指示器
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(textColor),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '正在同步金鑰...',
+            style: TextStyle(
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+              color: subtleTextColor,
+            ),
+          ),
+        ],
+      );
+    } else if (msg.type == MessageType.image && !isDecryptionFailure) {
       final imageUrl = resolveFullUrl(msg.content);
       final heroTag = msg.id.isNotEmpty ? msg.id : imageUrl;
       content = GestureDetector(
@@ -413,7 +440,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         ? tokens.accent
         : subtleTextColor;
 
-    // 訊息狀態圖示（包含 pending 狀態）
+    // 訊息狀態圖示（包含 pending 和 decryptingRetry 狀態）
     IconData statusIcon;
     switch (msg.status) {
       case MessageStatus.pending:
@@ -433,6 +460,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         break;
       case MessageStatus.failed:
         statusIcon = Icons.error_outline;
+        break;
+      case MessageStatus.decryptingRetry:
+        statusIcon = Icons.sync; // 🔐 E2EE Auto-Resend: 同步中圖示
         break;
     }
     final statusWidget = isMe
