@@ -6,6 +6,7 @@ import 'package:app/features/chat/ui/audio_message_bubble.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
 import 'package:app/models/message.dart';
+import 'package:app/core/media/cached_network_image_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,37 +86,27 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                 maxWidth: MediaQuery.of(context).size.width * 0.6,
                 maxHeight: 250,
               ),
-              child: Image.network(
-                imageUrl,
+              child: CachedNetworkImageWidget(
+                imageUrl: imageUrl,
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return SizedBox(
-                    width: 120,
-                    height: 120,
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        value: progress.expectedTotalBytes != null
-                            ? progress.cumulativeBytesLoaded /
-                                  progress.expectedTotalBytes!
-                            : null,
-                      ),
+                placeholder: const SizedBox(
+                  width: 120,
+                  height: 120,
+                  child: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+                errorWidget: SizedBox(
+                  width: 120,
+                  height: 120,
+                  child: Center(
+                    child: Icon(
+                      Icons.broken_image,
+                      color: colorScheme.outline,
                     ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return SizedBox(
-                    width: 120,
-                    height: 120,
-                    child: Center(
-                      child: Icon(
-                        Icons.broken_image,
-                        color: colorScheme.outline,
-                      ),
-                    ),
-                  );
-                },
+                  ),
+                ),
               ),
             ),
           ),
@@ -226,12 +217,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     Widget? linkPreviewCard;
     if (hasPreview) {
       final previewUrl = resolveFullUrl(preview.url);
-      final previewTitle = preview.title.isNotEmpty
-          ? preview.title
-          : preview.url;
-      final previewDescription = preview.description.isNotEmpty
-          ? preview.description
-          : preview.url;
       final previewImageUrl = resolveFullUrl(preview.imageUrl);
       
       // 🔥 調試：記錄 Link Preview 詳細資訊
@@ -276,12 +261,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                   child: previewImageUrl.isNotEmpty
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Image.network(
-                            previewImageUrl,
+                          child: CachedNetworkImageWidget(
+                            imageUrl: previewImageUrl,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(Icons.link, color: colorScheme.primary);
-                            },
+                            width: 44,
+                            height: 44,
+                            errorWidget: Icon(Icons.link, color: colorScheme.primary),
                           ),
                         )
                       : Icon(Icons.link, color: colorScheme.primary),
@@ -292,26 +277,29 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        previewTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      if (preview.title.isNotEmpty)
+                        Text(
+                          preview.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        previewDescription,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 11,
+                      if (preview.title.isNotEmpty && preview.description.isNotEmpty)
+                        const SizedBox(height: 3),
+                      if (preview.description.isNotEmpty)
+                        Text(
+                          preview.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

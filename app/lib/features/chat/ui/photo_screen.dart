@@ -1,26 +1,26 @@
-
-
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:app/core/media/image_cache_service.dart';
 
-class PhotoScreen extends StatefulWidget {
+class PhotoScreen extends ConsumerStatefulWidget {
   final String imageUrl;
   final String heroTag;
 
   const PhotoScreen({super.key, required this.imageUrl, required this.heroTag});
 
   @override
-  State<PhotoScreen> createState() => _PhotoScreenState();
+  ConsumerState<PhotoScreen> createState() => _PhotoScreenState();
 }
 
-class _PhotoScreenState extends State<PhotoScreen> {
+class _PhotoScreenState extends ConsumerState<PhotoScreen> {
   final TransformationController _transformationController =
       TransformationController();
   TapDownDetails? _doubleTapDetails;
@@ -84,7 +84,7 @@ class _PhotoScreenState extends State<PhotoScreen> {
     );
   }
 
-  // ─── 核心：下載圖片到暫存目錄 ───
+  // ─── 核心：下載圖片到暫存目錄（優先使用快取）───
 
   Future<String> _downloadToTemp() async {
     // 如果已經下載過且檔案還在，就直接返回
@@ -92,6 +92,16 @@ class _PhotoScreenState extends State<PhotoScreen> {
       return _cachedTempPath!;
     }
 
+    // 優先從快取獲取
+    final cacheService = ref.read(imageCacheServiceProvider);
+    final cachedFile = await cacheService.getCachedImage(widget.imageUrl);
+    
+    if (cachedFile != null && await cachedFile.exists()) {
+      _cachedTempPath = cachedFile.path;
+      return _cachedTempPath!;
+    }
+
+    // 沒有快取，下載並快取
     final tempDir = await getTemporaryDirectory();
     // 從 URL 取得副檔名，如果抓不到就預設 .jpg
     final uri = Uri.parse(widget.imageUrl);
@@ -102,6 +112,9 @@ class _PhotoScreenState extends State<PhotoScreen> {
     final savePath = p.join(tempDir.path, fileName);
 
     await Dio().download(widget.imageUrl, savePath);
+    
+    // 快取圖片
+    await cacheService.cacheImage(widget.imageUrl, imageData: await File(savePath).readAsBytes());
 
     _cachedTempPath = savePath;
     return savePath;
@@ -252,14 +265,33 @@ class _PhotoScreenState extends State<PhotoScreen> {
                                 );
                               },
                             )
-                          : Image.network(
-                              widget.imageUrl,
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Icon(
-                                  Icons.broken_image_outlined,
-                                  color: Colors.white70,
-                                  size: 48,
+                          : FutureBuilder<File?>(
+                              future: ref.read(imageCacheServiceProvider).getImage(widget.imageUrl),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Center(
+                                    child: CircularProgressIndicator(color: Colors.white),
+                                  );
+                                }
+                                
+                                if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+                                  return const Icon(
+                                    Icons.broken_image_outlined,
+                                    color: Colors.white70,
+                                    size: 48,
+                                  );
+                                }
+                                
+                                return Image.file(
+                                  snapshot.data!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(
+                                      Icons.broken_image_outlined,
+                                      color: Colors.white70,
+                                      size: 48,
+                                    );
+                                  },
                                 );
                               },
                             ),
