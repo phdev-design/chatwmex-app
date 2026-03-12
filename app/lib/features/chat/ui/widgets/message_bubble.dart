@@ -63,7 +63,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         : tokens.subtleText;
 
     Widget content;
-    if (msg.type == MessageType.image) {
+    // Check for decryption failure: image type with content starting with 🔒
+    const decryptionFailurePrefix = '🔒';
+    final isDecryptionFailure = msg.type == MessageType.image && 
+                                 msg.content.startsWith(decryptionFailurePrefix);
+    
+    if (msg.type == MessageType.image && !isDecryptionFailure) {
       final imageUrl = resolveFullUrl(msg.content);
       final heroTag = msg.id.isNotEmpty ? msg.id : imageUrl;
       content = GestureDetector(
