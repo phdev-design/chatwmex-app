@@ -114,6 +114,17 @@ class MediaService {
     return status.isGranted;
   }
 
+  /// Checks microphone permission without requesting it
+  Future<bool> checkMicrophonePermission() async {
+    final status = await Permission.microphone.status;
+    return status.isGranted;
+  }
+
+  /// Opens the app settings page
+  Future<void> openSettings() async {
+    await openAppSettings();
+  }
+
   Future<void> startRecording(String path) async {
     if (await hasMicrophonePermission()) {
       await _audioRecorder.start(

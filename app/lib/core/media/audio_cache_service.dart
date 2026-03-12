@@ -49,7 +49,7 @@ class AudioCacheService {
     try {
       // Check if already cached
       if (await isCached(messageId)) {
-        final cachedPath = await _getCacheFilePath(messageId);
+        final cachedPath = await getCacheFilePath(messageId);
         final file = File(cachedPath);
         if (await file.exists()) {
           debugPrint('✅ Audio cache hit for message: $messageId');
@@ -81,19 +81,50 @@ class AudioCacheService {
     }
   }
 
-  /// Checks if an audio file is already cached
+  /// Checks if an audio file is already cached and valid
+  /// Verifies the file exists and is readable
   Future<bool> isCached(String messageId) async {
     try {
-      final filePath = await _getCacheFilePath(messageId);
+      final filePath = await getCacheFilePath(messageId);
       final file = File(filePath);
-      return await file.exists();
+      
+      // Check if file exists
+      if (!await file.exists()) {
+        return false;
+      }
+      
+      // Verify file is readable by checking its length
+      // This will throw if the file is corrupted or unreadable
+      final length = await file.length();
+      
+      // Audio files should have some content
+      if (length == 0) {
+        debugPrint('⚠️ Cached file is empty, marking as invalid: $messageId');
+        // Delete corrupted file
+        await file.delete();
+        return false;
+      }
+      
+      return true;
     } catch (e) {
+      debugPrint('⚠️ Error validating cached file: $e');
+      // If we can't read the file, try to delete it
+      try {
+        final filePath = await getCacheFilePath(messageId);
+        final file = File(filePath);
+        if (await file.exists()) {
+          await file.delete();
+          debugPrint('✅ Deleted corrupted cache file: $messageId');
+        }
+      } catch (deleteError) {
+        debugPrint('⚠️ Failed to delete corrupted file: $deleteError');
+      }
       return false;
     }
   }
 
   /// Gets the cache file path for a message ID
-  Future<String> _getCacheFilePath(String messageId) async {
+  Future<String> getCacheFilePath(String messageId) async {
     final cacheDir = await getTemporaryDirectory();
     return p.join(cacheDir.path, 'audio_$messageId.m4a');
   }
@@ -163,7 +194,7 @@ class AudioCacheService {
     Uint8List audioBytes,
   ) async {
     try {
-      final filePath = await _getCacheFilePath(messageId);
+      final filePath = await getCacheFilePath(messageId);
       final file = File(filePath);
 
       // Ensure parent directory exists
@@ -223,7 +254,7 @@ class AudioCacheService {
   /// Deletes a specific cached audio file
   Future<void> deleteCachedAudio(String messageId) async {
     try {
-      final filePath = await _getCacheFilePath(messageId);
+      final filePath = await getCacheFilePath(messageId);
       final file = File(filePath);
 
       if (await file.exists()) {

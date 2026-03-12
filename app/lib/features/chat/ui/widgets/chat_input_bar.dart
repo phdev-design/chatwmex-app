@@ -61,6 +61,15 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   bool _isLoadingPreview = false;
   LinkPreviewData? _previewData;
   bool _isUrlPreviewCancelled = false;
+  
+  // Gesture tracking state for slide-to-cancel
+  Offset? _recordingStartPosition;
+  Offset? _currentDragPosition;
+  bool _isCancelThresholdReached = false;
+  
+  // Constants for gesture detection
+  static const double _cancelThreshold = 100.0; // pixels
+  static const Duration _minRecordingDuration = Duration(seconds: 1);
 
   @override
   void initState() {
@@ -310,16 +319,25 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                     child: state.isRecording
                         ? Row(
                             children: [
-                              FadeTransition(
-                                opacity: _recordingOpacity,
-                                child: Text(
-                                  '🔴 正在錄音... 鬆開以送出',
+                              if (_isCancelThresholdReached)
+                                Text(
+                                  '🚫 鬆開取消',
                                   style: TextStyle(
-                                    color: tokens.bubbleText,
-                                    fontStyle: FontStyle.italic,
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              else
+                                FadeTransition(
+                                  opacity: _recordingOpacity,
+                                  child: Text(
+                                    '🔴 正在錄音... ← 滑動取消',
+                                    style: TextStyle(
+                                      color: tokens.bubbleText,
+                                      fontStyle: FontStyle.italic,
+                                    ),
                                   ),
                                 ),
-                              ),
                               const SizedBox(width: 8),
                               Text(
                                 _formatRecordingTime(_recordingSeconds),
@@ -398,10 +416,39 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                       );
                     }
                     return GestureDetector(
-                      onLongPressStart: (_) {
+                      onLongPressStart: (details) async {
+                        // Capture context before async operations
+                        final messenger = ScaffoldMessenger.of(context);
+                        
+                        // Check permissions first
+                        final mediaService = ref.read(mediaServiceProvider);
+                        final hasPermission = await mediaService.checkMicrophonePermission();
+                        
+                        if (!hasPermission) {
+                          HapticFeedback.heavyImpact();
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: const Text('需要麥克風權限才能錄音'),
+                              action: SnackBarAction(
+                                label: '設定',
+                                onPressed: () => mediaService.openSettings(),
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        
+                        // Start recording
                         HapticFeedback.mediumImpact();
+                        setState(() {
+                          _recordingStartPosition = details.globalPosition;
+                          _currentDragPosition = details.globalPosition;
+                          _isCancelThresholdReached = false;
+                          _recordingSeconds = 0;
+                        });
+                        
                         _recordingTimer?.cancel();
-                        setState(() => _recordingSeconds = 0);
                         _recordingTimer = Timer.periodic(
                           const Duration(seconds: 1),
                           (_) {
@@ -409,17 +456,81 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                             setState(() => _recordingSeconds += 1);
                           },
                         );
+                        
                         ref
                             .read(chatRoomProvider(widget.params).notifier)
                             .startRecording();
                       },
-                      onLongPressEnd: (_) {
-                        HapticFeedback.lightImpact();
+                      onLongPressMoveUpdate: (details) {
+                        if (_recordingStartPosition == null) return;
+                        
+                        setState(() {
+                          _currentDragPosition = details.globalPosition;
+                        });
+                        
+                        // Calculate horizontal drag distance
+                        final dragDistance = (_recordingStartPosition!.dx - details.globalPosition.dx).abs();
+                        final wasThresholdReached = _isCancelThresholdReached;
+                        _isCancelThresholdReached = dragDistance > _cancelThreshold;
+                        
+                        // Provide haptic feedback when threshold is reached
+                        if (_isCancelThresholdReached && !wasThresholdReached) {
+                          HapticFeedback.mediumImpact();
+                        }
+                      },
+                      onLongPressEnd: (details) async {
+                        final recordingDuration = Duration(seconds: _recordingSeconds);
+                        
                         _recordingTimer?.cancel();
-                        setState(() => _recordingSeconds = 0);
-                        ref
+                        
+                        // Check if cancelled by slide gesture
+                        if (_isCancelThresholdReached) {
+                          HapticFeedback.lightImpact();
+                          await ref
+                              .read(chatRoomProvider(widget.params).notifier)
+                              .cancelRecording();
+                          setState(() {
+                            _recordingStartPosition = null;
+                            _currentDragPosition = null;
+                            _isCancelThresholdReached = false;
+                            _recordingSeconds = 0;
+                          });
+                          return;
+                        }
+                        
+                        // Check if recording is too short
+                        if (recordingDuration < _minRecordingDuration) {
+                          HapticFeedback.lightImpact();
+                          await ref
+                              .read(chatRoomProvider(widget.params).notifier)
+                              .cancelRecording();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('錄音時間過短'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                          setState(() {
+                            _recordingStartPosition = null;
+                            _currentDragPosition = null;
+                            _recordingSeconds = 0;
+                          });
+                          return;
+                        }
+                        
+                        // Send the recording
+                        HapticFeedback.lightImpact();
+                        await ref
                             .read(chatRoomProvider(widget.params).notifier)
                             .stopRecordingAndSend();
+                        
+                        setState(() {
+                          _recordingStartPosition = null;
+                          _currentDragPosition = null;
+                          _isCancelThresholdReached = false;
+                          _recordingSeconds = 0;
+                        });
                       },
                       child: Container(
                         width: 40,

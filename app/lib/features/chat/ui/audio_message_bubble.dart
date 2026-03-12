@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/core/media/audio_cache_service.dart';
@@ -98,21 +101,26 @@ class _AudioMessageBubbleState extends ConsumerState<AudioMessageBubble> {
     });
 
     try {
-      // Get cached or download audio
       final audioCacheService = ref.read(audioCacheServiceProvider);
-      
-      // Check if message has encryption key (encrypted audio)
       final fileKey = widget.message.fileKey;
       final audioUrl = widget.message.content;
       
       if (fileKey == null || fileKey.isEmpty) {
-        // Legacy unencrypted audio - play directly from URL
-        await _player.play(UrlSource(audioUrl));
+        // Legacy unencrypted audio - download and cache
+        final localPath = await _downloadAndCacheLegacyAudio(
+          audioCacheService,
+          audioUrl,
+        );
+        
+        _cachedFilePath = localPath;
+        await _player.play(DeviceFileSource(localPath));
+        
+        if (!mounted) return;
         setState(() => _playbackState = AudioPlaybackState.playing);
         return;
       }
 
-      // Encrypted audio - download, decrypt, and cache
+      // Encrypted audio - use existing flow
       final localPath = await audioCacheService.getOrDownloadAudio(
         messageId: widget.message.id,
         audioUrl: audioUrl,
@@ -120,8 +128,6 @@ class _AudioMessageBubbleState extends ConsumerState<AudioMessageBubble> {
       );
 
       _cachedFilePath = localPath;
-
-      // Play from local file
       await _player.play(DeviceFileSource(localPath));
       
       if (!mounted) return;
@@ -139,6 +145,53 @@ class _AudioMessageBubbleState extends ConsumerState<AudioMessageBubble> {
         _error = 'Failed to play audio: ${e.toString()}';
       });
     }
+  }
+
+  /// Downloads and caches legacy unencrypted audio
+  Future<String> _downloadAndCacheLegacyAudio(
+    AudioCacheService cacheService,
+    String audioUrl,
+  ) async {
+    // Use message ID as cache key for legacy audio
+    final cacheKey = 'legacy_${widget.message.id}';
+    
+    // Check if already cached
+    if (await cacheService.isCached(cacheKey)) {
+      final cachedPath = await cacheService.getCacheFilePath(cacheKey);
+      final file = File(cachedPath);
+      if (await file.exists()) {
+        debugPrint('✅ Legacy audio cache hit for message: ${widget.message.id}');
+        return cachedPath;
+      }
+    }
+    
+    debugPrint('⬇️ Downloading legacy audio for message: ${widget.message.id}');
+    
+    // Download audio directly (no decryption needed)
+    final dio = Dio();
+    final response = await dio.get<List<int>>(
+      audioUrl,
+      options: Options(
+        responseType: ResponseType.bytes,
+        receiveTimeout: const Duration(seconds: 30),
+      ),
+    );
+    
+    if (response.data == null) {
+      throw AudioCacheException(
+        type: AudioCacheErrorType.networkError,
+        message: 'Download failed: empty response',
+      );
+    }
+    
+    // Save to cache
+    final cachedPath = await cacheService.getCacheFilePath(cacheKey);
+    final file = File(cachedPath);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(response.data!);
+    
+    debugPrint('✅ Legacy audio cached successfully: $cachedPath');
+    return cachedPath;
   }
 
   String _getErrorMessage(AudioCacheException e) {

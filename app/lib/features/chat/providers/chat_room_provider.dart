@@ -854,11 +854,32 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  /// Cancels the current recording and deletes the temporary file
+  Future<void> cancelRecording() async {
+    final mediaService = ref.read(mediaServiceProvider);
+    state = state.copyWith(isRecording: false);
+    
+    final path = await mediaService.stopRecording();
+    if (path != null && path.isNotEmpty) {
+      try {
+        await File(path).delete();
+        debugPrint('✅ Deleted cancelled recording: $path');
+      } catch (e) {
+        debugPrint('⚠️ Failed to delete cancelled recording: $e');
+      }
+    }
+  }
+
   Future<void> stopRecordingAndSend() async {
     final mediaService = ref.read(mediaServiceProvider);
     state = state.copyWith(isRecording: false);
     final path = await mediaService.stopRecording();
-    if (path == null || path.isEmpty) return;
+    
+    // Check if recording is valid
+    if (path == null || path.isEmpty) {
+      debugPrint('⚠️ Recording path is null or empty');
+      return;
+    }
 
     final replyToId = state.replyingToMessage?.id;
     state = state.copyWith(isSending: true);
@@ -878,13 +899,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           replyToMessage: state.replyingToMessage,
         );
         _addMessage(updatedMessage);
+        state = state.copyWith(replyingToMessage: null);
       } else {
         _addMessage(message);
-      }
-
-      // Clean up reply state
-      if (replyToId != null) {
-        state = state.copyWith(replyingToMessage: null);
       }
 
       state = state.copyWith(isSending: false);
@@ -892,12 +909,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       // Clean up temporary audio file
       try {
         await File(path).delete();
+        debugPrint('✅ Deleted temp audio file: $path');
       } catch (e) {
         debugPrint('⚠️ Failed to delete temp audio file: $e');
       }
     } catch (e) {
       state = state.copyWith(isSending: false, error: e.toString());
       debugPrint('❌ Failed to send audio message: $e');
+      
+      // Still try to clean up temp file on error
+      try {
+        await File(path).delete();
+        debugPrint('✅ Deleted temp audio file after error: $path');
+      } catch (cleanupError) {
+        debugPrint('⚠️ Failed to delete temp file after error: $cleanupError');
+      }
     }
   }
 
