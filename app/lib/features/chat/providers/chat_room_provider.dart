@@ -958,7 +958,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           'message_id': messageId,
           'receiver_id': receiverId,
           'room_id': roomId,
-          'content': reEncryptedContent,
+          're_encrypted_content': reEncryptedContent,
         });
       } catch (e) {
         debugPrint('[E2EE Auto-Resend] Failed to send re_encrypt_response: $e');
