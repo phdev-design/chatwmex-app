@@ -326,6 +326,24 @@ class LocalDbService {
     return Message.fromMap(rows.first);
   }
 
+  /// 取得訊息的解密重試計數器
+  /// 用於檢查是否已達最大重試次數（最多 2 次）
+  Future<int> getDecryptRetryCount(String messageId) async {
+    if (messageId.isEmpty) return 0;
+    final db = await initDB();
+    
+    final rows = await db.query(
+      'messages',
+      columns: ['decrypt_retry_count'],
+      where: 'id = ? OR client_msg_id = ?',
+      whereArgs: [messageId, messageId],
+      limit: 1,
+    );
+    
+    if (rows.isEmpty) return 0;
+    return (rows.first['decrypt_retry_count'] as int?) ?? 0;
+  }
+
   /// 更新訊息的解密重試計數器
   /// 每次解密失敗時呼叫，用於追蹤重試次數（最多 2 次）
   Future<void> updateDecryptRetryCount(String messageId, int retryCount) async {

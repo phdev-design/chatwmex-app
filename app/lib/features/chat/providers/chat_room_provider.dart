@@ -326,12 +326,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         } else if (event == 're_encrypt_request') {
           // 🔐 E2EE Auto-Resend: 處理重新加密請求（發送方收到）
           if (payload is Map) {
-            _handleReEncryptRequest(payload);
+            _handleReEncryptRequest(Map<String, dynamic>.from(payload));
           }
         } else if (event == 're_encrypt_response') {
           // 🔐 E2EE Auto-Resend: 處理重新加密回應（接收方收到）
           if (payload is Map) {
-            _handleReEncryptResponse(payload);
+            _handleReEncryptResponse(Map<String, dynamic>.from(payload));
           }
         }
       }
@@ -766,9 +766,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         debugPrint('[E2EE Auto-Resend] Max retry attempts reached for message: ${message.id}');
         // 超過重試次數，更新為永久失敗狀態
         await LocalDbService().updateMessageContentAndStatus(
-          message.id,
-          '🔒 此訊息無法解密（金鑰已更新）',
-          MessageStatus.failed,
+          messageId: message.id,
+          newContent: '🔒 此訊息無法解密（金鑰已更新）',
+          newStatus: MessageStatus.failed,
         );
         // 更新 UI 狀態
         final index = state.messages.indexWhere((m) => m.id == message.id);
@@ -789,9 +789,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       
       // 更新訊息狀態為 decryptingRetry
       await LocalDbService().updateMessageContentAndStatus(
-        message.id,
-        message.content, // 保留原密文
-        MessageStatus.decryptingRetry,
+        messageId: message.id,
+        newContent: message.content, // 保留原密文
+        newStatus: MessageStatus.decryptingRetry,
       );
       
       // 更新 UI 狀態
@@ -804,7 +804,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       }
       
       // 邊緣情況：檢查 WebSocket 連接狀態
-      if (!_wsService._isConnected) {
+      if (!_wsService.isConnected) {
         debugPrint('[E2EE Auto-Resend] WebSocket not connected, will retry when reconnected');
         // 訊息已標記為 decryptingRetry，重連後會自動處理
         return;
@@ -834,9 +834,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         debugPrint('[E2EE Auto-Resend] Failed to send re_encrypt_request: $e');
         // 發送失敗，標記為永久失敗
         await LocalDbService().updateMessageContentAndStatus(
-          message.id,
-          '🔒 此訊息無法解密（金鑰已更新）',
-          MessageStatus.failed,
+          messageId: message.id,
+          newContent: '🔒 此訊息無法解密（金鑰已更新）',
+          newStatus: MessageStatus.failed,
         );
         // 更新 UI 狀態
         final index = state.messages.indexWhere((m) => m.id == message.id);
@@ -855,9 +855,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       // 發生未預期的錯誤，標記為失敗
       try {
         await LocalDbService().updateMessageContentAndStatus(
-          message.id,
-          '🔒 此訊息無法解密（金鑰已更新）',
-          MessageStatus.failed,
+          messageId: message.id,
+          newContent: '🔒 此訊息無法解密（金鑰已更新）',
+          newStatus: MessageStatus.failed,
         );
       } catch (dbError) {
         debugPrint('[E2EE Auto-Resend] Failed to update message status: $dbError');
@@ -946,7 +946,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       }
       
       // 邊緣情況：檢查 WebSocket 連接狀態
-      if (!_wsService._isConnected) {
+      if (!_wsService.isConnected) {
         debugPrint('[E2EE Auto-Resend] WebSocket not connected, cannot send re_encrypt_response');
         return;
       }
@@ -1047,9 +1047,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         if (currentRetryCount >= 2) {
           // 已達最大重試次數，標記為永久失敗
           await LocalDbService().updateMessageContentAndStatus(
-            messageId,
-            '🔒 此訊息無法解密（金鑰已更新）',
-            MessageStatus.failed,
+            messageId: messageId,
+            newContent: '🔒 此訊息無法解密（金鑰已更新）',
+            newStatus: MessageStatus.failed,
           );
           
           // 更新 UI 狀態
@@ -1072,9 +1072,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       
       // 解密成功，更新 LocalDB
       await LocalDbService().updateMessageContentAndStatus(
-        messageId,
-        decryptedContent,
-        MessageStatus.delivered,
+        messageId: messageId,
+        newContent: decryptedContent,
+        newStatus: MessageStatus.delivered,
       );
       
       // 重置重試次數
@@ -1099,9 +1099,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       // 發生未預期的錯誤，標記為失敗
       try {
         await LocalDbService().updateMessageContentAndStatus(
-          messageId,
-          '🔒 此訊息無法解密（金鑰已更新）',
-          MessageStatus.failed,
+          messageId: messageId,
+          newContent: '🔒 此訊息無法解密（金鑰已更新）',
+          newStatus: MessageStatus.failed,
         );
         
         // 更新 UI 狀態

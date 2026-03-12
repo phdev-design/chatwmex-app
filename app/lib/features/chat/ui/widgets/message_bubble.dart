@@ -249,7 +249,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     Widget? linkPreviewCard;
     if (hasPreview) {
       final previewUrl = resolveFullUrl(preview.url);
-      final previewImageUrl = resolveFullUrl(preview.imageUrl);
+      
+      // 🔥 修復：驗證 imageUrl 是否有效，避免嘗試載入加密或空的 URL
+      // 只有當 imageUrl 不為 null、不為空，且 resolveFullUrl 返回有效 URL 時才嘗試載入圖片
+      final rawImageUrl = preview.imageUrl;
+      final previewImageUrl = (rawImageUrl != null && rawImageUrl.isNotEmpty)
+          ? resolveFullUrl(rawImageUrl)
+          : '';
       
       // 🔥 調試：記錄 Link Preview 詳細資訊
       print('🔍 [MessageBubble] Link Preview 詳細資訊:');

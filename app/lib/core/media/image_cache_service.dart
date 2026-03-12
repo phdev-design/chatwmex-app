@@ -99,6 +99,35 @@ class ImageCacheService {
   /// [url] 圖片 URL
   /// [imageData] 如果已經下載了圖片數據（例如解密後的數據），可以直接傳入
   Future<File?> cacheImage(String url, {Uint8List? imageData}) async {
+    // URL 驗證：檢查是否為空或 null
+    if (url.isEmpty) {
+      debugPrint('⚠️ [ImageCache] URL 無效：空字串');
+      return null;
+    }
+    
+    // 只在需要下載時進行 URL 格式驗證（imageData 為 null）
+    if (imageData == null) {
+      // URL 格式驗證：檢查是否可以解析為有效 URI
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        debugPrint('⚠️ [ImageCache] URL 無效：無法解析 URL');
+        return null;
+      }
+      
+      // 檢查是否為有效的 URL 格式
+      // 允許：完整 URL (http://, https://)、相對路徑 (/uploads/...)、MongoDB ObjectID (24 hex chars)
+      // 拒絕：沒有 scheme 且沒有 host 且不是相對路徑的情況（如加密 Base64 字串）
+      final hasScheme = uri.hasScheme;
+      final hasHost = uri.host.isNotEmpty;
+      final isRelativePath = url.startsWith('/');
+      final isMaybeObjectId = url.length == 24 && RegExp(r'^[a-f0-9]{24}$').hasMatch(url);
+      
+      if (!hasScheme && !hasHost && !isRelativePath && !isMaybeObjectId) {
+        debugPrint('⚠️ [ImageCache] URL 無效：缺少 scheme 和 host');
+        return null;
+      }
+    }
+    
     try {
       final filePath = await _getCacheFilePath(url);
       final file = File(filePath);
@@ -119,7 +148,7 @@ class ImageCacheService {
       
       return file;
     } catch (e) {
-      debugPrint('❌ [ImageCache] 快取圖片失敗: $e');
+      debugPrint('❌ [ImageCache] 下載失敗: $e');
       return null;
     }
   }

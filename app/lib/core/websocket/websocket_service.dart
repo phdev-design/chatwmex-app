@@ -20,6 +20,9 @@ class WebSocketService {
   Timer? _reconnectTimer;
   int _retryAttempts = 0;
 
+  // 🔐 E2EE Auto-Resend: 公開連接狀態供外部檢查
+  bool get isConnected => _isConnected;
+
   // Queue & ACK
   final List<Map<String, dynamic>> _messageQueue = [];
   final Map<String, Completer<void>> _pendingAcks = {};
