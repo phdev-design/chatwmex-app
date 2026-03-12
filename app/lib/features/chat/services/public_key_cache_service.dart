@@ -59,6 +59,23 @@ class PublicKeyCacheService {
     return await fetchFuture;
   }
 
+  /// Fetch multiple public keys in parallel
+  /// Returns a map of user IDs to their public keys (null for unavailable keys)
+  /// Leverages existing getPublicKey method for caching and deduplication
+  Future<Map<String, String?>> getPublicKeys(List<String> userIds) async {
+    // Fetch all keys in parallel
+    final futures = userIds.map((userId) => getPublicKey(userId));
+    final keys = await Future.wait(futures);
+    
+    // Build result map
+    final results = <String, String?>{};
+    for (int i = 0; i < userIds.length; i++) {
+      results[userIds[i]] = keys[i];
+    }
+    
+    return results;
+  }
+
   /// 清除所有快取的 public key（換帳號登入時呼叫，避免用舊 key 解密）
   Future<void> clearAllCache() async {
     _memoryCache.clear();

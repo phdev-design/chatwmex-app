@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/models/message.dart';
@@ -507,38 +508,199 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  /// Encrypts a group message using fan-out strategy
+  /// Each member receives a unique ciphertext encrypted with their public key
+  /// Uses parallel encryption in batches of 10 for better performance
+  /// 
+  /// **Member List Snapshot (Requirements 9.1, 9.2, 9.5):**
+  /// - The memberIds parameter represents a snapshot of the member list captured once by the caller
+  /// - This method uses ONLY the provided memberIds and does NOT refetch the member list
+  /// - This ensures consistency: members who join/leave during encryption don't affect the operation
+  /// - Callers (sendMessage, resendPendingMessages, retrySend) are responsible for capturing the snapshot
+  /// 
+  /// Error scenarios:
+  /// - Member list fetch failure: Handled by caller (sendMessage, resendPendingMessages, retrySend)
+  /// - Complete public key unavailability: Throws exception with specific message
+  /// - Complete encryption failure: Throws exception with specific message
+  /// - Partial encryption failure: Logs errors but continues with successful encryptions
+  Future<String> _encryptGroupMessage(String plaintext, List<String> memberIds) async {
+    final ciphertexts = <String, String>{};
+    int keysUnavailableCount = 0;
+    int encryptionFailureCount = 0;
+    
+    // Process members in batches of 10 for parallel encryption
+    const batchSize = 10;
+    for (int i = 0; i < memberIds.length; i += batchSize) {
+      final batchEnd = (i + batchSize < memberIds.length) ? i + batchSize : memberIds.length;
+      final batch = memberIds.sublist(i, batchEnd);
+      
+      // Encrypt all members in this batch concurrently
+      final futures = batch.map((memberId) async {
+        final publicKey = await _publicKeyCacheService.getPublicKey(memberId);
+        if (publicKey != null) {
+          try {
+            final ciphertext = await _cryptoService.encryptMessage(plaintext, publicKey);
+            return MapEntry(memberId, ciphertext);
+          } catch (e) {
+            // Log encryption error without exposing sensitive data
+            debugPrint('[E2EE] Encryption failed for member: roomId=${arg.roomId}, memberCount=${memberIds.length}, error=${e.runtimeType}');
+            return MapEntry<String, String>('', ''); // Marker for encryption failure
+          }
+        }
+        return null; // Marker for key unavailable
+      }).toList();
+      
+      // Wait for all encryptions in this batch to complete
+      final results = await Future.wait(futures);
+      
+      // Add successful encryptions to the map and count failures
+      for (final result in results) {
+        if (result == null) {
+          keysUnavailableCount++;
+        } else if (result.key.isEmpty) {
+          encryptionFailureCount++;
+        } else {
+          ciphertexts[result.key] = result.value;
+        }
+      }
+    }
+    
+    // Check for complete failure scenarios
+    if (ciphertexts.isEmpty) {
+      if (keysUnavailableCount == memberIds.length) {
+        // All members have unavailable public keys
+        debugPrint('[E2EE] Complete key unavailability: roomId=${arg.roomId}, memberCount=${memberIds.length}');
+        throw Exception('無法取得任何成員的公鑰');
+      } else if (encryptionFailureCount == memberIds.length) {
+        // All encryption operations failed
+        debugPrint('[E2EE] Complete encryption failure: roomId=${arg.roomId}, memberCount=${memberIds.length}');
+        throw Exception('所有成員的加密操作均失敗');
+      } else {
+        // Mixed failures (some keys unavailable, some encryption failed)
+        debugPrint('[E2EE] Complete encryption failure (mixed): roomId=${arg.roomId}, memberCount=${memberIds.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
+        throw Exception('加密失敗，無法發送訊息');
+      }
+    }
+    
+    // Log partial encryption success/failure for monitoring
+    if (keysUnavailableCount > 0 || encryptionFailureCount > 0) {
+      debugPrint('[E2EE] Partial encryption success: roomId=${arg.roomId}, successful=${ciphertexts.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
+    }
+    
+    // Build fan-out payload
+    final fanoutPayload = {
+      'is_fanout': true,
+      'ciphertexts': ciphertexts,
+    };
+    
+    return jsonEncode(fanoutPayload);
+  }
+
+  /// Decrypts a fan-out encrypted group message
+  /// Returns plaintext on success, error messages on failure
+  /// 
+  /// **Backward Compatibility (Requirements 7.1, 7.2, 7.3):**
+  /// - Plaintext messages (JSON parse failure) → returns content as-is
+  /// - Messages without is_fanout flag → returns content as-is
+  /// - Messages with is_fanout=false → returns content as-is
+  /// - No decryption error messages for plaintext messages
+  Future<String> _decryptGroupMessage(String content, String senderId) async {
+    try {
+      // Try to parse as JSON
+      final payload = jsonDecode(content);
+      
+      // Check if it's a fan-out message
+      if (payload is! Map || payload['is_fanout'] != true) {
+        // Not a fan-out message, return as-is (backward compatibility)
+        return content;
+      }
+      
+      // Extract ciphertexts map
+      final ciphertexts = payload['ciphertexts'] as Map<String, dynamic>?;
+      if (ciphertexts == null) {
+        debugPrint('[E2EE] Decryption failed: Invalid fan-out payload structure - missing ciphertexts field, roomId=${arg.roomId}, senderId=$senderId');
+        return '🔒 訊息格式錯誤';
+      }
+      
+      // Get current user's ciphertext
+      final myCiphertext = ciphertexts[arg.currentUserId];
+      if (myCiphertext == null) {
+        debugPrint('[E2EE] Decryption failed: Missing ciphertext for current user, roomId=${arg.roomId}, senderId=$senderId, currentUserId=${arg.currentUserId}');
+        return '🔒 此訊息不包含您的加密內容';
+      }
+      
+      // Fetch sender's public key
+      final senderPublicKey = await _publicKeyCacheService.getPublicKey(senderId);
+      if (senderPublicKey == null) {
+        debugPrint('[E2EE] Decryption failed: Sender public key unavailable, roomId=${arg.roomId}, senderId=$senderId');
+        return '🔒 此訊息無法解密（金鑰已更新）';
+      }
+      
+      // Decrypt using CryptoService
+      try {
+        final plaintext = await _cryptoService.decryptMessage(
+          myCiphertext.toString(),
+          senderPublicKey,
+        );
+        return plaintext;
+      } catch (decryptError) {
+        debugPrint('[E2EE] Decryption operation failed: roomId=${arg.roomId}, senderId=$senderId, error=${decryptError.runtimeType}');
+        return '🔒 此訊息無法解密（金鑰已更新）';
+      }
+    } on FormatException catch (e) {
+      // JSON parse failure - treat as plaintext for backward compatibility
+      debugPrint('[E2EE] JSON parse failed, treating as plaintext: roomId=${arg.roomId}, senderId=$senderId, error=${e.runtimeType}');
+      return content;
+    } catch (e) {
+      // Unexpected error during decryption
+      debugPrint('[E2EE] Unexpected decryption error: roomId=${arg.roomId}, senderId=$senderId, error=${e.runtimeType}');
+      return '🔒 此訊息無法解密（金鑰已更新）';
+    }
+  }
+
   Future<String?> _getPublicKey(String userId) async {
     if (arg.isRoom) return null;
     return await _publicKeyCacheService.getPublicKey(userId);
   }
 
   Future<Message> _tryDecryptMessage(Message m) async {
-    if (arg.isRoom) return m;
     if (m.isUnsent || m.content.isEmpty) return m;
 
+    // Check E2EE toggle state for the room
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
     if (!isE2EEEnabled) return m;
 
-    final opponentId = (m.senderId == arg.currentUserId)
-        ? m.receiverId
-        : m.senderId;
-    if (opponentId == null) return m;
+    // Branch on arg.isRoom flag to determine message type
+    if (arg.isRoom) {
+      // Group message: call _decryptGroupMessage
+      final decrypted = await _decryptGroupMessage(m.content, m.senderId);
+      if (decrypted != m.content) {
+        return m.copyWith(content: decrypted);
+      }
+      return m;
+    } else {
+      // Private message: use existing one-to-one decryption logic
+      final opponentId = (m.senderId == arg.currentUserId)
+          ? m.receiverId
+          : m.senderId;
+      if (opponentId == null) return m;
 
-    final pubKey = await _getPublicKey(opponentId);
-    if (pubKey == null) return m;
+      final pubKey = await _getPublicKey(opponentId);
+      if (pubKey == null) return m;
 
-    final decrypted = await _cryptoService.decryptMessage(m.content, pubKey);
+      final decrypted = await _cryptoService.decryptMessage(m.content, pubKey);
 
-    if (decrypted != m.content) {
-      return m.copyWith(content: decrypted);
+      if (decrypted != m.content) {
+        return m.copyWith(content: decrypted);
+      }
+
+      final looksLikeCiphertext = _looksLikeE2EECiphertext(m.content);
+      if (looksLikeCiphertext) {
+        return m.copyWith(content: '🔒 此訊息無法解密（金鑰已更新）');
+      }
+      return m;
     }
-
-    final looksLikeCiphertext = _looksLikeE2EECiphertext(m.content);
-    if (looksLikeCiphertext) {
-      return m.copyWith(content: '🔒 此訊息無法解密（金鑰已更新）');
-    }
-    return m;
   }
 
   bool _looksLikeE2EECiphertext(String content) {
@@ -657,17 +819,32 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       final isE2EEEnabled =
           ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
-      if (!arg.isRoom && isE2EEEnabled) {
-        final pubKey = await _getPublicKey(arg.roomId);
-        if (pubKey != null) {
+      if (isE2EEEnabled) {
+        if (arg.isRoom) {
+          // Group message: use fan-out encryption
           try {
-            payloadContent = await _cryptoService.encryptMessage(
-              message.content,
-              pubKey,
-            );
+            // Capture member list snapshot once (Requirements 9.1, 9.2, 9.5)
+            // Uses CURRENT member list at resend time, not original member list
+            final members = await _chatRepository.getRoomMemberProfiles(arg.roomId);
+            final memberIds = members.map((m) => m.id).toList();
+            payloadContent = await _encryptGroupMessage(message.content, memberIds);
           } catch (e) {
-            debugPrint('Failed to encrypt pending message: $e');
+            debugPrint('Failed to encrypt pending group message: $e');
             continue;
+          }
+        } else {
+          // Private message: use existing one-to-one encryption
+          final pubKey = await _getPublicKey(arg.roomId);
+          if (pubKey != null) {
+            try {
+              payloadContent = await _cryptoService.encryptMessage(
+                message.content,
+                pubKey,
+              );
+            } catch (e) {
+              debugPrint('Failed to encrypt pending message: $e');
+              continue;
+            }
           }
         }
       }
@@ -737,13 +914,32 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
-    if (!arg.isRoom && isE2EEEnabled) {
-      final pubKey = await _getPublicKey(arg.roomId);
-      if (pubKey != null) {
+    if (isE2EEEnabled) {
+      if (arg.isRoom) {
+        // Group message: use fan-out encryption
         try {
-          payloadContent = await _cryptoService.encryptMessage(content, pubKey);
+          // Capture member list snapshot once (Requirements 9.1, 9.2, 9.5)
+          // This snapshot is used for all encryption operations to ensure consistency
+          final members = await _chatRepository.getRoomMemberProfiles(arg.roomId);
+          final memberIds = members.map((m) => m.id).toList();
+          payloadContent = await _encryptGroupMessage(content, memberIds);
         } catch (e) {
-          debugPrint('Failed to encrypt message: $e');
+          debugPrint('Failed to encrypt group message: $e');
+          state = state.copyWith(
+            isSending: false,
+            error: '加密失敗，無法發送訊息',
+          );
+          return;
+        }
+      } else {
+        // Private message: use existing one-to-one encryption
+        final pubKey = await _getPublicKey(arg.roomId);
+        if (pubKey != null) {
+          try {
+            payloadContent = await _cryptoService.encryptMessage(content, pubKey);
+          } catch (e) {
+            debugPrint('Failed to encrypt message: $e');
+          }
         }
       }
     }
@@ -789,16 +985,33 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
 
-    if (!arg.isRoom && isE2EEEnabled) {
-      final pubKey = await _getPublicKey(arg.roomId);
-      if (pubKey != null) {
+    if (isE2EEEnabled) {
+      if (arg.isRoom) {
+        // Group message: use fan-out encryption
         try {
-          payloadContent = await _cryptoService.encryptMessage(
-            message.content,
-            pubKey,
-          );
+          // Capture member list snapshot once (Requirements 9.1, 9.2, 9.5)
+          // Uses CURRENT member list at retry time, not original member list
+          final members = await _chatRepository.getRoomMemberProfiles(arg.roomId);
+          final memberIds = members.map((m) => m.id).toList();
+          payloadContent = await _encryptGroupMessage(message.content, memberIds);
         } catch (e) {
-          debugPrint('Failed to encrypt retry: $e');
+          debugPrint('Failed to encrypt retry group message: $e');
+          _updateMessageStatus(clientMsgId, MessageStatus.failed);
+          state = state.copyWith(error: '加密失敗');
+          return;
+        }
+      } else {
+        // Private message: use existing one-to-one encryption
+        final pubKey = await _getPublicKey(arg.roomId);
+        if (pubKey != null) {
+          try {
+            payloadContent = await _cryptoService.encryptMessage(
+              message.content,
+              pubKey,
+            );
+          } catch (e) {
+            debugPrint('Failed to encrypt retry: $e');
+          }
         }
       }
     }

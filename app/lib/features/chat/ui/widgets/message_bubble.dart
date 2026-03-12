@@ -288,7 +288,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: colorScheme.onSurface,
+                            color: textColor,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
@@ -301,7 +301,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: colorScheme.onSurfaceVariant,
+                            color: subtleTextColor,
                             fontSize: 12,
                           ),
                         ),
