@@ -379,4 +379,19 @@ class LocalDbService {
       whereArgs: [messageId, messageId],
     );
   }
+
+  /// 取得所有狀態為 decryptingRetry 的訊息
+  /// 用於 app 重啟或 WebSocket 重連時，自動重試解密失敗的訊息
+  Future<List<Message>> getDecryptingRetryMessages() async {
+    final db = await initDB();
+    
+    final rows = await db.query(
+      'messages',
+      where: 'status = ?',
+      whereArgs: ['decryptingRetry'],
+      orderBy: 'created_at ASC',
+    );
+    
+    return rows.map(Message.fromMap).toList();
+  }
 }

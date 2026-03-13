@@ -114,6 +114,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   late final PublicKeyCacheService _publicKeyCacheService;
   Timer? _typingTimer;
   bool _typingSent = false;
+  bool _isAutoResendInitialized = false;
 
   Timer? _markConversationReadTimer;
   DateTime? _lastMarkConversationReadTime;
@@ -151,6 +152,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
         if (event == 'ws_reconnected') {
           resendPendingMessages();
+          _initializeAutoResend();
+        } else if (event == 'ws_disconnected') {
+          _isAutoResendInitialized = false;
         } else if (event == 'chat_message') {
           try {
             final rawMessage = Message.fromJson(payload);
@@ -345,6 +349,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     });
 
     Future.microtask(() => loadHistory());
+    Future.microtask(() => _initializeAutoResend());
 
     return ChatRoomState(
       isConnected: true,
@@ -900,6 +905,103 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
+  /// 🔐 E2EE Auto-Resend: 取得所有狀態為 decryptingRetry 的訊息
+  /// 用於 app 重啟或 WebSocket 重連時，自動重試解密失敗的訊息
+  Future<List<Message>> _getDecryptingRetryMessages() async {
+    return await LocalDbService().getDecryptingRetryMessages();
+  }
+
+  /// 🔐 E2EE Auto-Resend: 初始化自動重發邏輯
+  /// 在 app 重啟或 WebSocket 重連時呼叫，檢查 LocalDB 中的 decryptingRetry 訊息
+  /// 並根據記憶體中的當前狀態決定是否發送 re_encrypt_request
+  Future<void> _initializeAutoResend() async {
+    // 檢查是否已初始化，防止重複執行
+    if (_isAutoResendInitialized) {
+      debugPrint('[E2EE Auto-Resend] Already initialized, skipping');
+      return;
+    }
+
+    try {
+      // 從 LocalDB 查詢所有 status = 'decryptingRetry' 的訊息
+      final decryptingRetryMessages = await _getDecryptingRetryMessages();
+      
+      if (decryptingRetryMessages.isEmpty) {
+        debugPrint('[E2EE Auto-Resend] No decryptingRetry messages found in LocalDB');
+        _isAutoResendInitialized = true;
+        return;
+      }
+
+      debugPrint('[E2EE Auto-Resend] Found ${decryptingRetryMessages.length} decryptingRetry messages in LocalDB');
+
+      // 對每條訊息，檢查在記憶體中的當前狀態
+      for (final dbMessage in decryptingRetryMessages) {
+        final messageId = dbMessage.id;
+        
+        // 在 state.messages 中查找該訊息
+        final memoryMessage = state.messages.firstWhere(
+          (m) => m.id == messageId || m.clientMsgId == messageId,
+          orElse: () => Message(
+            id: '',
+            content: '',
+            senderId: '',
+            createdAt: DateTime.now(),
+          ),
+        );
+
+        // 如果在記憶體中找不到訊息，使用 LocalDB 中的狀態
+        final currentStatus = memoryMessage.id.isNotEmpty 
+            ? memoryMessage.status 
+            : dbMessage.status;
+
+        // 如果記憶體中的狀態已經是 read/delivered/sent/failed，跳過該訊息
+        if (currentStatus == MessageStatus.read ||
+            currentStatus == MessageStatus.delivered ||
+            currentStatus == MessageStatus.sent ||
+            currentStatus == MessageStatus.failed) {
+          debugPrint('[E2EE Auto-Resend] Skipping message $messageId: status is already $currentStatus');
+          continue;
+        }
+
+        // 如果記憶體中的狀態仍然是 decryptingRetry，檢查重試次數
+        if (currentStatus == MessageStatus.decryptingRetry) {
+          final retryCount = await LocalDbService().getDecryptRetryCount(messageId);
+          
+          if (retryCount >= 2) {
+            debugPrint('[E2EE Auto-Resend] Skipping message $messageId: retry limit reached (retryCount=$retryCount)');
+            continue;
+          }
+
+          // 檢查 WebSocket 是否已連線
+          if (!_wsService.isConnected) {
+            debugPrint('[E2EE Auto-Resend] WebSocket not connected, will retry when reconnected');
+            continue;
+          }
+
+          // 發送 re_encrypt_request
+          debugPrint('[E2EE Auto-Resend] Sending re_encrypt_request for message: $messageId (retryCount=$retryCount)');
+          try {
+            await _wsService.send('re_encrypt_request', {
+              'message_id': messageId,
+              'sender_id': dbMessage.senderId,
+              'receiver_id': arg.currentUserId,
+              'room_id': arg.isRoom ? arg.roomId : null,
+            });
+          } catch (e) {
+            debugPrint('[E2EE Auto-Resend] Failed to send re_encrypt_request: $e');
+          }
+        }
+      }
+
+      // 設定初始化完成標記
+      _isAutoResendInitialized = true;
+      debugPrint('[E2EE Auto-Resend] Initialization completed');
+    } catch (e) {
+      debugPrint('[E2EE Auto-Resend] Unexpected error in _initializeAutoResend: $e');
+      // 即使發生錯誤，也設定為已初始化，避免重複嘗試
+      _isAutoResendInitialized = true;
+    }
+  }
+
   Future<Message> _tryDecryptMessage(Message m) async {
     if (m.isUnsent || m.content.isEmpty) return m;
 
@@ -911,6 +1013,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       try {
         final decrypted = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
         if (decrypted != m.content) {
+          // Update LocalDB status to sync with memory state after successful decryption
+          await LocalDbService().updateMessageStatus(m.clientMsgId ?? m.id, MessageStatus.delivered);
           return m.copyWith(content: decrypted);
         }
         return m;
@@ -936,6 +1040,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         );
 
         if (decrypted != m.content) {
+          // Update LocalDB status to sync with memory state after successful decryption
+          await LocalDbService().updateMessageStatus(m.clientMsgId ?? m.id, MessageStatus.delivered);
           return m.copyWith(content: decrypted);
         }
 

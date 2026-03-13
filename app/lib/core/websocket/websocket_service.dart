@@ -138,6 +138,9 @@ class WebSocketService {
     _isConnected = false;
     _channel = null;
 
+    // Emit disconnect event
+    _streamController.add({'event': 'ws_disconnected'});
+
     // Exponential backoff
     final delay = Duration(seconds: (1 << _retryAttempts).clamp(1, 30));
     _retryAttempts++;
