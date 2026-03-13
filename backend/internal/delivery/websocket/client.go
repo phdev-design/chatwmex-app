@@ -19,8 +19,8 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	// Increased to 8KB to accommodate link preview data (URL, title, description, image URL)
-	maxMessageSize = 8192
+	// Increased to 1MB to accommodate group messages with Fan-out E2EE encryption
+	maxMessageSize = 1048576
 )
 
 var (

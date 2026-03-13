@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/features/auth/providers/auth_provider.dart';
+import 'package:app/features/auth/models/auth_state.dart';
 
 class KeyRecoveryDialog extends ConsumerStatefulWidget {
   const KeyRecoveryDialog({super.key});

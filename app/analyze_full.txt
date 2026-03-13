@@ -1,0 +1,242 @@
+Analyzing app...                                                
+
+warning • The value of the local variable 'crypto' isn't used • lib/features/auth/providers/auth_provider.dart:150:13 • unused_local_variable
+   info • Don't invoke 'print' in production code • lib/features/chat/providers/chat_room_provider.dart:1337:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/providers/room_media_provider.dart:207:9 • avoid_print
+warning • The value of the field '_cachedFilePath' isn't used • lib/features/chat/ui/audio_message_bubble.dart:32:11 • unused_field
+   info • 'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre • lib/features/chat/ui/contact_info_page.dart:189:7 • deprecated_member_use
+   info • 'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre • lib/features/chat/ui/contact_info_page.dart:191:7 • deprecated_member_use
+   info • 'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre • lib/features/chat/ui/media_visibility_settings_page.dart:222:21 • deprecated_member_use
+   info • 'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre • lib/features/chat/ui/media_visibility_settings_page.dart:223:21 • deprecated_member_use
+warning • The value of the field '_currentDragPosition' isn't used • lib/features/chat/ui/widgets/chat_input_bar.dart:67:11 • unused_field
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/chat/ui/widgets/chat_input_bar.dart:508:48 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/chat_input_bar.dart:577:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/chat_input_bar.dart:578:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/chat_input_bar.dart:579:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/chat_input_bar.dart:580:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/chat_input_bar.dart:581:9 • avoid_print
+warning • The declaration '_PlaceholderTile' isn't referenced • lib/features/chat/ui/widgets/media_tab_content.dart:300:7 • unused_element
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:243:9 • avoid_print
+warning • The '!' will have no effect because the receiver can't be null • lib/features/chat/ui/widgets/message_bubble.dart:243:72 • unnecessary_non_null_assertion
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:245:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:261:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:262:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:263:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:264:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:265:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:266:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/ui/widgets/message_bubble.dart:267:7 • avoid_print
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/chat/ui/widgets/message_bubble.dart:566:37 • use_null_aware_elements
+   info • Don't invoke 'print' in production code • lib/features/chat/utils/chat_url_utils.dart:32:5 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:26:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:27:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:42:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:49:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:56:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:58:13 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:61:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:63:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:68:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:69:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:72:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:73:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:74:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:75:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:76:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:77:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:80:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:81:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:95:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/build_context_async_usage_exploration_test.dart:96:7 • avoid_print
+warning • The value of the local variable 'user1PublicKey' isn't used • test/core/crypto/crypto_service_preservation_test.dart:196:15 • unused_local_variable
+warning • The value of the local variable 'plainText' isn't used • test/core/crypto/crypto_service_preservation_test.dart:235:15 • unused_local_variable
+warning • The value of the local variable 'originalPublicKey' isn't used • test/core/crypto/crypto_service_preservation_test.dart:354:15 • unused_local_variable
+   info • The imported package 'path_provider_platform_interface' isn't a dependency of the importing package • test/core/media/audio_cache_service_test.dart:3:8 • depend_on_referenced_packages
+   info • The imported package 'plugin_platform_interface' isn't a dependency of the importing package • test/core/media/audio_cache_service_test.dart:4:8 • depend_on_referenced_packages
+warning • Unused import: 'package:dio/dio.dart' • test/core/media/image_cache_service_bug_exploration_test.dart:3:8 • unused_import
+   info • The imported package 'path_provider_platform_interface' isn't a dependency of the importing package • test/core/media/image_cache_service_bug_exploration_test.dart:4:8 • depend_on_referenced_packages
+   info • The imported package 'plugin_platform_interface' isn't a dependency of the importing package • test/core/media/image_cache_service_bug_exploration_test.dart:5:8 • depend_on_referenced_packages
+   info • The imported package 'path_provider_platform_interface' isn't a dependency of the importing package • test/core/media/image_cache_service_preservation_test.dart:3:8 • depend_on_referenced_packages
+   info • The imported package 'plugin_platform_interface' isn't a dependency of the importing package • test/core/media/image_cache_service_preservation_test.dart:4:8 • depend_on_referenced_packages
+warning • The value of the local variable 'offlineDuration' isn't used • test/features/chat/decryption_retry_permanent_failure_exploration_test.dart:50:15 • unused_local_variable
+   info • Don't invoke 'print' in production code • test/features/chat/decryption_retry_permanent_failure_exploration_test.dart:208:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/decryption_retry_permanent_failure_exploration_test.dart:214:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/decryption_retry_permanent_failure_exploration_test.dart:222:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/decryption_retry_permanent_failure_exploration_test.dart:228:7 • avoid_print
+warning • The value of the local variable 'messageType' isn't used • test/features/chat/decryption_success_preservation_test.dart:73:17 • unused_local_variable
+warning • The operand must be 'null', so the condition is always 'true' • test/features/chat/e2ee_auto_resend_test.dart:195:11 • unnecessary_null_comparison
+warning • The operand must be 'null', so the condition is always 'true' • test/features/chat/e2ee_auto_resend_test.dart:205:11 • unnecessary_null_comparison
+warning • The operand must be 'null', so the condition is always 'true' • test/features/chat/e2ee_auto_resend_test.dart:252:11 • unnecessary_null_comparison
+warning • The operand must be 'null', so the condition is always 'true' • test/features/chat/e2ee_auto_resend_test.dart:252:32 • unnecessary_null_comparison
+warning • The value of the local variable 'content' isn't used • test/features/chat/providers/chat_room_backward_compatibility_test.dart:255:20 • unused_local_variable
+warning • The value of the local variable 'memberId' isn't used • test/features/chat/providers/chat_room_core_encryption_integration_test.dart:66:20 • unused_local_variable
+warning • Dead code • test/features/chat/providers/chat_room_core_encryption_integration_test.dart:232:16 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_core_encryption_integration_test.dart:242:38 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_core_encryption_integration_test.dart:256:16 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_core_encryption_integration_test.dart:265:22 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_core_encryption_integration_test.dart:268:16 • dead_code
+warning • The value of the local variable 'plaintext' isn't used • test/features/chat/providers/chat_room_core_encryption_integration_test.dart:309:15 • unused_local_variable
+warning • The value of the local variable 'encryptionFailureCount' isn't used • test/features/chat/providers/chat_room_encryption_error_handling_test.dart:21:13 • unused_local_variable
+warning • The value of the local variable 'memberId' isn't used • test/features/chat/providers/chat_room_encryption_error_handling_test.dart:24:20 • unused_local_variable
+warning • The value of the local variable 'keysUnavailableCount' isn't used • test/features/chat/providers/chat_room_encryption_error_handling_test.dart:51:13 • unused_local_variable
+warning • The value of the local variable 'memberId' isn't used • test/features/chat/providers/chat_room_encryption_error_handling_test.dart:55:20 • unused_local_variable
+warning • The value of the local variable 'memberIds' isn't used • test/features/chat/providers/chat_room_encryption_error_handling_test.dart:111:15 • unused_local_variable
+warning • The value of the local variable 'memberIds' isn't used • test/features/chat/providers/chat_room_encryption_error_handling_test.dart:138:15 • unused_local_variable
+warning • Dead code • test/features/chat/providers/chat_room_encryption_test.dart:226:45 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_encryption_test.dart:246:16 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_encryption_test.dart:254:21 • dead_code
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:52:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:98:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:149:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:193:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:243:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:287:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:323:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:359:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:394:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:424:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:516:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/chat_room_performance_validation_test.dart:615:9 • avoid_print
+warning • Unused import: 'package:app/features/chat/providers/chat_room_provider.dart' • test/features/chat/providers/chat_room_provider_test.dart:3:8 • unused_import
+warning • Dead code • test/features/chat/providers/chat_room_provider_test.dart:181:46 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_provider_test.dart:182:48 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_provider_test.dart:195:37 • dead_code
+warning • Dead code • test/features/chat/providers/chat_room_provider_test.dart:196:41 • dead_code
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:120:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:121:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:122:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:123:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:125:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:126:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:128:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:189:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:190:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:191:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:192:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:194:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:196:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:281:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:282:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:283:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:284:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:286:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/features/chat/providers/room_media_bug_condition_exploration_test.dart:288:7 • avoid_print
+   info • The imported package 'path_provider_platform_interface' isn't a dependency of the importing package • test/features/chat/ui/audio_message_bubble_test.dart:10:8 • depend_on_referenced_packages
+   info • The imported package 'plugin_platform_interface' isn't a dependency of the importing package • test/features/chat/ui/audio_message_bubble_test.dart:11:8 • depend_on_referenced_packages
+  error • Classes can only extend other classes • test/features/chat/ui/chat_input_bar_test.dart:41:36 • extends_non_class
+   info • Parameter 'params' could be a super parameter • test/features/chat/ui/chat_input_bar_test.dart:42:3 • use_super_parameters
+  error • Too many positional arguments: 0 expected, but 1 found • test/features/chat/ui/chat_input_bar_test.dart:42:55 • extra_positional_arguments
+warning • The method doesn't override an inherited method • test/features/chat/ui/chat_input_bar_test.dart:45:17 • override_on_non_overriding_member
+warning • The method doesn't override an inherited method • test/features/chat/ui/chat_input_bar_test.dart:55:16 • override_on_non_overriding_member
+  error • Undefined name 'state' • test/features/chat/ui/chat_input_bar_test.dart:56:5 • undefined_identifier
+  error • Undefined name 'state' • test/features/chat/ui/chat_input_bar_test.dart:56:13 • undefined_identifier
+warning • The method doesn't override an inherited method • test/features/chat/ui/chat_input_bar_test.dart:60:16 • override_on_non_overriding_member
+  error • Undefined name 'state' • test/features/chat/ui/chat_input_bar_test.dart:61:5 • undefined_identifier
+  error • Undefined name 'state' • test/features/chat/ui/chat_input_bar_test.dart:61:13 • undefined_identifier
+warning • The method doesn't override an inherited method • test/features/chat/ui/chat_input_bar_test.dart:65:16 • override_on_non_overriding_member
+  error • Undefined name 'state' • test/features/chat/ui/chat_input_bar_test.dart:66:5 • undefined_identifier
+  error • Undefined name 'state' • test/features/chat/ui/chat_input_bar_test.dart:66:13 • undefined_identifier
+  error • Local variable 'testParams' can't be referenced before it is declared • test/features/chat/ui/chat_input_bar_test.dart:83:26 • referenced_before_declaration
+  error • The final variable 'testParams' can't be read because it's potentially unassigned at this point • test/features/chat/ui/chat_input_bar_test.dart:83:26 • read_potentially_unassigned_final
+  error • The method 'overrideWith' isn't defined for the type 'FamilyNotifierProviderImpl' • test/features/chat/ui/chat_input_bar_test.dart:83:38 • undefined_method
+  error • Local variable 'testParams' can't be referenced before it is declared • test/features/chat/ui/chat_input_bar_test.dart:83:81 • referenced_before_declaration
+  error • The final variable 'testParams' can't be read because it's potentially unassigned at this point • test/features/chat/ui/chat_input_bar_test.dart:83:81 • read_potentially_unassigned_final
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:31:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:32:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:49:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:52:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:56:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:57:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:67:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:80:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:91:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:94:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:100:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:102:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:106:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:112:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:125:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:131:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:132:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:144:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_analyze_bugs_exploration_test.dart:148:7 • avoid_print
+warning • Unused import: 'dart:math' • test/flutter_analyze_preservation_property_test.dart:2:8 • unused_import
+warning • Dead code • test/flutter_analyze_preservation_property_test.dart:268:23 • dead_code
+warning • Dead code • test/flutter_analyze_preservation_property_test.dart:273:30 • dead_code
+warning • Dead code • test/flutter_analyze_preservation_property_test.dart:287:16 • dead_code
+   info • The variable name '__' isn't a lowerCamelCase identifier • test/flutter_analyze_preservation_property_test.dart:310:17 • non_constant_identifier_names
+   info • Unnecessary use of multiple underscores • test/flutter_analyze_preservation_property_test.dart:310:17 • unnecessary_underscores
+warning • The value of the local variable '__' isn't used • test/flutter_analyze_preservation_property_test.dart:310:17 • unused_local_variable
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:22:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:33:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:34:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:58:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:60:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:74:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:75:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:82:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:104:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:106:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:118:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:123:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:137:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:138:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:141:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:143:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:144:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:153:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:163:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:168:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:185:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:201:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:202:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:206:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:217:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:224:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:226:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:231:7 • avoid_print
+   info • The local variable '_privateVariable' starts with an underscore • test/flutter_compilation_preservation_property_test.dart:236:13 • no_leading_underscores_for_local_identifiers
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:238:7 • avoid_print
+   info • The local variable '_privateFunction' starts with an underscore • test/flutter_compilation_preservation_property_test.dart:240:14 • no_leading_underscores_for_local_identifiers
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:245:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:247:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:251:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:292:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:299:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:300:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:301:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:305:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:306:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:307:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:308:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:309:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:310:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:311:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:312:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/flutter_compilation_preservation_property_test.dart:313:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:28:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:39:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:40:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:77:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:79:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:85:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:86:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:89:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:90:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:91:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:92:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:93:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:96:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:97:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:111:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:112:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:118:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:136:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:138:9 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:140:11 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:145:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:151:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:152:7 • avoid_print
+   info • Don't invoke 'print' in production code • test/orphaned_underscore_compilation_exploration_test.dart:153:7 • avoid_print
+
+238 issues found. (ran in 2.9s)

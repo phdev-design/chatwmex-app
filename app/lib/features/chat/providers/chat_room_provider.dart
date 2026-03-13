@@ -737,10 +737,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   /// 🔐 E2EE Auto-Resend: 處理解密失敗
   /// 
   /// 當解密失敗時：
-  /// 1. 檢查重試次數（最多 2 次）
-  /// 2. 更新訊息狀態為 decryptingRetry
-  /// 3. 發送 re_encrypt_request 控制訊息給原發送方
-  /// 4. 設定 10 秒超時機制
+  /// 1. 更新訊息狀態為 decryptingRetry
+  /// 2. 發送 re_encrypt_request 控制訊息給原發送方
+  /// 3. 訊息保持在 decryptingRetry 狀態，等待發送方上線
   Future<void> _handleDecryptionFailure(
     Message message,
     DecryptionFailureException exception,
@@ -758,36 +757,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
 
     try {
-      // 從 LocalDB 讀取當前重試次數
-      final currentRetryCount = await LocalDbService().getDecryptRetryCount(message.id);
-      
-      // 檢查是否超過最大重試次數（最多 2 次）
-      if (currentRetryCount >= 2) {
-        debugPrint('[E2EE Auto-Resend] Max retry attempts reached for message: ${message.id}');
-        // 超過重試次數，更新為永久失敗狀態
-        await LocalDbService().updateMessageContentAndStatus(
-          messageId: message.id,
-          newContent: '🔒 此訊息無法解密（金鑰已更新）',
-          newStatus: MessageStatus.failed,
-        );
-        // 更新 UI 狀態
-        final index = state.messages.indexWhere((m) => m.id == message.id);
-        if (index != -1) {
-          final updated = message.copyWith(
-            content: '🔒 此訊息無法解密（金鑰已更新）',
-            status: MessageStatus.failed,
-          );
-          final messages = [...state.messages];
-          messages[index] = updated;
-          state = state.copyWith(messages: messages);
-        }
-        return;
-      }
-      
-      // 更新重試次數
-      await LocalDbService().updateDecryptRetryCount(message.id, currentRetryCount + 1);
-      
-      // 更新訊息狀態為 decryptingRetry
+      // 更新訊息狀態為 decryptingRetry（不限制重試次數）
       await LocalDbService().updateMessageContentAndStatus(
         messageId: message.id,
         newContent: message.content, // 保留原密文
@@ -811,7 +781,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       }
       
       // 發送 re_encrypt_request 控制訊息
-      debugPrint('[E2EE Auto-Resend] Sending re_encrypt_request for message: ${message.id} (attempt ${currentRetryCount + 1}/2)');
+      debugPrint('[E2EE Auto-Resend] Sending re_encrypt_request for message: ${message.id}');
       try {
         await _wsService.send('re_encrypt_request', {
           'message_id': message.id,
@@ -820,48 +790,19 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           'room_id': arg.isRoom ? arg.roomId : null,
         });
         
-        // 設定 10 秒超時機制
-        Timer(const Duration(seconds: 10), () async {
-          // 檢查訊息是否仍處於 decryptingRetry 狀態
-          final msg = await LocalDbService().getMessageById(message.id);
-          if (msg != null && msg.status == MessageStatus.decryptingRetry) {
-            debugPrint('[E2EE Auto-Resend] Timeout for message: ${message.id}, retrying...');
-            // 超時後重新觸發解密（會增加重試次數）
-            await _handleDecryptionFailure(message, exception);
-          }
-        });
+        // 訊息保持在 decryptingRetry 狀態，等待發送方上線並重新加密
+        debugPrint('[E2EE Auto-Resend] Message ${message.id} will remain in decryptingRetry state until sender responds');
       } catch (e) {
         debugPrint('[E2EE Auto-Resend] Failed to send re_encrypt_request: $e');
-        // 發送失敗，標記為永久失敗
-        await LocalDbService().updateMessageContentAndStatus(
-          messageId: message.id,
-          newContent: '🔒 此訊息無法解密（金鑰已更新）',
-          newStatus: MessageStatus.failed,
-        );
-        // 更新 UI 狀態
-        final index = state.messages.indexWhere((m) => m.id == message.id);
-        if (index != -1) {
-          final updated = message.copyWith(
-            content: '🔒 此訊息無法解密（金鑰已更新）',
-            status: MessageStatus.failed,
-          );
-          final messages = [...state.messages];
-          messages[index] = updated;
-          state = state.copyWith(messages: messages);
-        }
+        // 發送失敗，但訊息仍保持在 decryptingRetry 狀態
+        // 當 WebSocket 重新連接時，可以重試
+        debugPrint('[E2EE Auto-Resend] Message ${message.id} remains in decryptingRetry state, will retry when connection is restored');
       }
     } catch (e) {
       debugPrint('[E2EE Auto-Resend] Unexpected error in _handleDecryptionFailure: $e');
-      // 發生未預期的錯誤，標記為失敗
-      try {
-        await LocalDbService().updateMessageContentAndStatus(
-          messageId: message.id,
-          newContent: '🔒 此訊息無法解密（金鑰已更新）',
-          newStatus: MessageStatus.failed,
-        );
-      } catch (dbError) {
-        debugPrint('[E2EE Auto-Resend] Failed to update message status: $dbError');
-      }
+      // 發生未預期的錯誤，但訊息仍保持在 decryptingRetry 狀態
+      // 避免因暫時性錯誤而永久標記為失敗
+      debugPrint('[E2EE Auto-Resend] Message ${message.id} remains in decryptingRetry state despite error');
     }
   }
 
@@ -976,7 +917,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   /// 3. 更新 UI 狀態
   Future<void> _handleReEncryptResponse(Map<String, dynamic> payload) async {
     final messageId = payload['message_id'] as String?;
-    final content = payload['content'] as String?;
+    final content = (payload['re_encrypted_content'] ?? payload['content']) as String?;
     final receiverId = payload['receiver_id'] as String?;
     
     // 邊緣情況：驗證必要參數
@@ -1042,31 +983,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       } catch (e) {
         debugPrint('[E2EE Auto-Resend] Re-decryption failed: $e');
         
-        // 檢查重試次數
-        final currentRetryCount = await LocalDbService().getDecryptRetryCount(messageId);
-        if (currentRetryCount >= 2) {
-          // 已達最大重試次數，標記為永久失敗
-          await LocalDbService().updateMessageContentAndStatus(
-            messageId: messageId,
-            newContent: '🔒 此訊息無法解密（金鑰已更新）',
-            newStatus: MessageStatus.failed,
-          );
-          
-          // 更新 UI 狀態
-          final index = state.messages.indexWhere((m) => m.id == messageId);
-          if (index != -1) {
-            final updated = originalMessage.copyWith(
-              content: '🔒 此訊息無法解密（金鑰已更新）',
-              status: MessageStatus.failed,
-            );
-            final messages = [...state.messages];
-            messages[index] = updated;
-            state = state.copyWith(messages: messages);
-          }
-        } else {
-          // 還有重試機會，保持 decryptingRetry 狀態，等待超時後重試
-          debugPrint('[E2EE Auto-Resend] Re-decryption failed, will retry (attempt ${currentRetryCount + 1}/2)');
-        }
+        // 保持 decryptingRetry 狀態，不標記為永久失敗
+        // 可能是暫時性錯誤，或需要再次請求重新加密
+        debugPrint('[E2EE Auto-Resend] Message $messageId remains in decryptingRetry state');
         return;
       }
       
@@ -1076,9 +995,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         newContent: decryptedContent,
         newStatus: MessageStatus.delivered,
       );
-      
-      // 重置重試次數
-      await LocalDbService().updateDecryptRetryCount(messageId, 0);
       
       // 更新 UI 狀態
       final index = state.messages.indexWhere((m) => m.id == messageId);
@@ -1096,31 +1012,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     } catch (e) {
       debugPrint('[E2EE Auto-Resend] Unexpected error in _handleReEncryptResponse: $e');
       
-      // 發生未預期的錯誤，標記為失敗
-      try {
-        await LocalDbService().updateMessageContentAndStatus(
-          messageId: messageId,
-          newContent: '🔒 此訊息無法解密（金鑰已更新）',
-          newStatus: MessageStatus.failed,
-        );
-        
-        // 更新 UI 狀態
-        final index = state.messages.indexWhere((m) => m.id == messageId);
-        if (index != -1) {
-          final originalMessage = await LocalDbService().getMessageById(messageId);
-          if (originalMessage != null) {
-            final updated = originalMessage.copyWith(
-              content: '🔒 此訊息無法解密（金鑰已更新）',
-              status: MessageStatus.failed,
-            );
-            final messages = [...state.messages];
-            messages[index] = updated;
-            state = state.copyWith(messages: messages);
-          }
-        }
-      } catch (dbError) {
-        debugPrint('[E2EE Auto-Resend] Failed to update message status: $dbError');
-      }
+      // 發生未預期的錯誤，但保持 decryptingRetry 狀態
+      // 避免因暫時性錯誤而永久標記為失敗
+      debugPrint('[E2EE Auto-Resend] Message $messageId remains in decryptingRetry state despite error');
     }
   }
 

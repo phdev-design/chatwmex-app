@@ -63,16 +63,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         : tokens.subtleText;
 
     Widget content;
-    // Check for decryption failure: image type with content starting with 🔒
+    // Check for decryption failure: applies to ALL message types (not just images)
+    // Detects failures via 🔒 prefix OR MessageStatus.failed status
     const decryptionFailurePrefix = '🔒';
-    final isDecryptionFailure = msg.type == MessageType.image && 
-                                 msg.content.startsWith(decryptionFailurePrefix);
+    final isDecryptionFailure = msg.content.startsWith(decryptionFailurePrefix) || 
+                                 msg.status == MessageStatus.failed;
     
     // 🔐 E2EE Auto-Resend: 檢查是否正在重試解密
     final isDecryptingRetry = msg.status == MessageStatus.decryptingRetry;
     
     if (isDecryptingRetry) {
-      // 顯示正在同步金鑰的載入指示器
+      // 顯示等待對方上線的訊息
       content = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -86,10 +87,31 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
           ),
           const SizedBox(width: 8),
           Text(
-            '正在同步金鑰...',
+            '🔒 等待對方上線以重新解密...',
             style: TextStyle(
               fontSize: 13,
               fontStyle: FontStyle.italic,
+              color: subtleTextColor,
+            ),
+          ),
+        ],
+      );
+    } else if (isDecryptionFailure) {
+      // Handle decryption failures for ALL message types
+      // Display lock icon with error text instead of attempting to render encrypted content
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 16,
+            color: subtleTextColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '🔒 解密失敗',
+            style: TextStyle(
+              fontSize: 13,
               color: subtleTextColor,
             ),
           ),
@@ -230,8 +252,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       content = Text(msg.content, style: const TextStyle(fontSize: 15));
     }
     final preview = msg.linkPreview;
+    // Prevent link preview evaluation on encrypted/failed/retrying messages
+    // This avoids Regex errors and empty URL warnings from processing encrypted content
     final hasPreview =
         !msg.isUnsent &&
+        !isDecryptionFailure &&
+        !isDecryptingRetry &&
         preview != null &&
         (preview.url.isNotEmpty ||
             preview.title.isNotEmpty ||

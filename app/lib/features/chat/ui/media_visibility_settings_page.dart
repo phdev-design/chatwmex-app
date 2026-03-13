@@ -219,10 +219,9 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
                   const SizedBox(width: 16),
                   Radio<int>.adaptive(
                     value: value,
-                    groupValue: groupValue,
-                    onChanged: onChanged,
                     activeColor: ChatThemeTokens.accentColor,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    toggleable: false,
                   ),
                 ],
               ),
@@ -284,30 +283,41 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
               ),
               _buildSettingsCard(
                 children: [
-                  _buildRadioOption(
-                    title: '依全域設定（預設）',
-                    subtitle: null,
-                    value: 0,
-                    groupValue: _saveToCameraRoll,
-                    onChanged: (val) =>
-                        setState(() => _saveToCameraRoll = val!),
-                  ),
-                  _buildRadioOption(
-                    title: '永遠開啟',
-                    subtitle: null,
-                    value: 1,
-                    groupValue: _saveToCameraRoll,
-                    onChanged: (val) =>
-                        setState(() => _saveToCameraRoll = val!),
-                  ),
-                  _buildRadioOption(
-                    title: '永遠關閉',
-                    subtitle: null,
-                    value: 2,
-                    groupValue: _saveToCameraRoll,
-                    onChanged: (val) =>
-                        setState(() => _saveToCameraRoll = val!),
-                    showDivider: false,
+                  RadioGroup<int>(
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _saveToCameraRoll = val);
+                      }
+                    },
+                    child: Column(
+                      children: [
+                        _buildRadioOption(
+                          title: '依全域設定（預設）',
+                          subtitle: null,
+                          value: 0,
+                          groupValue: _saveToCameraRoll,
+                          onChanged: (val) =>
+                              setState(() => _saveToCameraRoll = val!),
+                        ),
+                        _buildRadioOption(
+                          title: '永遠開啟',
+                          subtitle: null,
+                          value: 1,
+                          groupValue: _saveToCameraRoll,
+                          onChanged: (val) =>
+                              setState(() => _saveToCameraRoll = val!),
+                        ),
+                        _buildRadioOption(
+                          title: '永遠關閉',
+                          subtitle: null,
+                          value: 2,
+                          groupValue: _saveToCameraRoll,
+                          onChanged: (val) =>
+                              setState(() => _saveToCameraRoll = val!),
+                          showDivider: false,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -322,34 +332,45 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
               ),
               _buildSettingsCard(
                 children: [
-                  _buildRadioOption(
-                    title: '依全域設定（預設）',
-                    subtitle: null,
-                    value: 0,
-                    groupValue: _autoDownload,
-                    onChanged: (val) => setState(() => _autoDownload = val!),
-                  ),
-                  _buildRadioOption(
-                    title: '永遠自動下載',
-                    subtitle: '包含行動網路與 Wi-Fi',
-                    value: 1,
-                    groupValue: _autoDownload,
-                    onChanged: (val) => setState(() => _autoDownload = val!),
-                  ),
-                  _buildRadioOption(
-                    title: '僅 Wi-Fi 時下載',
-                    subtitle: '節省行動數據使用量',
-                    value: 2,
-                    groupValue: _autoDownload,
-                    onChanged: (val) => setState(() => _autoDownload = val!),
-                  ),
-                  _buildRadioOption(
-                    title: '永不自動下載',
-                    subtitle: '需要手動點擊才下載',
-                    value: 3,
-                    groupValue: _autoDownload,
-                    onChanged: (val) => setState(() => _autoDownload = val!),
-                    showDivider: false,
+                  RadioGroup<int>(
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _autoDownload = val);
+                      }
+                    },
+                    child: Column(
+                      children: [
+                        _buildRadioOption(
+                          title: '依全域設定（預設）',
+                          subtitle: null,
+                          value: 0,
+                          groupValue: _autoDownload,
+                          onChanged: (val) => setState(() => _autoDownload = val!),
+                        ),
+                        _buildRadioOption(
+                          title: '永遠自動下載',
+                          subtitle: '包含行動網路與 Wi-Fi',
+                          value: 1,
+                          groupValue: _autoDownload,
+                          onChanged: (val) => setState(() => _autoDownload = val!),
+                        ),
+                        _buildRadioOption(
+                          title: '僅 Wi-Fi 時下載',
+                          subtitle: '節省行動數據使用量',
+                          value: 2,
+                          groupValue: _autoDownload,
+                          onChanged: (val) => setState(() => _autoDownload = val!),
+                        ),
+                        _buildRadioOption(
+                          title: '永不自動下載',
+                          subtitle: '需要手動點擊才下載',
+                          value: 3,
+                          groupValue: _autoDownload,
+                          onChanged: (val) => setState(() => _autoDownload = val!),
+                          showDivider: false,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -364,27 +385,38 @@ class _MediaSettingsFormState extends ConsumerState<_MediaSettingsForm> {
               ),
               _buildSettingsCard(
                 children: [
-                  _buildRadioOption(
-                    title: '依全域設定（預設）',
-                    subtitle: null,
-                    value: 0,
-                    groupValue: _mediaQuality,
-                    onChanged: (val) => setState(() => _mediaQuality = val!),
-                  ),
-                  _buildRadioOption(
-                    title: '高畫質（HD）',
-                    subtitle: '保留更多細節，檔案較大',
-                    value: 1,
-                    groupValue: _mediaQuality,
-                    onChanged: (val) => setState(() => _mediaQuality = val!),
-                  ),
-                  _buildRadioOption(
-                    title: '節省數據（壓縮）',
-                    subtitle: '較低的畫質以節省網路流量',
-                    value: 2,
-                    groupValue: _mediaQuality,
-                    onChanged: (val) => setState(() => _mediaQuality = val!),
-                    showDivider: false,
+                  RadioGroup<int>(
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _mediaQuality = val);
+                      }
+                    },
+                    child: Column(
+                      children: [
+                        _buildRadioOption(
+                          title: '依全域設定（預設）',
+                          subtitle: null,
+                          value: 0,
+                          groupValue: _mediaQuality,
+                          onChanged: (val) => setState(() => _mediaQuality = val!),
+                        ),
+                        _buildRadioOption(
+                          title: '高畫質（HD）',
+                          subtitle: '保留更多細節，檔案較大',
+                          value: 1,
+                          groupValue: _mediaQuality,
+                          onChanged: (val) => setState(() => _mediaQuality = val!),
+                        ),
+                        _buildRadioOption(
+                          title: '節省數據（壓縮）',
+                          subtitle: '較低的畫質以節省網路流量',
+                          value: 2,
+                          groupValue: _mediaQuality,
+                          onChanged: (val) => setState(() => _mediaQuality = val!),
+                          showDivider: false,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

@@ -122,49 +122,62 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildTimerOption(
-                    '24小時',
-                    tempOption,
-                    accentColor,
-                    primaryTextColor,
-                    (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
+                  RadioGroup<String>(
+                    onChanged: (val) {
+                      if (val != null) {
+                        setSheetState(() => tempOption = val);
+                        _updateTimer(val);
+                        Navigator.pop(context);
+                      }
                     },
-                  ),
-                  _buildTimerOption(
-                    '7天',
-                    tempOption,
-                    accentColor,
-                    primaryTextColor,
-                    (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildTimerOption(
-                    '90天',
-                    tempOption,
-                    accentColor,
-                    primaryTextColor,
-                    (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildTimerOption(
-                    '關閉',
-                    tempOption,
-                    accentColor,
-                    primaryTextColor,
-                    (val) {
-                      setSheetState(() => tempOption = val!);
-                      _updateTimer(val!);
-                      Navigator.pop(context);
-                    },
+                    child: Column(
+                      children: [
+                        _buildTimerOption(
+                          '24小時',
+                          tempOption,
+                          accentColor,
+                          primaryTextColor,
+                          (val) {
+                            setSheetState(() => tempOption = val!);
+                            _updateTimer(val!);
+                            Navigator.pop(context);
+                          },
+                        ),
+                        _buildTimerOption(
+                          '7天',
+                          tempOption,
+                          accentColor,
+                          primaryTextColor,
+                          (val) {
+                            setSheetState(() => tempOption = val!);
+                            _updateTimer(val!);
+                            Navigator.pop(context);
+                          },
+                        ),
+                        _buildTimerOption(
+                          '90天',
+                          tempOption,
+                          accentColor,
+                          primaryTextColor,
+                          (val) {
+                            setSheetState(() => tempOption = val!);
+                            _updateTimer(val!);
+                            Navigator.pop(context);
+                          },
+                        ),
+                        _buildTimerOption(
+                          '關閉',
+                          tempOption,
+                          accentColor,
+                          primaryTextColor,
+                          (val) {
+                            setSheetState(() => tempOption = val!);
+                            _updateTimer(val!);
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -186,9 +199,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     return RadioListTile<String>(
       title: Text(title, style: TextStyle(color: primaryTextColor)),
       value: title,
-      groupValue: groupValue,
       activeColor: accentColor,
-      onChanged: onChanged,
+      toggleable: false,
     );
   }
 

@@ -154,10 +154,8 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	msg.CreatedAt = time.Now()
 
 	// 👉 E2EE 架構下，msg.Content 已經是密文，後端無法再做 URL 解析。
-	// 改為：如果前端有傳 LinkPreview 且含有 URL，就將訊息類型設為 "link"
-	if msg.LinkPreview != nil && msg.LinkPreview.URL != "" {
-		msg.Type = "link"
-	} else {
+	// 保持前端原始設定的 msg.Type，僅清除無效的 LinkPreview 資料
+	if msg.LinkPreview != nil && msg.LinkPreview.URL == "" {
 		msg.LinkPreview = nil // 清除無效的預覽資料
 	}
 
