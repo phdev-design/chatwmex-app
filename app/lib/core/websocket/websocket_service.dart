@@ -88,6 +88,17 @@ class WebSocketService {
       );
     } catch (e) {
       debugPrint('WebSocket connection failed: $e');
+      
+      // 偵測 401 / token expired，停止重試
+      final errorStr = e.toString();
+      if (errorStr.contains('not upgraded to websocket') ||
+          errorStr.contains('401')) {
+        // 再確認是否真的是 token 問題（後端回的訊息）
+        _streamController.add({'event': 'auth_expired'});
+        debugPrint('WebSocket auth failed, stopping retry');
+        return; // 不呼叫 _handleDisconnect()，不排 retry
+      }
+      
       _handleDisconnect();
     }
   }

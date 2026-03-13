@@ -920,6 +920,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       debugPrint('[E2EE Auto-Resend] Already initialized, skipping');
       return;
     }
+  _isAutoResendInitialized = true;  // 立即設，防止 race condition
 
     try {
       // 從 LocalDB 查詢所有 status = 'decryptingRetry' 的訊息
