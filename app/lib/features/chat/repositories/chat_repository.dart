@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/storage/local_db_service.dart';

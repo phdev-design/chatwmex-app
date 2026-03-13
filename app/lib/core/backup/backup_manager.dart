@@ -8,6 +8,8 @@ import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/storage/local_db_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/models/message.dart';
+import 'package:app/models/backup_mode.dart';
+import 'package:app/models/key_backup_file.dart';
 
 class RestoreResult {
   final int importedCount;
@@ -30,6 +32,7 @@ class BackupState {
   final String? autoBackupTime;
   final String? error;
   final String? linkedGoogleEmail;
+  final BackupMode backupMode;
 
   BackupState({
     this.isBackingUp = false,
@@ -38,6 +41,7 @@ class BackupState {
     this.autoBackupTime,
     this.error,
     this.linkedGoogleEmail,
+    this.backupMode = BackupMode.full,
   });
 
   BackupState copyWith({
@@ -48,6 +52,7 @@ class BackupState {
     String? error,
     bool clearError = false,
     String? linkedGoogleEmail,
+    BackupMode? backupMode,
   }) {
     return BackupState(
       isBackingUp: isBackingUp ?? this.isBackingUp,
@@ -56,6 +61,7 @@ class BackupState {
       autoBackupTime: autoBackupTime ?? this.autoBackupTime,
       error: clearError ? null : (error ?? this.error),
       linkedGoogleEmail: linkedGoogleEmail ?? this.linkedGoogleEmail,
+      backupMode: backupMode ?? this.backupMode,
     );
   }
 }
@@ -192,6 +198,12 @@ class BackupManager extends StateNotifier<BackupState>
     final autoBackup = prefs.getBool('autoBackupEnabled') ?? false;
     final autoBackupTime = prefs.getString('autoBackupTime');
 
+    // Load backup mode from SharedPreferences
+    final backupModeStr = prefs.getString('backupMode');
+    final backupMode = backupModeStr != null 
+        ? BackupMode.fromString(backupModeStr) 
+        : BackupMode.full;
+
     // Load linked email based on current app user
     final userId = await _storageService.read('user_id');
     String? linkedEmail;
@@ -204,6 +216,7 @@ class BackupManager extends StateNotifier<BackupState>
       autoBackupEnabled: autoBackup,
       autoBackupTime: autoBackupTime,
       linkedGoogleEmail: linkedEmail,
+      backupMode: backupMode,
     );
   }
 
@@ -444,6 +457,168 @@ class BackupManager extends StateNotifier<BackupState>
     state = state.copyWith(autoBackupTime: time, clearError: true);
   }
 
+  /// 設定備份模式
+  ///
+  /// 將備份模式持久化至 SharedPreferences 並更新狀態。
+  ///
+  /// [mode] 要設定的備份模式（full, keyOnly, 或 none）
+  Future<void> setBackupMode(BackupMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('backupMode', mode.name);
+    state = state.copyWith(backupMode: mode);
+  }
+
+  /// 執行僅金鑰備份
+  ///
+  /// 從 CryptoService 取得原始私鑰，使用 backupPassword 加密後上傳至 Google Drive。
+  /// 備份檔案名稱為 chatwmex_key_backup.json，包含加密後的私鑰、salt、演算法資訊等。
+  ///
+  /// [backupPassword] 用於加密私鑰的密碼（必填）
+  ///
+  /// 錯誤處理：
+  /// - 無私鑰：顯示「無法取得私鑰」錯誤
+  /// - 上傳失敗：顯示「上傳至 Google Drive 失敗」錯誤
+  /// - 其他錯誤：顯示具體錯誤訊息
+  Future<void> backupKeyOnly({required String backupPassword}) async {
+    state = state.copyWith(isBackingUp: true, clearError: true);
+
+    try {
+      // 1. 取得原始私鑰
+      final rawPrivateKey = await _cryptoService.getRawPrivateKey();
+      if (rawPrivateKey == null) {
+        throw Exception('無法取得私鑰');
+      }
+
+      // 2. 使用密碼加密私鑰
+      final encryptedData = await _cryptoService.encryptPrivateKeyForBackup(
+        rawPrivateKey,
+        backupPassword,
+      );
+
+      // 3. 建立金鑰備份檔案 JSON 結構
+      final keyBackupFile = {
+        'version': '1.0',
+        'encryptedKey': encryptedData['encryptedKeyBase64'],
+        'salt': encryptedData['saltBase64'],
+        'iv': '', // AES-GCM 的 nonce 已包含在 encryptedKey 中
+        'algorithm': 'AES-GCM-256',
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      // 4. 上傳至 Google Drive
+      final jsonString = jsonEncode(keyBackupFile);
+      final fileName = 'chatwmex_key_backup.json';
+      
+      final success = await _googleDriveService.uploadBackup(
+        jsonString,
+        fileName,
+      );
+
+      if (success) {
+        // 5. 更新 lastBackupDate 與 BackupState
+        final prefs = await SharedPreferences.getInstance();
+        final nowStr = DateTime.now().toIso8601String();
+        await prefs.setString('lastBackupDate', nowStr);
+        state = state.copyWith(isBackingUp: false, lastBackupDate: nowStr);
+      } else {
+        throw Exception('上傳至 Google Drive 失敗');
+      }
+    } catch (e) {
+      // 6. 處理錯誤情境
+      state = state.copyWith(
+        isBackingUp: false,
+        error: '僅金鑰備份失敗：$e',
+        clearError: false,
+      );
+    }
+  }
+
+  /// 還原僅金鑰備份
+  ///
+  /// 從 Google Drive 下載金鑰備份檔案，解析 JSON 並驗證版本相容性，
+  /// 使用 backupPassword 解密私鑰，然後還原私鑰至 FlutterSecureStorage。
+  ///
+  /// [fileId] Google Drive 檔案 ID
+  /// [backupPassword] 用於解密私鑰的密碼（必填）
+  ///
+  /// 回傳 true 表示還原成功，false 表示還原失敗
+  ///
+  /// 錯誤處理：
+  /// - 下載失敗：顯示「下載備份檔失敗」錯誤
+  /// - 版本不相容：顯示「備份檔案版本不相容」錯誤
+  /// - 密碼錯誤：顯示「恢復密碼錯誤，請重新輸入」錯誤
+  /// - 檔案損壞：顯示「備份檔案損壞，無法還原」錯誤
+  Future<bool> restoreKeyOnly({
+    required String fileId,
+    required String backupPassword,
+  }) async {
+    state = state.copyWith(isBackingUp: true, clearError: true);
+
+    try {
+      // 1. 從 Google Drive 下載金鑰備份檔案
+      final jsonString = await _googleDriveService.downloadBackup(fileId);
+      if (jsonString == null || jsonString.isEmpty) {
+        throw Exception('下載備份檔失敗');
+      }
+
+      // 2. 解析 JSON
+      final Map<String, dynamic> jsonData;
+      try {
+        jsonData = jsonDecode(jsonString) as Map<String, dynamic>;
+      } catch (e) {
+        throw Exception('備份檔案損壞，無法還原');
+      }
+
+      // 3. 使用 KeyBackupFile 模型解析並驗證
+      final KeyBackupFile keyBackupFile;
+      try {
+        keyBackupFile = KeyBackupFile.fromJson(jsonData);
+      } catch (e) {
+        throw Exception('備份檔案損壞，無法還原');
+      }
+
+      // 4. 驗證檔案格式
+      if (!keyBackupFile.isValid()) {
+        throw Exception('備份檔案損壞，無法還原');
+      }
+
+      // 5. 驗證版本相容性
+      if (keyBackupFile.version != '1.0') {
+        throw Exception('備份檔案版本不相容');
+      }
+
+      // 6. 解密私鑰
+      final String rawPrivateKey;
+      try {
+        rawPrivateKey = await _cryptoService.decryptPrivateKeyFromBackup(
+          keyBackupFile.encryptedKey,
+          keyBackupFile.salt,
+          backupPassword,
+        );
+      } catch (e) {
+        if (e.toString().contains('Passphrase incorrect')) {
+          throw Exception('恢復密碼錯誤，請重新輸入');
+        } else {
+          throw Exception('解密失敗：資料可能已損壞');
+        }
+      }
+
+      // 7. 還原私鑰至 FlutterSecureStorage
+      await _cryptoService.restorePrivateKey(rawPrivateKey);
+
+      state = state.copyWith(isBackingUp: false);
+      return true;
+    } catch (e) {
+      // 8. 處理錯誤情境
+      state = state.copyWith(
+        isBackingUp: false,
+        error: '還原金鑰失敗：$e',
+        clearError: false,
+      );
+      return false;
+    }
+  }
+
   Future<bool> deleteBackup(String fileId) async {
     state = state.copyWith(isBackingUp: true, clearError: true);
     try {
@@ -460,7 +635,50 @@ class BackupManager extends StateNotifier<BackupState>
     }
   }
 
+  /// 根據備份模式執行對應的備份操作
+  ///
+  /// 根據 state.backupMode 決定執行哪種備份：
+  /// - BackupMode.full: 執行完整備份（對話紀錄 + 媒體 + 私鑰）
+  /// - BackupMode.keyOnly: 執行僅金鑰備份（需要 backupPassword）
+  /// - BackupMode.none: 不執行任何備份操作
+  ///
+  /// [backupPassword] 備份密碼（keyOnly 模式必填，full 模式可選）
+  ///
+  /// 錯誤處理：
+  /// - keyOnly 模式缺少密碼：顯示「僅金鑰備份需要設定密碼」錯誤
   Future<void> backupNow({String? backupPassword}) async {
+    // 根據備份模式決定執行哪種備份
+    switch (state.backupMode) {
+      case BackupMode.full:
+        // 執行完整備份邏輯
+        await _backupFull(backupPassword: backupPassword);
+        break;
+      
+      case BackupMode.keyOnly:
+        // 驗證密碼存在
+        if (backupPassword == null || backupPassword.isEmpty) {
+          state = state.copyWith(
+            error: '僅金鑰備份需要設定密碼',
+            clearError: false,
+          );
+          return;
+        }
+        // 執行僅金鑰備份
+        await backupKeyOnly(backupPassword: backupPassword);
+        break;
+      
+      case BackupMode.none:
+        // 不執行任何備份操作
+        break;
+    }
+  }
+
+  /// 執行完整備份（內部方法）
+  ///
+  /// 備份所有對話紀錄、媒體檔案與加密金鑰至 Google Drive。
+  ///
+  /// [backupPassword] 可選的備份密碼，用於加密私鑰
+  Future<void> _backupFull({String? backupPassword}) async {
     state = state.copyWith(isBackingUp: true, clearError: true);
 
     try {

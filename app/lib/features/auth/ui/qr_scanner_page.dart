@@ -56,23 +56,23 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
           ),
         );
 
+        if (!mounted) return;
         if (confirm == true) {
           try {
             await ref.read(networkServiceProvider).confirmQrLogin(qrValue);
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('授權成功！網頁端即將登入。')));
-              Navigator.of(context).pop();
-            }
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('授權成功！網頁端即將登入。'))
+            );
+            if (!mounted) return;
+            Navigator.of(context).pop();
           } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('授權失敗: $e')));
-              _isProcessing = false;
-              await _scannerController.start();
-            }
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('授權失敗: $e'))
+            );
+            _isProcessing = false;
+            await _scannerController.start();
           }
         } else {
           // 使用者取消
@@ -80,12 +80,12 @@ class _QrScannerPageState extends ConsumerState<QrScannerPage> {
           await _scannerController.start();
         }
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('無效的 QR Code 格式')));
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('無效的 QR Code 格式'))
+        );
         await Future.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
         _isProcessing = false;
         await _scannerController.start();
       }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:app/core/backup/backup_manager.dart';
 import 'package:app/features/chat/ui/backup_history_page.dart';
+import 'package:app/models/backup_mode.dart';
 
 class BackupConversationsPage extends ConsumerStatefulWidget {
   const BackupConversationsPage({super.key});
@@ -52,14 +53,45 @@ class _BackupConversationsPageState
   }
 
   Future<void> _handleBackupNow() async {
-    final password = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const _BackupPasswordDialog(),
-    );
-
-    if (password != null && password.isEmpty) {
-      return; // user cancelled without skipping
+    final backupMode = ref.read(backupManagerProvider).backupMode;
+    
+    // 根據備份模式決定是否需要密碼
+    if (backupMode == BackupMode.none) {
+      // none 模式：顯示提示訊息，不執行備份
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('目前備份模式設定為「不備份」，請先在設定中變更備份模式'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+    
+    String? password;
+    if (backupMode == BackupMode.keyOnly) {
+      // keyOnly 模式：必須輸入密碼
+      password = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const _BackupPasswordDialog(required: true),
+      );
+      
+      if (password == null) {
+        return; // 使用者取消
+      }
+    } else if (backupMode == BackupMode.full) {
+      // full 模式：可選擇是否輸入密碼
+      password = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const _BackupPasswordDialog(required: false),
+      );
+      
+      if (password != null && password.isEmpty) {
+        return; // user cancelled without skipping
+      }
     }
 
     ref
@@ -208,7 +240,7 @@ class _BackupConversationsPageState
                       color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.07),
                     ),
                     SwitchListTile(
-                      activeColor: primaryBlue,
+                      activeThumbColor: primaryBlue,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       title: Text(
                         '自動備份',
@@ -329,7 +361,9 @@ class _BackupConversationsPageState
 // ─── 密碼輸入彈窗 ─────────────────────────────────────────────────────────────
 
 class _BackupPasswordDialog extends StatefulWidget {
-  const _BackupPasswordDialog();
+  final bool required;
+  
+  const _BackupPasswordDialog({this.required = false});
 
   @override
   State<_BackupPasswordDialog> createState() => _BackupPasswordDialogState();
@@ -346,8 +380,8 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
     final pwd = _pwdController.text;
     final confirm = _confirmController.text;
 
-    if (pwd.length < 8) {
-      setState(() => _error = '密碼長度至少需要 8 個字元');
+    if (pwd.length < 6) {
+      setState(() => _error = '密碼長度至少需要 6 個字元');
       return;
     }
     if (pwd != confirm) {
@@ -385,7 +419,7 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
       surfaceTintColor: Colors.transparent, // 移除 Material 3 預設的染色
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
-        '設定備份密碼',
+        widget.required ? '設定備份密碼（必填）' : '設定備份密碼',
         style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 18),
       ),
       content: SingleChildScrollView(
@@ -394,7 +428,9 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '此密碼用於加密您的 E2EE 金鑰，還原時需要輸入相同密碼才能解密訊息。請妥善保存此密碼。',
+              widget.required
+                  ? '僅金鑰備份模式需要設定密碼來加密您的 E2EE 金鑰。還原時需要輸入相同密碼才能解密訊息。請妥善保存此密碼。'
+                  : '此密碼用於加密您的 E2EE 金鑰，還原時需要輸入相同密碼才能解密訊息。請妥善保存此密碼。',
               style: TextStyle(color: hintColor, fontSize: 13.5, height: 1.4),
             ),
             const SizedBox(height: 20),
@@ -439,10 +475,16 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
       ),
       actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(null), // return null for skip
-          child: Text('略過 (不備份金鑰)', style: TextStyle(color: hintColor, fontWeight: FontWeight.w500)),
-        ),
+        if (!widget.required)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null), // return null for skip
+            child: Text('略過 (不備份金鑰)', style: TextStyle(color: hintColor, fontWeight: FontWeight.w500)),
+          ),
+        if (widget.required)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null), // return null for cancel
+            child: Text('取消', style: TextStyle(color: hintColor, fontWeight: FontWeight.w500)),
+          ),
         ElevatedButton(
           onPressed: _submit,
           style: ElevatedButton.styleFrom(

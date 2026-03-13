@@ -62,7 +62,7 @@ class CryptoService {
     try {
       final list = jsonDecode(raw) as List<dynamic>;
       return list.cast<String>();
-    } catch (_) {
+    } catch (e) {
       return [];
     }
   }

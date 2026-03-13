@@ -1252,8 +1252,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         }
       }
       state = state.copyWith(userAvatarUrls: avatars);
-    } catch (_) {
-      debugPrint('Error caught');
+    } catch (e) {
+      debugPrint('Error caught: $e');
     }
   }
 

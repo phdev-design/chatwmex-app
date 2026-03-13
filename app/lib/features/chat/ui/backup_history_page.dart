@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:app/core/backup/backup_manager.dart';
 import 'package:app/core/crypto/crypto_service.dart';
+import 'package:app/models/backup_file_info.dart';
+import 'package:app/core/backup/google_drive_service.dart';
 
 class BackupHistoryPage extends ConsumerStatefulWidget {
   const BackupHistoryPage({super.key});
@@ -13,7 +15,7 @@ class BackupHistoryPage extends ConsumerStatefulWidget {
 
 class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
   bool _isLoading = true;
-  List<dynamic> _backups = [];
+  List<BackupFileInfo> _backups = [];
   String? _error;
 
   @override
@@ -29,12 +31,11 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
     });
 
     try {
-      final records = await ref
-          .read(backupManagerProvider.notifier)
-          .fetchBackupHistory();
+      final googleDriveService = ref.read(googleDriveServiceProvider);
+      final backupFiles = await googleDriveService.listAllBackups();
       if (mounted) {
         setState(() {
-          _backups = records;
+          _backups = backupFiles;
           _isLoading = false;
         });
       }
@@ -58,26 +59,23 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
     }
   }
 
-  String _formatSize(String byteSize) {
-    try {
-      final bytes = int.parse(byteSize);
-      if (bytes < 1024) return '$bytes B';
-      if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
-    } catch (_) {
-      return '';
-    }
-  }
+  Future<void> _showRestoreConfirmation(BackupFileInfo backup) async {
+    // 根據備份類型顯示不同的確認對話框
+    final String title = backup.type == BackupType.keyOnly
+        ? '還原金鑰備份？'
+        : '還原此備份？';
+    final String content = backup.type == BackupType.keyOnly
+        ? '這將還原您的加密金鑰，並從伺服器同步歷史訊息。'
+        : '這將把備份中的對話合併進目前的資料，不會刪除現有對話。';
 
-  Future<void> _showRestoreConfirmation(String fileId, String date) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        title: const Text('還原此備份？', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          '這將把備份中的對話合併進目前的資料，不會刪除現有對話。',
-          style: TextStyle(color: Colors.white70),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        content: Text(
+          content,
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
@@ -93,74 +91,132 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
     );
 
     if (confirmed == true && mounted) {
-      final result = await ref
-          .read(backupManagerProvider.notifier)
-          .restoreBackup(fileId);
-      if (mounted) {
-        if (result != null) {
-          if (result.encryptedPrivateKey != null &&
-              result.privateKeySalt != null) {
-            final password = await showDialog<String>(
-              context: context,
-              barrierDismissible: false,
-              builder: (context) => const _RestorePasswordDialog(),
-            );
+      if (backup.type == BackupType.keyOnly) {
+        // 僅金鑰還原流程
+        await _handleKeyOnlyRestore(backup);
+      } else {
+        // 完整備份還原流程
+        await _handleFullRestore(backup);
+      }
+    }
+  }
 
-            if (password != null && password.isNotEmpty) {
-              try {
-                final cryptoService = ref.read(cryptoServiceProvider);
-                final rawKey = await cryptoService.decryptPrivateKeyFromBackup(
-                  result.encryptedPrivateKey!,
-                  result.privateKeySalt!,
-                  password,
-                );
-                await cryptoService.restorePrivateKey(rawKey);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ 金鑰還原成功，訊息現在可以正常解密'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ 密碼錯誤，請重試'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            } else {
+  /// 處理僅金鑰還原
+  Future<void> _handleKeyOnlyRestore(BackupFileInfo backup) async {
+    // 顯示密碼輸入對話框
+    final password = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _RestorePasswordDialog(),
+    );
+
+    if (password == null || password.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('已取消還原'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // 呼叫 restoreKeyOnly
+    final success = await ref
+        .read(backupManagerProvider.notifier)
+        .restoreKeyOnly(fileId: backup.id, backupPassword: password);
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('私鑰還原成功！正在從伺服器同步訊息...'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // TODO: 觸發從後端同步加密歷史訊息
+      } else {
+        final error = ref.read(backupManagerProvider).error ?? '還原金鑰失敗';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// 處理完整備份還原
+  Future<void> _handleFullRestore(BackupFileInfo backup) async {
+    final result = await ref
+        .read(backupManagerProvider.notifier)
+        .restoreBackup(backup.id);
+    if (mounted) {
+      if (result != null) {
+        if (result.encryptedPrivateKey != null &&
+            result.privateKeySalt != null) {
+          final password = await showDialog<String>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const _RestorePasswordDialog(),
+          );
+
+          if (password != null && password.isNotEmpty) {
+            try {
+              final cryptoService = ref.read(cryptoServiceProvider);
+              final rawKey = await cryptoService.decryptPrivateKeyFromBackup(
+                result.encryptedPrivateKey!,
+                result.privateKeySalt!,
+                password,
+              );
+              await cryptoService.restorePrivateKey(rawKey);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('⚠️ 已跳過金鑰還原，舊訊息可能無法解密'),
-                    backgroundColor: Colors.orange,
+                    content: Text('✅ 金鑰還原成功，訊息現在可以正常解密'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('❌ 密碼錯誤，請重試'),
+                    backgroundColor: Colors.red,
                   ),
                 );
               }
             }
-          }
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '還原成功！共匯入 ${result.importedCount} 則對話，跳過 ${result.skippedCount} 則重複對話。',
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('⚠️ 已跳過金鑰還原，舊訊息可能無法解密'),
+                  backgroundColor: Colors.orange,
                 ),
-                backgroundColor: Colors.green,
-              ),
-            );
+              );
+            }
           }
-        } else {
-          final error = ref.read(backupManagerProvider).error ?? '還原失敗';
+        }
+
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text(
+                '還原成功！共匯入 ${result.importedCount} 則對話，跳過 ${result.skippedCount} 則重複對話。',
+              ),
+              backgroundColor: Colors.green,
+            ),
           );
         }
+      } else {
+        final error = ref.read(backupManagerProvider).error ?? '還原失敗';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
+        );
       }
     }
   }
@@ -244,13 +300,15 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _backups.length,
       itemBuilder: (context, index) {
-        final backup = _backups[index] as Map<String, dynamic>;
-        final String name = backup['name'] ?? '未知檔案';
-        final String date = _formatDate(backup['date'] ?? '');
-        final String size = _formatSize(backup['size'] ?? '');
+        final backup = _backups[index];
+        final String date = _formatDate(
+          backup.createdTime?.toIso8601String() ?? '',
+        );
+        final String size = backup.displaySize;
+        final String typeLabel = backup.displayName;
 
         return Dismissible(
-          key: Key(backup['id'] ?? index.toString()),
+          key: Key(backup.id),
           direction: DismissDirection.endToStart,
           background: Container(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -295,38 +353,36 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
             );
           },
           onDismissed: (direction) async {
-            if (backup['id'] != null) {
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              // 1. Optimistically remove from UI to satisfy Dismissible's synchronous requirement
-              setState(() {
-                _backups.removeAt(index);
-              });
+            final scaffoldMessenger = ScaffoldMessenger.of(context);
+            // 1. Optimistically remove from UI to satisfy Dismissible's synchronous requirement
+            setState(() {
+              _backups.removeAt(index);
+            });
 
-              // 2. Perform the async deletion
-              final success = await ref
-                  .read(backupManagerProvider.notifier)
-                  .deleteBackup(backup['id'] as String);
+            // 2. Perform the async deletion
+            final success = await ref
+                .read(backupManagerProvider.notifier)
+                .deleteBackup(backup.id);
 
-              if (mounted) {
-                if (success) {
-                  scaffoldMessenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('備份已刪除'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } else {
-                  // 3. If failed, restore the item and show error
-                  setState(() {
-                    _backups.insert(index, backup);
-                  });
-                  scaffoldMessenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('刪除失敗'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
+            if (mounted) {
+              if (success) {
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('備份已刪除'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } else {
+                // 3. If failed, restore the item and show error
+                setState(() {
+                  _backups.insert(index, backup);
+                });
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('刪除失敗'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             }
           },
@@ -337,21 +393,28 @@ class _BackupHistoryPageState extends ConsumerState<BackupHistoryPage> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: ListTile(
-              leading: const Icon(Icons.history, color: Colors.blueAccent),
+              leading: Icon(
+                backup.type == BackupType.keyOnly
+                    ? Icons.vpn_key
+                    : Icons.history,
+                color: backup.type == BackupType.keyOnly
+                    ? Colors.amber
+                    : Colors.blueAccent,
+              ),
               title: Text(
-                name,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                typeLabel,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               subtitle: Text(
                 '$date • $size',
                 style: TextStyle(color: Colors.grey[400], fontSize: 12),
               ),
               trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              onTap: () {
-                if (backup['id'] != null) {
-                  _showRestoreConfirmation(backup['id'] as String, date);
-                }
-              },
+              onTap: () => _showRestoreConfirmation(backup),
             ),
           ),
         );

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -187,10 +186,8 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     return RadioListTile<String>(
       title: Text(title, style: TextStyle(color: primaryTextColor)),
       value: title,
-      // ignore: deprecated_member_use
       groupValue: groupValue,
       activeColor: accentColor,
-      // ignore: deprecated_member_use
       onChanged: onChanged,
     );
   }
@@ -375,7 +372,9 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
             (room.avatarUrl as String).isNotEmpty) {
           displayAvatarUrl = room.avatarUrl as String;
         }
-      } catch (_) { debugPrint('Error caught'); }
+      } catch (e) { 
+        debugPrint('Error caught: $e'); 
+      }
     }
 
     final colorScheme = Theme.of(context).colorScheme;
@@ -813,25 +812,22 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                               .blockUser(widget.roomId);
                         }
                         setState(() => _isBlocked = !_isBlocked);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                _isBlocked
-                                    ? '已封鎖 ${widget.title}'
-                                    : '已解除封鎖 ${widget.title}',
-                              ),
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _isBlocked
+                                  ? '已封鎖 ${widget.title}'
+                                  : '已解除封鎖 ${widget.title}',
                             ),
-                          );
-                        }
-                        if (!mounted) return;
-                        if (_isBlocked && mounted) context.pop();
+                          ),
+                        );
+                        if (_isBlocked) context.pop();
                       } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('操作失敗：$e'))
-                          );
-                        }
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('操作失敗：$e'))
+                        );
                       }
                     },
                   ),
@@ -870,17 +866,15 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 .read(roomListViewModelProvider.notifier)
                                 .getRoomMemberProfiles(widget.roomId);
                           } catch (e) {
-                            if (mounted) {
-                              Navigator.pop(context); // close loading
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('無法取得群組成員：$e')),
-                              );
-                            }
+                            if (!context.mounted) return;
+                            Navigator.pop(context); // close loading
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('無法取得群組成員：$e')),
+                            );
                             return;
                           }
 
-                          if (!mounted) return;
+                          if (!context.mounted) return;
                           Navigator.pop(context); // close loading
 
                           final remainingMembers = members
@@ -916,24 +910,21 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                             );
                             if (confirmed != true) return;
 
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             try {
                               await ref
                                   .read(roomListViewModelProvider.notifier)
                                   .deleteRoom(widget.roomId);
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('群組已解散')),
-                                );
-                                if (!mounted) return;
-                                context.go('/rooms');
-                              }
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('群組已解散')),
+                              );
+                              context.go('/rooms');
                             } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('解散群組失敗：$e')),
-                                );
-                              }
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('解散群組失敗：$e')),
+                              );
                             }
                           } else {
                             if (!mounted) return;
@@ -1042,7 +1033,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                 )['username'] ??
                                 '該成員';
 
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             final confirmTransfer = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
@@ -1071,7 +1062,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
 
                             if (confirmTransfer != true) return;
 
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             showDialog(
                               context: context,
                               barrierDismissible: false,
@@ -1091,23 +1082,18 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                                   .read(roomListViewModelProvider.notifier)
                                   .leaveRoom(widget.roomId);
 
-                              if (mounted) {
-                                Navigator.pop(context); // close loading
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('已成功轉交權限並退出群組')),
-                                );
-                                if (!mounted) return;
-                                context.go('/rooms');
-                              }
+                              if (!context.mounted) return;
+                              Navigator.pop(context); // close loading
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('已成功轉交權限並退出群組')),
+                              );
+                              context.go('/rooms');
                             } catch (e) {
-                              if (mounted) {
-                                Navigator.pop(context); // close loading
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('操作失敗：$e')),
-                                );
-                              }
+                              if (!context.mounted) return;
+                              Navigator.pop(context); // close loading
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('操作失敗：$e')),
+                              );
                             }
                           }
                         } else {
@@ -1136,27 +1122,24 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                           );
                           if (confirmed != true) return;
 
-                          if (!mounted) return;
+                          if (!context.mounted) return;
                           // Show a loading indicator dialogue optionally, or just let the async operation run
                           try {
                             await ref
                                 .read(roomListViewModelProvider.notifier)
                                 .leaveRoom(widget.roomId);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('已退出群組')),
-                              );
-                              // Navigate back to the main chat list
-                              // Assuming /rooms is the route for the main tab view where chat list lives
-                              if (!mounted) return;
-                              context.go('/rooms');
-                            }
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('已退出群組')),
+                            );
+                            // Navigate back to the main chat list
+                            // Assuming /rooms is the route for the main tab view where chat list lives
+                            context.go('/rooms');
                           } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('退出群組失敗：$e')),
-                              );
-                            }
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('退出群組失敗：$e')),
+                            );
                           }
                         }
                       },

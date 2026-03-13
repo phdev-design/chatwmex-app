@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/features/chat/ui/conversations_settings_page.dart';
 import 'package:app/features/chat/ui/room_labels_settings_page.dart';
+import 'package:app/core/backup/backup_manager.dart';
+import 'package:app/models/backup_mode.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backupState = ref.watch(backupManagerProvider);
     
     // 與其他頁面保持一致的背景色配置
     final bgColor = isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F6F8);
@@ -58,12 +62,19 @@ class SettingsPage extends StatelessWidget {
                   iconBgColor: const Color(0xFF007AFF), // 藍色 Icon 底色
                   title: '分類名單 (Room Labels)',
                   isDark: isDark,
-                  showDivider: false, // 最後一個選項不顯示底線
+                  showDivider: true,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const RoomLabelsSettingsPage(),
                     ),
                   ),
+                ),
+                _buildBackupModeTile(
+                  context: context,
+                  ref: ref,
+                  currentMode: backupState.backupMode,
+                  isDark: isDark,
+                  showDivider: false, // 最後一個選項不顯示底線
                 ),
               ],
             ),
@@ -183,6 +194,138 @@ class SettingsPage extends StatelessWidget {
                 : Colors.black.withValues(alpha: 0.07),
           ),
       ],
+    );
+  }
+
+  /// 建立備份模式選擇選項
+  Widget _buildBackupModeTile({
+    required BuildContext context,
+    required WidgetRef ref,
+    required BackupMode currentMode,
+    required bool isDark,
+    bool showDivider = true,
+  }) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtitleColor = isDark ? Colors.white60 : Colors.black54;
+    final chevronColor = isDark ? Colors.white24 : Colors.black26;
+
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _showBackupModeDialog(context, ref, currentMode, isDark),
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF9500), // 橘色 Icon 底色
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.backup_rounded, size: 16, color: Colors.white),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '備份模式',
+                          style: TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w500,
+                            color: textColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          currentMode.displayName,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: subtitleColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, size: 20, color: chevronColor),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            indent: 60,
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.07)
+                : Colors.black.withValues(alpha: 0.07),
+          ),
+      ],
+    );
+  }
+
+  /// 顯示備份模式選擇對話框
+  void _showBackupModeDialog(
+    BuildContext context,
+    WidgetRef ref,
+    BackupMode currentMode,
+    bool isDark,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('選擇備份模式'),
+        children: BackupMode.values.map((mode) {
+          final isSelected = mode == currentMode;
+          return SimpleDialogOption(
+            onPressed: () {
+              ref.read(backupManagerProvider.notifier).setBackupMode(mode);
+              Navigator.of(context).pop();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Row(
+                children: [
+                  Icon(
+                    isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                    color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          mode.displayName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          mode.description,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.white60 : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }

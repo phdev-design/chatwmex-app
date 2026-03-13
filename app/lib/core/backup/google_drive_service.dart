@@ -5,6 +5,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
 
+import '../../models/backup_file_info.dart';
+
 class GoogleDriveException implements Exception {
   final String message;
   GoogleDriveException(this.message);
@@ -203,6 +205,46 @@ class GoogleDriveService {
         $fields: 'files(id, name, createdTime, size)',
       );
       return fileList.files ?? [];
+    } catch (e) {
+      throw GoogleDriveException.downloadFailed(e.toString());
+    }
+  }
+
+  /// 列出所有備份檔案（包含完整備份與金鑰備份）
+  ///
+  /// 查詢 Google Drive 中所有 JSON 格式的備份檔案，
+  /// 根據檔名判斷備份類型：
+  /// - 包含 "key_backup" → BackupType.keyOnly
+  /// - 其他 → BackupType.full
+  ///
+  /// 回傳按建立時間降序排列的備份檔案列表
+  ///
+  /// Throws [GoogleDriveException] 如果未認證或操作失敗
+  Future<List<BackupFileInfo>> listAllBackups() async {
+    final driveApi = await getDriveApi();
+    if (driveApi == null) throw GoogleDriveException.notAuthenticated();
+
+    final folderId = await _getAppFolderId(driveApi);
+    if (folderId == null) throw GoogleDriveException.folderCreationFailed();
+
+    try {
+      final fileList = await driveApi.files.list(
+        q: "'$folderId' in parents and mimeType='application/json' and trashed=false",
+        orderBy: 'createdTime desc',
+        spaces: 'drive',
+        $fields: 'files(id, name, createdTime, size)',
+      );
+
+      return (fileList.files ?? []).map((file) {
+        final isKeyOnly = file.name?.contains('key_backup') ?? false;
+        return BackupFileInfo(
+          id: file.id!,
+          name: file.name!,
+          createdTime: file.createdTime,
+          size: file.size,
+          type: isKeyOnly ? BackupType.keyOnly : BackupType.full,
+        );
+      }).toList();
     } catch (e) {
       throw GoogleDriveException.downloadFailed(e.toString());
     }
