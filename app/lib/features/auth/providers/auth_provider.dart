@@ -40,8 +40,19 @@ class AuthViewModel extends Notifier<AuthState> {
       // ✅ 讀取 Token
       final token = await storage.read('jwt_token') ?? ''; 
 
-      final pubKey = await crypto.initialize(userId: userId);
-      await _repository.updatePublicKey(pubKey);
+      // 🔐 E2EE Key Recovery: 攔截私鑰遺失異常
+      try {
+        final pubKey = await crypto.initialize(userId: userId);
+        await _repository.updatePublicKey(pubKey);
+      } on PrivateKeyNotFoundException catch (e) {
+        // 私鑰遺失，設定狀態以觸發 UI 流程
+        state = state.copyWith(
+          isLoading: false,
+          needsKeyRecovery: true,
+          missingKeyUserId: e.userId,
+        );
+        return;
+      }
 
       // 登入後清除舊的 public key 快取，避免用錯誤的 key 解密訊息
       await ref.read(publicKeyCacheServiceProvider).clearAllCache();
@@ -124,6 +135,124 @@ class AuthViewModel extends Notifier<AuthState> {
       state = AuthState(); // 重置為未登入狀態
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _parseError(e));
+    }
+  }
+
+  // 🔐 E2EE Key Recovery: 從雲端還原金鑰
+  Future<void> recoverKeyFromBackup(String password) async {
+    if (state.missingKeyUserId == null) {
+      state = state.copyWith(error: '無法識別用戶 ID');
+      return;
+    }
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final crypto = ref.read(cryptoServiceProvider);
+      
+      // TODO: 呼叫後端 API 取得加密的私鑰
+      // 目前後端尚未實作此 API，暫時拋出錯誤
+      // final response = await _networkService.client.get('/users/backup_key');
+      // final encryptedKeyBase64 = response.data['encrypted_private_key'];
+      // final saltBase64 = response.data['salt'];
+      
+      throw UnimplementedError('後端 API /users/backup_key 尚未實作');
+      
+      // 使用 decryptPrivateKeyFromBackup 解密
+      // final decryptedKey = await crypto.decryptPrivateKeyFromBackup(
+      //   encryptedKeyBase64,
+      //   saltBase64,
+      //   password,
+      // );
+      
+      // 呼叫 restorePrivateKey 還原金鑰
+      // await crypto.restorePrivateKey(state.missingKeyUserId!, decryptedKey);
+      
+      // 重新初始化並繼續登入流程
+      // final pubKey = await crypto.initialize(userId: state.missingKeyUserId!);
+      // await _repository.updatePublicKey(pubKey);
+      
+      // state = state.copyWith(
+      //   isLoading: false,
+      //   needsKeyRecovery: false,
+      //   missingKeyUserId: null,
+      //   isAuthenticated: true,
+      // );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _parseError(e),
+      );
+    }
+  }
+
+  // 🔐 E2EE Key Recovery: 強制生成新金鑰
+  Future<void> forceGenerateNewKey() async {
+    if (state.missingKeyUserId == null) {
+      state = state.copyWith(error: '無法識別用戶 ID');
+      return;
+    }
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final crypto = ref.read(cryptoServiceProvider);
+      final storage = ref.read(storageServiceProvider);
+      
+      // 強制生成新金鑰
+      final pubKey = await crypto.initialize(
+        userId: state.missingKeyUserId!,
+        forceGenerate: true,
+      );
+      await _repository.updatePublicKey(pubKey);
+
+      // 登入後清除舊的 public key 快取
+      await ref.read(publicKeyCacheServiceProvider).clearAllCache();
+
+      // 確保 room list 是全新的
+      ref.invalidate(roomListViewModelProvider);
+
+      // 同步 Token 到 App Group
+      final token = await storage.read('jwt_token') ?? '';
+      if (Platform.isIOS && token.isNotEmpty) {
+        try {
+          await SharedPreferenceAppGroup.setAppGroup(_appGroupId);
+          await SharedPreferenceAppGroup.setString('jwt_token', token);
+          debugPrint('✅ App Group token synced successfully');
+        } catch (e) {
+          debugPrint('❌ App Group token sync failed: $e');
+        }
+      }
+
+      // 註冊推播通知
+      try {
+        await _notificationService.initOneSignal(
+          "88247551-a540-4ffc-89aa-e6ea9478b7be",
+        );
+        final subscriptionId = await _notificationService.getSubscriptionId();
+        if (subscriptionId != null) {
+          await _networkService.client.post(
+            '/devices/register',
+            data: {
+              'device_id': subscriptionId,
+              'platform': Platform.isAndroid ? 'android' : 'ios',
+            },
+          );
+        }
+        await _notificationService.handlePendingNavigation();
+      } catch (e) {
+        debugPrint('Post-login device registration warning: $e');
+      }
+
+      state = state.copyWith(
+        isLoading: false,
+        needsKeyRecovery: false,
+        missingKeyUserId: null,
+        isAuthenticated: true,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _parseError(e),
+      );
     }
   }
 

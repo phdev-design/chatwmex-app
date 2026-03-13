@@ -6,6 +6,17 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// 🔐 E2EE Key Recovery: 私鑰遺失異常
+/// 當初始化時偵測不到本地私鑰且未設定 forceGenerate 時拋出此異常
+class PrivateKeyNotFoundException implements Exception {
+  final String userId;
+
+  PrivateKeyNotFoundException({required this.userId});
+
+  @override
+  String toString() => 'PrivateKeyNotFoundException: Private key not found for user $userId';
+}
+
 /// 🔐 E2EE Auto-Resend: 解密失敗異常
 /// 當解密失敗時拋出此異常，攜帶訊息 ID 與發送方 ID 以便發起重新加密請求
 class DecryptionFailureException implements Exception {
@@ -73,7 +84,11 @@ class CryptoService {
   }
 
   /// Initialize the keypair. Requires userId to isolate keys per account.
-  Future<String> initialize({required String userId}) async {
+  /// 
+  /// 🔐 E2EE Key Recovery: 新增 forceGenerate 參數
+  /// - 當 forceGenerate = false（預設）且本地私鑰不存在時，拋出 PrivateKeyNotFoundException
+  /// - 當 forceGenerate = true 且本地私鑰不存在時，生成新的金鑰對
+  Future<String> initialize({required String userId, bool forceGenerate = false}) async {
     // 已初始化且是同一個 user，直接返回
     if (isInitialized && _currentUserId == userId) {
       return _publicKeyBase64!;
@@ -105,7 +120,13 @@ class CryptoService {
       return _publicKeyBase64!;
     }
 
-    // 生成新 keypair
+    // 🔐 E2EE Key Recovery: 私鑰不存在時的處理邏輯
+    // 若 forceGenerate = false，拋出異常讓上層決定如何處理（還原或強制生成）
+    if (!forceGenerate) {
+      throw PrivateKeyNotFoundException(userId: userId);
+    }
+
+    // 生成新 keypair（僅在 forceGenerate = true 時執行）
     final newKeyPair = await _x25519.newKeyPair();
     final extractedPrivateKey = await newKeyPair.extractPrivateKeyBytes();
     final privateKeyBase64 = base64Encode(extractedPrivateKey);

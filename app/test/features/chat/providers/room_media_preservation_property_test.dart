@@ -690,7 +690,12 @@ class MockStorageService implements StorageService {
 
 class MockCryptoService implements CryptoService {
   @override
-  Future<String> decryptMessage(String encryptedContent, String publicKey) async {
+  Future<String> decryptMessage(
+    String encryptedContent,
+    String publicKey, {
+    String? messageId,
+    String? senderId,
+  }) async {
     // For preservation tests, we simulate successful decryption for valid content
     // and return the content unchanged (since we're testing with plaintext content)
     return encryptedContent;

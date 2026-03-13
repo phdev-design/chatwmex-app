@@ -359,7 +359,12 @@ class MockStorageService implements StorageService {
 
 class MockCryptoService implements CryptoService {
   @override
-  Future<String> decryptMessage(String encryptedContent, String publicKey) async {
+  Future<String> decryptMessage(
+    String encryptedContent,
+    String publicKey, {
+    String? messageId,
+    String? senderId,
+  }) async {
     // Simulate decryption failure for Base64 content
     if (encryptedContent.length >= 40 && 
         (encryptedContent.contains('+') || 

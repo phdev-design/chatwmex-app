@@ -27,6 +27,7 @@ class BackupState {
   final bool isBackingUp;
   final String? lastBackupDate;
   final bool autoBackupEnabled;
+  final String? autoBackupTime;
   final String? error;
   final String? linkedGoogleEmail;
 
@@ -34,6 +35,7 @@ class BackupState {
     this.isBackingUp = false,
     this.lastBackupDate,
     this.autoBackupEnabled = false,
+    this.autoBackupTime,
     this.error,
     this.linkedGoogleEmail,
   });
@@ -42,6 +44,7 @@ class BackupState {
     bool? isBackingUp,
     String? lastBackupDate,
     bool? autoBackupEnabled,
+    String? autoBackupTime,
     String? error,
     bool clearError = false,
     String? linkedGoogleEmail,
@@ -50,6 +53,7 @@ class BackupState {
       isBackingUp: isBackingUp ?? this.isBackingUp,
       lastBackupDate: lastBackupDate ?? this.lastBackupDate,
       autoBackupEnabled: autoBackupEnabled ?? this.autoBackupEnabled,
+      autoBackupTime: autoBackupTime ?? this.autoBackupTime,
       error: clearError ? null : (error ?? this.error),
       linkedGoogleEmail: linkedGoogleEmail ?? this.linkedGoogleEmail,
     );
@@ -88,20 +92,95 @@ class BackupManager extends StateNotifier<BackupState>
     }
   }
 
+  /// Validates time string matches "HH:mm" where HH is 00-23 and mm is 00-59.
+  bool _validateTimeFormat(String time) {
+    final regex = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$');
+    return regex.hasMatch(time);
+  }
+
+  /// Determines if a backup has already occurred on the current calendar date.
+  /// Compares lastBackupDate with current date in local timezone.
+  bool _hasBackupHappenedToday() {
+    if (state.lastBackupDate == null) return false;
+
+    try {
+      final lastBackup = DateTime.parse(state.lastBackupDate!);
+      final now = DateTime.now();
+
+      return lastBackup.year == now.year &&
+             lastBackup.month == now.month &&
+             lastBackup.day == now.day;
+    } catch (e) {
+      debugPrint('[BackupManager] Error parsing lastBackupDate: $e');
+      return false; // Treat parse errors as "no backup today"
+    }
+  }
+
+  /// Checks if the current time has passed the configured scheduled time.
+  /// Returns false if autoBackupTime is invalid or not set.
+  bool _isScheduledTimePassed() {
+    if (state.autoBackupTime == null) return false;
+
+    try {
+      final parts = state.autoBackupTime!.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1]);
+
+      final now = DateTime.now();
+      final scheduledTime = DateTime(now.year, now.month, now.day, hour, minute);
+
+      return now.isAfter(scheduledTime);
+    } catch (e) {
+      debugPrint('[BackupManager] Error parsing autoBackupTime: $e');
+      return false; // Treat parse errors conservatively
+    }
+  }
+
+  /// Checks if an automatic backup should be triggered.
+  /// 
+  /// Behavior depends on autoBackupTime configuration:
+  /// - If null: Uses 24-hour interval logic (backward compatible)
+  /// - If set: Uses scheduled time logic with daily reset
+  /// 
+  /// LIMITATION: This method only runs when app resumes to foreground.
+  /// For true background execution, integrate with workmanager or similar.
+  /// Background execution requires:
+  /// - Platform permissions (Android: SCHEDULE_EXACT_ALARM, iOS: background modes)
+  /// - Headless authentication handling
+  /// - Battery optimization exemptions
   Future<void> _checkAutoBackup() async {
     if (_isAuthenticating) return;
     if (!state.autoBackupEnabled) return;
 
-    // Auto backup once a day
-    if (state.lastBackupDate != null) {
-      try {
-        final last = DateTime.parse(state.lastBackupDate!);
-        if (DateTime.now().difference(last).inHours < 24) {
-          return; // backup was too recent
+    // Backward compatibility: 24-hour interval when no scheduled time
+    if (state.autoBackupTime == null) {
+      if (state.lastBackupDate != null) {
+        try {
+          final last = DateTime.parse(state.lastBackupDate!);
+          if (DateTime.now().difference(last).inHours < 24) {
+            return; // backup was too recent
+          }
+        } catch (e) {
+          debugPrint('[BackupManager] Error parsing lastBackupDate: $e');
         }
-      } catch (_) { debugPrint('Error caught'); }
+      }
+
+      if (await signInSilently()) {
+        backupNow();
+      }
+      return;
     }
 
+    // Scheduled time logic
+    if (_hasBackupHappenedToday()) {
+      return; // Already backed up today
+    }
+
+    if (!_isScheduledTimePassed()) {
+      return; // Scheduled time hasn't arrived yet
+    }
+
+    // Execute backup (foreground wake-up compensation)
     if (await signInSilently()) {
       backupNow();
     }
@@ -111,6 +190,7 @@ class BackupManager extends StateNotifier<BackupState>
     final prefs = await SharedPreferences.getInstance();
     final lastBackup = prefs.getString('lastBackupDate');
     final autoBackup = prefs.getBool('autoBackupEnabled') ?? false;
+    final autoBackupTime = prefs.getString('autoBackupTime');
 
     // Load linked email based on current app user
     final userId = await _storageService.read('user_id');
@@ -122,6 +202,7 @@ class BackupManager extends StateNotifier<BackupState>
     state = state.copyWith(
       lastBackupDate: lastBackup,
       autoBackupEnabled: autoBackup,
+      autoBackupTime: autoBackupTime,
       linkedGoogleEmail: linkedEmail,
     );
   }
@@ -334,6 +415,33 @@ class BackupManager extends StateNotifier<BackupState>
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('autoBackupEnabled', enabled);
     state = state.copyWith(autoBackupEnabled: enabled);
+  }
+
+  /// Sets the scheduled backup time in "HH:mm" format (24-hour).
+  /// Pass null to disable scheduled backups and revert to 24-hour interval.
+  /// 
+  /// Validates format and persists to SharedPreferences.
+  /// Sets error state if validation fails.
+  Future<void> setAutoBackupTime(String? time) async {
+    // Validation
+    if (time != null && !_validateTimeFormat(time)) {
+      state = state.copyWith(
+        error: 'Invalid time format. Use HH:mm (00:00 to 23:59)',
+        clearError: false,
+      );
+      return;
+    }
+
+    // Persist
+    final prefs = await SharedPreferences.getInstance();
+    if (time == null) {
+      await prefs.remove('autoBackupTime');
+    } else {
+      await prefs.setString('autoBackupTime', time);
+    }
+
+    // Update state
+    state = state.copyWith(autoBackupTime: time, clearError: true);
   }
 
   Future<bool> deleteBackup(String fileId) async {

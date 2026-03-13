@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/features/auth/providers/auth_provider.dart';
+import 'package:app/features/auth/widgets/key_recovery_dialog.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -93,6 +94,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(next.error!)));
+      }
+    });
+
+    // Listen for key recovery needs
+    ref.listen(authViewModelProvider, (prev, next) {
+      if (next.needsKeyRecovery && !(prev?.needsKeyRecovery ?? false)) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const KeyRecoveryDialog(),
+        );
       }
     });
 
