@@ -63,14 +63,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         : tokens.subtleText;
 
     Widget content;
-    // Check for decryption failure: applies to ALL message types (not just images)
-    // Detects failures via 🔒 prefix OR MessageStatus.failed status
-    const decryptionFailurePrefix = '🔒';
-    final isDecryptionFailure = msg.content.startsWith(decryptionFailurePrefix) || 
-                                 msg.status == MessageStatus.failed;
     
     // 🔐 E2EE Auto-Resend: 檢查是否正在重試解密
     final isDecryptingRetry = msg.status == MessageStatus.decryptingRetry;
+
+    // 增強型密文偵測：如果長度大於 40 且符合 base64 特徵（無空白），視為未解密的密文
+    final looksLikeCiphertext = msg.content.length > 40 && 
+                                !msg.content.contains(' ') && 
+                                RegExp(r'^[A-Za-z0-9+/]+=*$').hasMatch(msg.content.trim());
+
+    // 檢查解密失敗：包含 🔒 前綴、狀態為 failed 或看起來像原始密文
+    const decryptionFailurePrefix = '🔒';
+    final isDecryptionFailure = msg.content.startsWith(decryptionFailurePrefix) || 
+                                msg.status == MessageStatus.failed || 
+                                looksLikeCiphertext;
     
     if (isDecryptingRetry) {
       // 顯示等待對方上線的訊息
@@ -86,19 +92,25 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            '🔒 等待對方上線以重新解密...',
-            style: TextStyle(
-              fontSize: 13,
-              fontStyle: FontStyle.italic,
-              color: subtleTextColor,
+          Flexible(
+            child: Text(
+              '🔒 等待對方上線以重新解密...',
+              style: TextStyle(
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                color: subtleTextColor,
+              ),
             ),
           ),
         ],
       );
     } else if (isDecryptionFailure) {
-      // Handle decryption failures for ALL message types
-      // Display lock icon with error text instead of attempting to render encrypted content
+      // 處理所有訊息類型的解密失敗
+      // 顯示鎖頭圖示和錯誤文字，取代嘗試渲染加密內容
+      final errorText = msg.content.startsWith(decryptionFailurePrefix) 
+          ? msg.content 
+          : '🔒 解密失敗';
+          
       content = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -108,16 +120,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
             color: subtleTextColor,
           ),
           const SizedBox(width: 6),
-          Text(
-            '🔒 解密失敗',
-            style: TextStyle(
-              fontSize: 13,
-              color: subtleTextColor,
+          Flexible(
+            child: Text(
+              errorText,
+              style: TextStyle(
+                fontSize: 13,
+                color: subtleTextColor,
+              ),
             ),
           ),
         ],
       );
-    } else if (msg.type == MessageType.image && !isDecryptionFailure) {
+    } else if (msg.type == MessageType.image) {
       final imageUrl = resolveFullUrl(msg.content);
       final heroTag = msg.id.isNotEmpty ? msg.id : imageUrl;
       content = GestureDetector(
@@ -251,9 +265,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     } else {
       content = Text(msg.content, style: const TextStyle(fontSize: 15));
     }
+    
     final preview = msg.linkPreview;
-    // Prevent link preview evaluation on encrypted/failed/retrying messages
-    // This avoids Regex errors and empty URL warnings from processing encrypted content
+    // 嚴格防止 Link Preview 在未解密、錯誤或重試狀態下被觸發
     final hasPreview =
         !msg.isUnsent &&
         !isDecryptionFailure &&
@@ -263,34 +277,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
             preview.title.isNotEmpty ||
             preview.description.isNotEmpty);
     
-    // 🔥 新增：記錄 Link Preview 狀態
-    if (msg.type == MessageType.text && msg.content.contains('http')) {
-      if (hasPreview) {
-        print('✅ [MessageBubble] 訊息 ${msg.id} 有 Link Preview: ${preview!.url}');
-      } else {
-        print('⚠️ [MessageBubble] 訊息 ${msg.id} 包含 URL 但沒有 Link Preview');
-      }
-    }
-    
     Widget? linkPreviewCard;
     if (hasPreview) {
       final previewUrl = resolveFullUrl(preview.url);
       
-      // 🔥 修復：驗證 imageUrl 是否有效，避免嘗試載入加密或空的 URL
-      // 只有當 imageUrl 不為 null、不為空，且 resolveFullUrl 返回有效 URL 時才嘗試載入圖片
       final rawImageUrl = preview.imageUrl;
       final previewImageUrl = (rawImageUrl != null && rawImageUrl.isNotEmpty)
           ? resolveFullUrl(rawImageUrl)
           : '';
-      
-      // 🔥 調試：記錄 Link Preview 詳細資訊
-      print('🔍 [MessageBubble] Link Preview 詳細資訊:');
-      print('   URL: ${preview.url}');
-      print('   Title: "${preview.title}" (isEmpty: ${preview.title.isEmpty})');
-      print('   Description: "${preview.description}" (isEmpty: ${preview.description.isEmpty})');
-      print('   ImageURL: ${preview.imageUrl}');
-      print('   Resolved URL: $previewUrl');
-      print('   Resolved ImageURL: $previewImageUrl');
       
       linkPreviewCard = GestureDetector(
         onTap: () async {
@@ -472,31 +466,32 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
         ? tokens.accent
         : subtleTextColor;
 
-    // 訊息狀態圖示（包含 pending 和 decryptingRetry 狀態）
+    // 訊息狀態圖示
     IconData statusIcon;
     switch (msg.status) {
       case MessageStatus.pending:
-        statusIcon = Icons.schedule; // 離線中，時鐘圖示
+        statusIcon = Icons.schedule;
         break;
       case MessageStatus.sending:
         statusIcon = Icons.access_time;
         break;
       case MessageStatus.sent:
-        statusIcon = Icons.check; // 單灰勾
+        statusIcon = Icons.check;
         break;
       case MessageStatus.delivered:
-        statusIcon = Icons.done_all; // 雙灰勾
+        statusIcon = Icons.done_all;
         break;
       case MessageStatus.read:
-        statusIcon = Icons.done_all; // 雙藍勾
+        statusIcon = Icons.done_all;
         break;
       case MessageStatus.failed:
         statusIcon = Icons.error_outline;
         break;
       case MessageStatus.decryptingRetry:
-        statusIcon = Icons.sync; // 🔐 E2EE Auto-Resend: 同步中圖示
+        statusIcon = Icons.sync;
         break;
     }
+    
     final statusWidget = isMe
         ? Icon(
             statusIcon,
@@ -506,6 +501,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                 : statusColor,
           )
         : const SizedBox.shrink();
+        
     final reactions = msg.isUnsent
         ? <String, List<String>>{}
         : (msg.reactions ?? {});
@@ -655,7 +651,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     );
   }
 
-  // --- 新增：顯示完整 Emoji Picker 的 BottomSheet ---
   void _showFullEmojiPicker(BuildContext context, Message msg) {
     final tokens = resolveChatSurfaceTokens(
       colorScheme: Theme.of(context).colorScheme,
@@ -665,16 +660,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     showModalBottomSheet(
       context: context,
       backgroundColor: tokens.menuBackground,
-      isScrollControlled: true, // 讓 BottomSheet 可以調整高度
+      isScrollControlled: true, 
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
         return SizedBox(
-          height: MediaQuery.of(context).size.height * 0.45, // 佔據螢幕下方 45%
+          height: MediaQuery.of(context).size.height * 0.45,
           child: Column(
             children: [
-              // 頂部小拉桿裝飾
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 8),
                 width: 40,
@@ -687,7 +681,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
               Expanded(
                 child: EmojiPicker(
                   onEmojiSelected: (category, emoji) {
-                    Navigator.of(context).pop(); // 選完後關閉 BottomSheet
+                    Navigator.of(context).pop(); 
                     ref
                         .read(chatRoomProvider(widget.params).notifier)
                         .toggleReaction(msg.id, emoji.emoji);

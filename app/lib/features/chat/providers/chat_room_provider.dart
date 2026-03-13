@@ -413,7 +413,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       status: MessageStatus.sent,
       readAt: existing.readAt,
       readBy: existing.readBy,
-      linkPreview: existing.linkPreview, // 🔥 保留預覽
+      linkPreview: existing.linkPreview,
     );
     final messages = [...state.messages];
     messages[index] = updated;
@@ -445,7 +445,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       status: status,
       readAt: existing.readAt,
       readBy: existing.readBy,
-      linkPreview: existing.linkPreview, // 🔥 保留預覽
+      linkPreview: existing.linkPreview,
     );
     final messages = [...state.messages];
     messages[index] = updated;
@@ -475,7 +475,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           status: MessageStatus.read,
           readAt: readAt ?? DateTime.now(),
           readBy: readBy,
-          linkPreview: m.linkPreview, // 🔥 保留預覽
+          linkPreview: m.linkPreview,
         );
       }
       return m;
@@ -505,7 +505,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           status: m.status,
           readAt: m.readAt,
           readBy: [...m.readBy, readByUserId],
-          linkPreview: m.linkPreview, // 🔥 保留預覽
+          linkPreview: m.linkPreview,
         );
         updatedMessages.add(newMessage);
         return newMessage;
@@ -518,33 +518,16 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
-  /// Encrypts a group message using fan-out strategy
-  /// Each member receives a unique ciphertext encrypted with their public key
-  /// Uses parallel encryption in batches of 10 for better performance
-  /// 
-  /// **Member List Snapshot (Requirements 9.1, 9.2, 9.5):**
-  /// - The memberIds parameter represents a snapshot of the member list captured once by the caller
-  /// - This method uses ONLY the provided memberIds and does NOT refetch the member list
-  /// - This ensures consistency: members who join/leave during encryption don't affect the operation
-  /// - Callers (sendMessage, resendPendingMessages, retrySend) are responsible for capturing the snapshot
-  /// 
-  /// Error scenarios:
-  /// - Member list fetch failure: Handled by caller (sendMessage, resendPendingMessages, retrySend)
-  /// - Complete public key unavailability: Throws exception with specific message
-  /// - Complete encryption failure: Throws exception with specific message
-  /// - Partial encryption failure: Logs errors but continues with successful encryptions
   Future<String> _encryptGroupMessage(String plaintext, List<String> memberIds) async {
     final ciphertexts = <String, String>{};
     int keysUnavailableCount = 0;
     int encryptionFailureCount = 0;
     
-    // Process members in batches of 10 for parallel encryption
     const batchSize = 10;
     for (int i = 0; i < memberIds.length; i += batchSize) {
       final batchEnd = (i + batchSize < memberIds.length) ? i + batchSize : memberIds.length;
       final batch = memberIds.sublist(i, batchEnd);
       
-      // Encrypt all members in this batch concurrently
       final futures = batch.map((memberId) async {
         final publicKey = await _publicKeyCacheService.getPublicKey(memberId);
         if (publicKey != null) {
@@ -552,18 +535,15 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             final ciphertext = await _cryptoService.encryptMessage(plaintext, publicKey);
             return MapEntry(memberId, ciphertext);
           } catch (e) {
-            // Log encryption error without exposing sensitive data
             debugPrint('[E2EE] Encryption failed for member: roomId=${arg.roomId}, memberCount=${memberIds.length}, error=${e.runtimeType}');
-            return MapEntry<String, String>('', ''); // Marker for encryption failure
+            return MapEntry<String, String>('', '');
           }
         }
-        return null; // Marker for key unavailable
+        return null;
       }).toList();
       
-      // Wait for all encryptions in this batch to complete
       final results = await Future.wait(futures);
       
-      // Add successful encryptions to the map and count failures
       for (final result in results) {
         if (result == null) {
           keysUnavailableCount++;
@@ -575,29 +555,23 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       }
     }
     
-    // Check for complete failure scenarios
     if (ciphertexts.isEmpty) {
       if (keysUnavailableCount == memberIds.length) {
-        // All members have unavailable public keys
         debugPrint('[E2EE] Complete key unavailability: roomId=${arg.roomId}, memberCount=${memberIds.length}');
         throw Exception('無法取得任何成員的公鑰');
       } else if (encryptionFailureCount == memberIds.length) {
-        // All encryption operations failed
         debugPrint('[E2EE] Complete encryption failure: roomId=${arg.roomId}, memberCount=${memberIds.length}');
         throw Exception('所有成員的加密操作均失敗');
       } else {
-        // Mixed failures (some keys unavailable, some encryption failed)
         debugPrint('[E2EE] Complete encryption failure (mixed): roomId=${arg.roomId}, memberCount=${memberIds.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
         throw Exception('加密失敗，無法發送訊息');
       }
     }
     
-    // Log partial encryption success/failure for monitoring
     if (keysUnavailableCount > 0 || encryptionFailureCount > 0) {
       debugPrint('[E2EE] Partial encryption success: roomId=${arg.roomId}, successful=${ciphertexts.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
     }
     
-    // Build fan-out payload
     final fanoutPayload = {
       'is_fanout': true,
       'ciphertexts': ciphertexts,
@@ -606,38 +580,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     return jsonEncode(fanoutPayload);
   }
 
-  /// Decrypts a fan-out encrypted group message
-  /// Returns plaintext on success, throws DecryptionFailureException on failure
-  /// 
-  /// **Backward Compatibility (Requirements 7.1, 7.2, 7.3):**
-  /// - Plaintext messages (JSON parse failure) → returns content as-is
-  /// - Messages without is_fanout flag → returns content as-is
-  /// - Messages with is_fanout=false → returns content as-is
-  /// - No decryption error messages for plaintext messages
-  /// 
-  /// **E2EE Auto-Resend Integration:**
-  /// - When decryption fails, throws DecryptionFailureException with messageId
-  /// - Caller (_tryDecryptMessage) catches exception and triggers auto-resend
   Future<String> _decryptGroupMessage(
     String content,
     String senderId, {
     String? messageId,
   }) async {
     try {
-      // Try to parse as JSON
       final payload = jsonDecode(content);
       
-      // Check if it's a fan-out message
       if (payload is! Map || payload['is_fanout'] != true) {
-        // Not a fan-out message, return as-is (backward compatibility)
         return content;
       }
       
-      // Extract ciphertexts map
       final ciphertexts = payload['ciphertexts'] as Map<String, dynamic>?;
       if (ciphertexts == null) {
-        debugPrint('[E2EE] Decryption failed: Invalid fan-out payload structure - missing ciphertexts field, roomId=${arg.roomId}, senderId=$senderId');
-        // 🔐 E2EE Auto-Resend: 拋出異常以觸發自動重新加密
+        debugPrint('[E2EE] Decryption failed: Invalid fan-out payload structure');
         if (messageId != null) {
           throw DecryptionFailureException(
             messageId: messageId,
@@ -649,11 +606,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         return '🔒 訊息格式錯誤';
       }
       
-      // Get current user's ciphertext
       final myCiphertext = ciphertexts[arg.currentUserId];
       if (myCiphertext == null) {
-        debugPrint('[E2EE] Decryption failed: Missing ciphertext for current user, roomId=${arg.roomId}, senderId=$senderId, currentUserId=${arg.currentUserId}');
-        // 🔐 E2EE Auto-Resend: 拋出異常以觸發自動重新加密
+        debugPrint('[E2EE] Decryption failed: Missing ciphertext for current user');
         if (messageId != null) {
           throw DecryptionFailureException(
             messageId: messageId,
@@ -665,11 +620,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         return '🔒 此訊息不包含您的加密內容';
       }
       
-      // Fetch sender's public key
       final senderPublicKey = await _publicKeyCacheService.getPublicKey(senderId);
       if (senderPublicKey == null) {
-        debugPrint('[E2EE] Decryption failed: Sender public key unavailable, roomId=${arg.roomId}, senderId=$senderId');
-        // 🔐 E2EE Auto-Resend: 拋出異常以觸發自動重新加密
+        debugPrint('[E2EE] Decryption failed: Sender public key unavailable');
         if (messageId != null) {
           throw DecryptionFailureException(
             messageId: messageId,
@@ -681,7 +634,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         return '🔒 此訊息無法解密（金鑰已更新）';
       }
       
-      // Decrypt using CryptoService with messageId for exception handling
       try {
         final plaintext = await _cryptoService.decryptMessage(
           myCiphertext.toString(),
@@ -691,11 +643,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         );
         return plaintext;
       } on DecryptionFailureException {
-        // 🔐 E2EE Auto-Resend: 直接向上拋出異常，讓 _tryDecryptMessage 處理
         rethrow;
       } catch (decryptError) {
-        debugPrint('[E2EE] Decryption operation failed: roomId=${arg.roomId}, senderId=$senderId, error=${decryptError.runtimeType}');
-        // 🔐 E2EE Auto-Resend: 拋出異常以觸發自動重新加密
         if (messageId != null) {
           throw DecryptionFailureException(
             messageId: messageId,
@@ -707,16 +656,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         return '🔒 此訊息無法解密（金鑰已更新）';
       }
     } on FormatException catch (e) {
-      // JSON parse failure - treat as plaintext for backward compatibility
-      debugPrint('[E2EE] JSON parse failed, treating as plaintext: roomId=${arg.roomId}, senderId=$senderId, error=${e.runtimeType}');
       return content;
     } on DecryptionFailureException {
-      // 🔐 E2EE Auto-Resend: 直接向上拋出異常
       rethrow;
     } catch (e) {
-      // Unexpected error during decryption
-      debugPrint('[E2EE] Unexpected decryption error: roomId=${arg.roomId}, senderId=$senderId, error=${e.runtimeType}');
-      // 🔐 E2EE Auto-Resend: 拋出異常以觸發自動重新加密
       if (messageId != null) {
         throw DecryptionFailureException(
           messageId: messageId,
@@ -734,30 +677,46 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     return await _publicKeyCacheService.getPublicKey(userId);
   }
 
-  /// 🔐 E2EE Auto-Resend: 處理解密失敗
-  /// 
-  /// 當解密失敗時：
-  /// 1. 更新訊息狀態為 decryptingRetry
-  /// 2. 發送 re_encrypt_request 控制訊息給原發送方
-  /// 3. 訊息保持在 decryptingRetry 狀態，等待發送方上線
+  /// 🔐 E2EE Auto-Resend: 處理解密失敗，並實作重試次數上限以防止死迴圈
   Future<void> _handleDecryptionFailure(
     Message message,
     DecryptionFailureException exception,
   ) async {
-    // 邊緣情況：訊息 ID 為空
-    if (message.id.isEmpty) {
-      debugPrint('[E2EE Auto-Resend] Cannot handle decryption failure: empty message ID');
-      return;
-    }
-
-    // 邊緣情況：發送方 ID 為空
-    if (exception.senderId.isEmpty) {
-      debugPrint('[E2EE Auto-Resend] Cannot handle decryption failure: empty sender ID');
+    if (message.id.isEmpty || exception.senderId.isEmpty) {
       return;
     }
 
     try {
-      // 更新訊息狀態為 decryptingRetry（不限制重試次數）
+      // 1. 取得當前重試次數
+      final currentRetryCount = await LocalDbService().getDecryptRetryCount(message.id);
+      
+      // 2. 如果重試超過 2 次，直接標記為解密失敗，不再觸發 re_encrypt_request
+      if (currentRetryCount >= 2) {
+        debugPrint('[E2EE Auto-Resend] Retry limit reached for message: ${message.id}. Marking as failed.');
+        await LocalDbService().updateMessageContentAndStatus(
+          messageId: message.id,
+          newContent: '🔒 解密失敗（已超過重試次數）',
+          newStatus: MessageStatus.failed,
+        );
+        
+        // 更新 UI 狀態為失敗
+        final index = state.messages.indexWhere((m) => m.id == message.id);
+        if (index != -1) {
+          final updated = message.copyWith(
+             content: '🔒 解密失敗（已超過重試次數）',
+             status: MessageStatus.failed
+          );
+          final messages = [...state.messages];
+          messages[index] = updated;
+          state = state.copyWith(messages: messages);
+        }
+        return; // 終止流程
+      }
+
+      // 3. 更新重試次數 + 1
+      await LocalDbService().updateDecryptRetryCount(message.id, currentRetryCount + 1);
+
+      // 4. 更新訊息狀態為 decryptingRetry
       await LocalDbService().updateMessageContentAndStatus(
         messageId: message.id,
         newContent: message.content, // 保留原密文
@@ -773,14 +732,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         state = state.copyWith(messages: messages);
       }
       
-      // 邊緣情況：檢查 WebSocket 連接狀態
       if (!_wsService.isConnected) {
         debugPrint('[E2EE Auto-Resend] WebSocket not connected, will retry when reconnected');
-        // 訊息已標記為 decryptingRetry，重連後會自動處理
         return;
       }
       
-      // 發送 re_encrypt_request 控制訊息
+      // 5. 發送 re_encrypt_request
       debugPrint('[E2EE Auto-Resend] Sending re_encrypt_request for message: ${message.id}');
       try {
         await _wsService.send('re_encrypt_request', {
@@ -789,82 +746,35 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           'receiver_id': arg.currentUserId,
           'room_id': arg.isRoom ? arg.roomId : null,
         });
-        
-        // 訊息保持在 decryptingRetry 狀態，等待發送方上線並重新加密
-        debugPrint('[E2EE Auto-Resend] Message ${message.id} will remain in decryptingRetry state until sender responds');
       } catch (e) {
         debugPrint('[E2EE Auto-Resend] Failed to send re_encrypt_request: $e');
-        // 發送失敗，但訊息仍保持在 decryptingRetry 狀態
-        // 當 WebSocket 重新連接時，可以重試
-        debugPrint('[E2EE Auto-Resend] Message ${message.id} remains in decryptingRetry state, will retry when connection is restored');
       }
     } catch (e) {
       debugPrint('[E2EE Auto-Resend] Unexpected error in _handleDecryptionFailure: $e');
-      // 發生未預期的錯誤，但訊息仍保持在 decryptingRetry 狀態
-      // 避免因暫時性錯誤而永久標記為失敗
-      debugPrint('[E2EE Auto-Resend] Message ${message.id} remains in decryptingRetry state despite error');
     }
   }
 
-  /// 🔐 E2EE Auto-Resend: 處理 re_encrypt_request（發送方收到）
-  /// 
-  /// 當收到重新加密請求時：
-  /// 1. 從 LocalDB 讀取原始明文訊息
-  /// 2. 獲取接收方的最新公鑰
-  /// 3. 重新加密訊息
-  /// 4. 發送 re_encrypt_response 控制訊息
   Future<void> _handleReEncryptRequest(Map<String, dynamic> payload) async {
     final messageId = payload['message_id'] as String?;
     final receiverId = payload['receiver_id'] as String?;
     final roomId = payload['room_id'] as String?;
     
-    // 邊緣情況：驗證必要參數
-    if (messageId == null || messageId.isEmpty) {
-      debugPrint('[E2EE Auto-Resend] Invalid re_encrypt_request: missing message_id');
+    if (messageId == null || messageId.isEmpty || receiverId == null || receiverId.isEmpty) {
       return;
     }
-    
-    if (receiverId == null || receiverId.isEmpty) {
-      debugPrint('[E2EE Auto-Resend] Invalid re_encrypt_request: missing receiver_id');
-      return;
-    }
-    
-    debugPrint('[E2EE Auto-Resend] Received re_encrypt_request for message: $messageId from receiver: $receiverId');
     
     try {
-      // 從 LocalDB 讀取原始訊息
       final originalMessage = await LocalDbService().getMessageById(messageId);
-      if (originalMessage == null) {
-        debugPrint('[E2EE Auto-Resend] Original message not found in LocalDB: $messageId');
-        // 訊息已被刪除或不存在，無法重新加密
-        return;
-      }
+      if (originalMessage == null) return;
+      if (originalMessage.senderId != arg.currentUserId) return;
+      if (originalMessage.content.isEmpty) return;
       
-      // 邊緣情況：驗證訊息發送者是當前用戶
-      if (originalMessage.senderId != arg.currentUserId) {
-        debugPrint('[E2EE Auto-Resend] Security warning: re_encrypt_request for message not sent by current user');
-        return;
-      }
-      
-      // 邊緣情況：檢查訊息內容是否為空
-      if (originalMessage.content.isEmpty) {
-        debugPrint('[E2EE Auto-Resend] Cannot re-encrypt: message content is empty');
-        return;
-      }
-      
-      // 獲取接收方的最新公鑰
       final receiverPublicKey = await _publicKeyCacheService.getPublicKey(receiverId);
-      if (receiverPublicKey == null) {
-        debugPrint('[E2EE Auto-Resend] Receiver public key not found: $receiverId');
-        // 公鑰不可用，無法重新加密
-        return;
-      }
+      if (receiverPublicKey == null) return;
       
-      // 重新加密訊息
       String reEncryptedContent;
       try {
         if (arg.isRoom) {
-          // 群組訊息：使用 fan-out 加密（只加密給請求者）
           final ciphertext = await _cryptoService.encryptMessage(
             originalMessage.content,
             receiverPublicKey,
@@ -875,7 +785,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           };
           reEncryptedContent = jsonEncode(fanoutPayload);
         } else {
-          // 一對一訊息：直接加密
           reEncryptedContent = await _cryptoService.encryptMessage(
             originalMessage.content,
             receiverPublicKey,
@@ -886,13 +795,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         return;
       }
       
-      // 邊緣情況：檢查 WebSocket 連接狀態
-      if (!_wsService.isConnected) {
-        debugPrint('[E2EE Auto-Resend] WebSocket not connected, cannot send re_encrypt_response');
-        return;
-      }
+      if (!_wsService.isConnected) return;
       
-      // 發送 re_encrypt_response 控制訊息
       debugPrint('[E2EE Auto-Resend] Sending re_encrypt_response for message: $messageId to receiver: $receiverId');
       try {
         await _wsService.send('re_encrypt_response', {
@@ -909,94 +813,76 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
-  /// 🔐 E2EE Auto-Resend: 處理 re_encrypt_response（接收方收到）
-  /// 
-  /// 當收到重新加密的訊息時：
-  /// 1. 使用當前金鑰解密
-  /// 2. 更新 LocalDB 中的訊息內容與狀態
-  /// 3. 更新 UI 狀態
   Future<void> _handleReEncryptResponse(Map<String, dynamic> payload) async {
     final messageId = payload['message_id'] as String?;
     final content = (payload['re_encrypted_content'] ?? payload['content']) as String?;
     final receiverId = payload['receiver_id'] as String?;
     
-    // 邊緣情況：驗證必要參數
-    if (messageId == null || messageId.isEmpty) {
-      debugPrint('[E2EE Auto-Resend] Invalid re_encrypt_response: missing message_id');
+    if (messageId == null || messageId.isEmpty || content == null || content.isEmpty) {
       return;
     }
     
-    if (content == null || content.isEmpty) {
-      debugPrint('[E2EE Auto-Resend] Invalid re_encrypt_response: missing content');
-      return;
-    }
-    
-    // 邊緣情況：驗證接收者是當前用戶
     if (receiverId != null && receiverId != arg.currentUserId) {
-      debugPrint('[E2EE Auto-Resend] Security warning: re_encrypt_response not for current user');
       return;
     }
-    
-    debugPrint('[E2EE Auto-Resend] Received re_encrypt_response for message: $messageId');
     
     try {
-      // 從 LocalDB 讀取原始訊息
       final originalMessage = await LocalDbService().getMessageById(messageId);
-      if (originalMessage == null) {
-        debugPrint('[E2EE Auto-Resend] Original message not found in LocalDB: $messageId');
-        return;
-      }
+      if (originalMessage == null) return;
       
-      // 邊緣情況：檢查訊息是否仍處於 decryptingRetry 狀態
       if (originalMessage.status != MessageStatus.decryptingRetry) {
-        debugPrint('[E2EE Auto-Resend] Message is not in decryptingRetry status: ${originalMessage.status}');
-        // 訊息可能已經成功解密或標記為失敗，不需要處理
         return;
       }
       
-      // 解密訊息（不拋出異常，避免再次觸發重試）
       String decryptedContent;
       try {
         if (arg.isRoom) {
-          // 群組訊息：使用 _decryptGroupMessage（不傳入 messageId，避免拋出異常）
           decryptedContent = await _decryptGroupMessage(content, originalMessage.senderId);
-          
-          // 檢查是否解密成功（如果返回錯誤訊息，表示失敗）
           if (decryptedContent.startsWith('🔒')) {
             throw Exception('Decryption returned error message');
           }
         } else {
-          // 一對一訊息：使用 decryptMessage（不傳入 messageId，避免拋出異常）
           final senderPublicKey = await _publicKeyCacheService.getPublicKey(originalMessage.senderId);
           if (senderPublicKey == null) {
-            debugPrint('[E2EE Auto-Resend] Sender public key not found: ${originalMessage.senderId}');
             throw Exception('Sender public key unavailable');
           }
           decryptedContent = await _cryptoService.decryptMessage(content, senderPublicKey);
           
-          // 檢查是否解密成功
           if (decryptedContent == content) {
-            // 解密失敗，返回原密文
             throw Exception('Decryption failed: returned original ciphertext');
           }
         }
       } catch (e) {
-        debugPrint('[E2EE Auto-Resend] Re-decryption failed: $e');
+        debugPrint('[E2EE Auto-Resend] Re-decryption failed again: $e');
         
-        // 保持 decryptingRetry 狀態，不標記為永久失敗
-        // 可能是暫時性錯誤，或需要再次請求重新加密
-        debugPrint('[E2EE Auto-Resend] Message $messageId remains in decryptingRetry state');
+        // 🔐 關鍵修復：收到重新加密的內容後依然解密失敗，不再維持 decryptingRetry 狀態
+        // 強制轉為 failed 避免死迴圈
+        await LocalDbService().updateMessageContentAndStatus(
+          messageId: messageId,
+          newContent: '🔒 重新解密失敗',
+          newStatus: MessageStatus.failed,
+        );
+        
+        final index = state.messages.indexWhere((m) => m.id == messageId);
+        if (index != -1) {
+          final updated = originalMessage.copyWith(
+            content: '🔒 重新解密失敗',
+            status: MessageStatus.failed,
+          );
+          final messages = [...state.messages];
+          messages[index] = updated;
+          state = state.copyWith(messages: messages);
+        }
         return;
       }
       
-      // 解密成功，更新 LocalDB
+      // 解密成功
       await LocalDbService().updateMessageContentAndStatus(
         messageId: messageId,
         newContent: decryptedContent,
         newStatus: MessageStatus.delivered,
       );
       
-      // 更新 UI 狀態
       final index = state.messages.indexWhere((m) => m.id == messageId);
       if (index != -1) {
         final updated = originalMessage.copyWith(
@@ -1011,24 +897,17 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       debugPrint('[E2EE Auto-Resend] Successfully re-decrypted message: $messageId');
     } catch (e) {
       debugPrint('[E2EE Auto-Resend] Unexpected error in _handleReEncryptResponse: $e');
-      
-      // 發生未預期的錯誤，但保持 decryptingRetry 狀態
-      // 避免因暫時性錯誤而永久標記為失敗
-      debugPrint('[E2EE Auto-Resend] Message $messageId remains in decryptingRetry state despite error');
     }
   }
 
   Future<Message> _tryDecryptMessage(Message m) async {
     if (m.isUnsent || m.content.isEmpty) return m;
 
-    // Check E2EE toggle state for the room
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
     if (!isE2EEEnabled) return m;
 
-    // Branch on arg.isRoom flag to determine message type
     if (arg.isRoom) {
-      // Group message: call _decryptGroupMessage with exception handling
       try {
         final decrypted = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
         if (decrypted != m.content) {
@@ -1036,13 +915,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         }
         return m;
       } on DecryptionFailureException catch (e) {
-        // 🔐 E2EE Auto-Resend: 捕獲解密失敗異常，觸發自動重新加密機制
-        debugPrint('[E2EE Auto-Resend] Decryption failed for group message: ${e.messageId}');
         await _handleDecryptionFailure(m, e);
-        return m; // 返回原訊息，UI 會顯示 decryptingRetry 狀態
+        return m; 
       }
     } else {
-      // Private message: use existing one-to-one decryption logic with exception handling
       final opponentId = (m.senderId == arg.currentUserId)
           ? m.receiverId
           : m.senderId;
@@ -1069,10 +945,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         }
         return m;
       } on DecryptionFailureException catch (e) {
-        // 🔐 E2EE Auto-Resend: 捕獲解密失敗異常，觸發自動重新加密機制
-        debugPrint('[E2EE Auto-Resend] Decryption failed for private message: ${e.messageId}');
         await _handleDecryptionFailure(m, e);
-        return m; // 返回原訊息，UI 會顯示 decryptingRetry 狀態
+        return m; 
       }
     }
   }
@@ -1195,19 +1069,14 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
       if (isE2EEEnabled) {
         if (arg.isRoom) {
-          // Group message: use fan-out encryption
           try {
-            // Capture member list snapshot once (Requirements 9.1, 9.2, 9.5)
-            // Uses CURRENT member list at resend time, not original member list
             final members = await _chatRepository.getRoomMemberProfiles(arg.roomId);
             final memberIds = members.map((m) => m.id).toList();
             payloadContent = await _encryptGroupMessage(message.content, memberIds);
           } catch (e) {
-            debugPrint('Failed to encrypt pending group message: $e');
             continue;
           }
         } else {
-          // Private message: use existing one-to-one encryption
           final pubKey = await _getPublicKey(arg.roomId);
           if (pubKey != null) {
             try {
@@ -1216,7 +1085,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                 pubKey,
               );
             } catch (e) {
-              debugPrint('Failed to encrypt pending message: $e');
               continue;
             }
           }
@@ -1230,7 +1098,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         'content': payloadContent,
         'type': message.type.name,
         'client_msg_id': message.clientMsgId,
-        // 🔥 修復：加上 link_preview 屬性
         if (message.linkPreview != null) 'link_preview': {
           'url': message.linkPreview!.url,
           'title': message.linkPreview!.title,
@@ -1257,7 +1124,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   Future<void> sendMessage(
     String content, {
     MessageType type = MessageType.text,
-    dynamic linkPreview, // 🔥 接收 link preview 參數 (使用 dynamic 以對應 Message 內的型別)
+    dynamic linkPreview,
   }) async {
     final clientMsgId = const Uuid().v4();
     final replyToId = state.replyingToMessage?.id;
@@ -1277,7 +1144,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       isRead: true,
       status: MessageStatus.pending,
       readBy: [arg.currentUserId],
-      linkPreview: linkPreview, // 🔥 儲存 link preview
+      linkPreview: linkPreview,
     );
 
     await LocalDbService().insertMessages([tempMessage]);
@@ -1290,15 +1157,11 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
     if (isE2EEEnabled) {
       if (arg.isRoom) {
-        // Group message: use fan-out encryption
         try {
-          // Capture member list snapshot once (Requirements 9.1, 9.2, 9.5)
-          // This snapshot is used for all encryption operations to ensure consistency
           final members = await _chatRepository.getRoomMemberProfiles(arg.roomId);
           final memberIds = members.map((m) => m.id).toList();
           payloadContent = await _encryptGroupMessage(content, memberIds);
         } catch (e) {
-          debugPrint('Failed to encrypt group message: $e');
           state = state.copyWith(
             isSending: false,
             error: '加密失敗，無法發送訊息',
@@ -1306,13 +1169,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           return;
         }
       } else {
-        // Private message: use existing one-to-one encryption
         final pubKey = await _getPublicKey(arg.roomId);
         if (pubKey != null) {
           try {
             payloadContent = await _cryptoService.encryptMessage(content, pubKey);
           } catch (e) {
-            debugPrint('Failed to encrypt message: $e');
+            // error
           }
         }
       }
@@ -1325,7 +1187,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       'content': payloadContent,
       'type': type.toString().split('.').last,
       'client_msg_id': clientMsgId,
-      // 🔥 將 link preview 加入 payload
       if (linkPreview != null) 'link_preview': {
         'url': linkPreview.url,
         'title': linkPreview.title,
@@ -1334,8 +1195,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       },
     };
 
-    print('📤 [ChatRoom] 發送訊息 payload: ${payload.containsKey('link_preview') ? '包含 Link Preview' : '純文字'}');
-
     try {
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
@@ -1343,7 +1202,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       Future.microtask(() => LocalDbService().insertMessages([sentMsg]));
       state = state.copyWith(isSending: false);
     } catch (e) {
-      debugPrint('⚠️ WS send failed, message kept as pending: $e');
       state = state.copyWith(isSending: false);
     }
   }
@@ -1361,21 +1219,16 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
     if (isE2EEEnabled) {
       if (arg.isRoom) {
-        // Group message: use fan-out encryption
         try {
-          // Capture member list snapshot once (Requirements 9.1, 9.2, 9.5)
-          // Uses CURRENT member list at retry time, not original member list
           final members = await _chatRepository.getRoomMemberProfiles(arg.roomId);
           final memberIds = members.map((m) => m.id).toList();
           payloadContent = await _encryptGroupMessage(message.content, memberIds);
         } catch (e) {
-          debugPrint('Failed to encrypt retry group message: $e');
           _updateMessageStatus(clientMsgId, MessageStatus.failed);
           state = state.copyWith(error: '加密失敗');
           return;
         }
       } else {
-        // Private message: use existing one-to-one encryption
         final pubKey = await _getPublicKey(arg.roomId);
         if (pubKey != null) {
           try {
@@ -1384,7 +1237,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               pubKey,
             );
           } catch (e) {
-            debugPrint('Failed to encrypt retry: $e');
+            // Error handling
           }
         }
       }
@@ -1397,7 +1250,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       'content': payloadContent,
       'type': message.type.toString().split('.').last,
       'client_msg_id': clientMsgId,
-      // 🔥 修復：加上 link_preview 屬性
       if (message.linkPreview != null) 'link_preview': {
         'url': message.linkPreview!.url,
         'title': message.linkPreview!.title,
@@ -1441,7 +1293,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
   }
 
-  /// Cancels the current recording and deletes the temporary file
   Future<void> cancelRecording() async {
     final mediaService = ref.read(mediaServiceProvider);
     state = state.copyWith(isRecording: false);
@@ -1450,9 +1301,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     if (path != null && path.isNotEmpty) {
       try {
         await File(path).delete();
-        debugPrint('✅ Deleted cancelled recording: $path');
       } catch (e) {
-        debugPrint('⚠️ Failed to delete cancelled recording: $e');
+        // ...
       }
     }
   }
@@ -1462,9 +1312,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     state = state.copyWith(isRecording: false);
     final path = await mediaService.stopRecording();
     
-    // Check if recording is valid
     if (path == null || path.isEmpty) {
-      debugPrint('⚠️ Recording path is null or empty');
       return;
     }
 
@@ -1472,14 +1320,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     state = state.copyWith(isSending: true);
     
     try {
-      // Use the new encrypted audio sending method
       final message = await _chatRepository.sendAudioMessage(
         audioFilePath: path,
         roomId: arg.isRoom ? arg.roomId : '',
         receiverId: arg.isRoom ? null : arg.roomId,
       );
 
-      // Update the optimistic message with reply info if needed
       if (replyToId != null) {
         final updatedMessage = message.copyWith(
           replyToMessageId: replyToId,
@@ -1493,23 +1339,17 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
 
       state = state.copyWith(isSending: false);
       
-      // Clean up temporary audio file
       try {
         await File(path).delete();
-        debugPrint('✅ Deleted temp audio file: $path');
       } catch (e) {
-        debugPrint('⚠️ Failed to delete temp audio file: $e');
+        // ...
       }
     } catch (e) {
       state = state.copyWith(isSending: false, error: e.toString());
-      debugPrint('❌ Failed to send audio message: $e');
-      
-      // Still try to clean up temp file on error
       try {
         await File(path).delete();
-        debugPrint('✅ Deleted temp audio file after error: $path');
       } catch (cleanupError) {
-        debugPrint('⚠️ Failed to delete temp file after error: $cleanupError');
+        // ...
       }
     }
   }
