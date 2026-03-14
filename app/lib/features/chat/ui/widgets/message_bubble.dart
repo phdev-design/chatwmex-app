@@ -79,7 +79,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                 looksLikeCiphertext;
     
     if (isDecryptingRetry) {
-      // 顯示等待對方上線的訊息
+      // 顯示解密中的訊息
       content = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -94,7 +94,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              '🔒 等待對方上線以重新解密...',
+              '⏳ 解密中…',
               style: TextStyle(
                 fontSize: 13,
                 fontStyle: FontStyle.italic,
@@ -108,8 +108,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       // 處理所有訊息類型的解密失敗
       // 顯示鎖頭圖示和錯誤文字，取代嘗試渲染加密內容
       final errorText = msg.content.startsWith(decryptionFailurePrefix) 
-          ? msg.content 
-          : '🔒 解密失敗';
+          ? '🔒 無法解密 點擊重試 ↺'
+          : '🔒 無法解密 點擊重試 ↺';
           
       content = Row(
         mainAxisSize: MainAxisSize.min,
@@ -538,6 +538,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                         Builder(
                           builder: (bubbleContext) {
                             return GestureDetector(
+                              onTap: (isDecryptionFailure && !isDecryptingRetry)
+                                  ? () {
+                                      ref
+                                          .read(chatRoomProvider(widget.params).notifier)
+                                          .retryDecryptMessage(msg.id);
+                                    }
+                                  : null,
                               onLongPress: msg.isUnsent
                                   ? null
                                   : () {
@@ -562,6 +569,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                       ? tokens.bubbleOutgoingBackground
                                       : tokens.bubbleIncomingBackground,
                                   borderRadius: BorderRadius.circular(10),
+                                  border: isDecryptionFailure
+                                      ? Border.all(color: Colors.orange, width: 2)
+                                      : null,
                                 ),
                                 child: Column(
                                   crossAxisAlignment: isMe

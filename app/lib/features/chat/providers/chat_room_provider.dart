@@ -1942,6 +1942,96 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     });
   }
 
+  /// 🔐 E2EE Retry: 手動重試解密失敗的訊息
+  /// 當用戶點擊解密失敗的訊息時呼叫此方法
+  Future<void> retryDecryptMessage(String messageId) async {
+    if (messageId.isEmpty) {
+      debugPrint('[E2EE Retry] Invalid messageId: empty');
+      return;
+    }
+
+    try {
+      // 1. 找到對應的訊息
+      final index = state.messages.indexWhere((m) => m.id == messageId);
+      if (index == -1) {
+        debugPrint('[E2EE Retry] Message not found in state: $messageId');
+        return;
+      }
+
+      final message = state.messages[index];
+      
+      // 2. 檢查重試次數
+      final currentRetryCount = await LocalDbService().getDecryptRetryCount(messageId);
+      if (currentRetryCount >= 2) {
+        debugPrint('[E2EE Retry] Retry limit reached for message: $messageId');
+        // 更新為失敗狀態
+        await LocalDbService().updateMessageContentAndStatus(
+          messageId: messageId,
+          newContent: '🔒 解密失敗（已超過重試次數）',
+          newStatus: MessageStatus.failed,
+        );
+        
+        final updated = message.copyWith(
+          content: '🔒 解密失敗（已超過重試次數）',
+          status: MessageStatus.failed,
+        );
+        final messages = [...state.messages];
+        messages[index] = updated;
+        state = state.copyWith(messages: messages);
+        return;
+      }
+
+      // 3. 更新重試次數 + 1
+      await LocalDbService().updateDecryptRetryCount(messageId, currentRetryCount + 1);
+
+      // 4. 更新訊息狀態為 decryptingRetry
+      await LocalDbService().updateMessageContentAndStatus(
+        messageId: messageId,
+        newContent: message.content, // 保留原密文
+        newStatus: MessageStatus.decryptingRetry,
+      );
+      
+      // 更新 UI 狀態
+      final updated = message.copyWith(status: MessageStatus.decryptingRetry);
+      final messages = [...state.messages];
+      messages[index] = updated;
+      state = state.copyWith(messages: messages);
+      
+      // 5. 檢查 WebSocket 連線
+      if (!_wsService.isConnected) {
+        debugPrint('[E2EE Retry] WebSocket not connected, will retry when reconnected');
+        return;
+      }
+      
+      // 6. 發送 re_encrypt_request
+      debugPrint('[E2EE Retry] Sending re_encrypt_request for message: $messageId');
+      try {
+        await _wsService.send('re_encrypt_request', {
+          'message_id': messageId,
+          'sender_id': message.senderId,
+          'receiver_id': arg.currentUserId,
+          'room_id': arg.isRoom ? arg.roomId : null,
+        });
+        debugPrint('[E2EE Retry] re_encrypt_request sent successfully');
+      } catch (e) {
+        debugPrint('[E2EE Retry] Failed to send re_encrypt_request: $e');
+        // 發送失敗，恢復為 failed 狀態
+        await LocalDbService().updateMessageContentAndStatus(
+          messageId: messageId,
+          newContent: message.content,
+          newStatus: MessageStatus.failed,
+        );
+        
+        final failedUpdate = message.copyWith(status: MessageStatus.failed);
+        final failedMessages = [...state.messages];
+        failedMessages[index] = failedUpdate;
+        state = state.copyWith(messages: failedMessages);
+      }
+    } catch (e) {
+      debugPrint('[E2EE Retry] Unexpected error in retryDecryptMessage: $e');
+    }
+  }
+
   void startTyping() {
     if (!_typingSent) {
       _typingSent = true;
