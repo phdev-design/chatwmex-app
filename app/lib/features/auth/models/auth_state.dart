@@ -5,6 +5,7 @@ class AuthState {
   final bool isRegistered;
   final bool needsKeyRecovery;
   final String? missingKeyUserId;
+  final bool needsKeyBackup; // 🆕 提示用戶設定金鑰備份
 
   AuthState({
     this.isLoading = false,
@@ -13,6 +14,7 @@ class AuthState {
     this.isRegistered = false,
     this.needsKeyRecovery = false,
     this.missingKeyUserId,
+    this.needsKeyBackup = false,
   });
 
   AuthState copyWith({
@@ -22,6 +24,7 @@ class AuthState {
     bool? isRegistered,
     bool? needsKeyRecovery,
     Object? missingKeyUserId = const _Undefined(),
+    bool? needsKeyBackup,
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
@@ -32,6 +35,7 @@ class AuthState {
       missingKeyUserId: missingKeyUserId is _Undefined 
           ? this.missingKeyUserId 
           : missingKeyUserId as String?,
+      needsKeyBackup: needsKeyBackup ?? this.needsKeyBackup,
     );
   }
 }

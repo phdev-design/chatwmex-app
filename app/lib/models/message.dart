@@ -95,6 +95,11 @@ class Message extends Equatable {
   /// null 表示從未失敗過，0 表示第一次失敗
   final int? decryptRetryCount;
 
+  /// 🔐 E2EE Auto-Resend: 解密狀態追蹤（獨立於 is_read）
+  /// true 表示訊息已成功解密，false 表示尚未解密或解密失敗
+  /// 用於 E2EE Auto-Resend 判斷是否需要發送 re_encrypt_request
+  final bool isDecrypted;
+
   const Message({
     required this.id,
     this.clientMsgId,
@@ -115,6 +120,7 @@ class Message extends Equatable {
     this.linkPreview,
     this.fileKey,
     this.decryptRetryCount,  // 🔐 新增
+    this.isDecrypted = false,  // 🔐 新增：預設為 false
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -160,6 +166,7 @@ class Message extends Equatable {
           : null,
       fileKey: json['file_key'],
       decryptRetryCount: json['decrypt_retry_count'],  // 🔐 新增
+      isDecrypted: json['is_decrypted'] == 1 || json['is_decrypted'] == true,  // 🔐 新增
     );
   }
 
@@ -182,6 +189,7 @@ class Message extends Equatable {
       'link_preview': linkPreview?.toJson(),
       'file_key': fileKey,
       'decrypt_retry_count': decryptRetryCount,  // 🔐 新增
+      'is_decrypted': isDecrypted,  // 🔐 新增
     };
   }
 
@@ -209,6 +217,7 @@ class Message extends Equatable {
           : null,
       'file_key': fileKey,
       'decrypt_retry_count': decryptRetryCount,  // 🔐 新增
+      'is_decrypted': isDecrypted ? 1 : 0,  // 🔐 新增：轉換為 INTEGER
     };
   }
 
@@ -277,6 +286,7 @@ class Message extends Equatable {
       linkPreview: parsedLinkPreview,
       fileKey: map['file_key'],
       decryptRetryCount: map['decrypt_retry_count'],  // 🔐 新增
+      isDecrypted: (map['is_decrypted'] ?? 0) == 1,  // 🔐 新增
     );
   }
 
@@ -348,6 +358,7 @@ class Message extends Equatable {
     linkPreview,
     fileKey,
     decryptRetryCount,  // 🔐 新增
+    isDecrypted,  // 🔐 新增
   ];
 
   Message copyWith({
@@ -370,6 +381,7 @@ class Message extends Equatable {
     LinkPreview? linkPreview,
     String? fileKey,
     int? decryptRetryCount,  // 🔐 新增
+    bool? isDecrypted,  // 🔐 新增
   }) {
     return Message(
       id: id ?? this.id,
@@ -391,6 +403,7 @@ class Message extends Equatable {
       linkPreview: linkPreview ?? this.linkPreview,
       fileKey: fileKey ?? this.fileKey,
       decryptRetryCount: decryptRetryCount ?? this.decryptRetryCount,  // 🔐 新增
+      isDecrypted: isDecrypted ?? this.isDecrypted,  // 🔐 新增
     );
   }
 }

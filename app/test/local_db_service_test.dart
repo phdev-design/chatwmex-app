@@ -38,6 +38,107 @@ void main() {
   });
 
   group('Database schema and migration tests', () {
+    // Feature: two-device-sync-issues-fix, Task 4.1: Migration from version 5 to version 6
+    // **Validates: Requirements 2.6, 3.3**
+    test('Migration from version 5 to 6 adds is_decrypted column', () async {
+      final service = LocalDbService();
+      final db = await service.initDB(overridePath: inMemoryDatabasePath);
+      
+      // Verify database is at version 6
+      final versionResult = await db.rawQuery('PRAGMA user_version');
+      final version = versionResult.first['user_version'] as int;
+      expect(version, equals(6), reason: 'Database should be upgraded to version 6');
+      
+      // Verify is_decrypted column exists
+      final columns = await db.rawQuery('PRAGMA table_info(messages)');
+      final names = columns.map((row) => row['name']).toSet();
+      expect(names, contains('is_decrypted'),
+          reason: 'is_decrypted column should exist after migration');
+      
+      // Verify column properties
+      final isDecryptedColumn = columns.firstWhere(
+        (col) => col['name'] == 'is_decrypted',
+      );
+      expect(isDecryptedColumn['type'], equals('INTEGER'),
+          reason: 'is_decrypted should be INTEGER type');
+      expect(isDecryptedColumn['dflt_value'], equals('0'),
+          reason: 'is_decrypted should default to 0');
+      
+      // Test with sample data - insert messages and verify is_decrypted defaults to 0
+      final roomId = 'room_migration_test_${DateTime.now().millisecondsSinceEpoch}';
+      final testMessages = [
+        Message(
+          id: 'msg1_${DateTime.now().millisecondsSinceEpoch}',
+          content: 'Test message 1',
+          senderId: 'user1',
+          roomId: roomId,
+          type: MessageType.text,
+          createdAt: DateTime.now(),
+        ),
+        Message(
+          id: 'msg2_${DateTime.now().millisecondsSinceEpoch}',
+          content: 'Test message 2',
+          senderId: 'user2',
+          roomId: roomId,
+          type: MessageType.text,
+          createdAt: DateTime.now(),
+        ),
+      ];
+      
+      await service.insertMessages(testMessages);
+      
+      // Query messages directly to check is_decrypted value
+      final result = await db.query(
+        'messages',
+        where: 'room_id = ?',
+        whereArgs: [roomId],
+      );
+      
+      expect(result.length, equals(2));
+      for (final row in result) {
+        expect(row['is_decrypted'], equals(0),
+            reason: 'New messages should have is_decrypted = 0 by default');
+      }
+    });
+
+    // Feature: two-device-sync-issues-fix, Bug Condition 2: Database Schema Test
+    // **Validates: Requirements 2.6**
+    // CRITICAL: This test MUST FAIL on unfixed code - failure confirms the bug exists
+    // Expected counterexample: "Database schema lacks is_decrypted column for independent state tracking"
+    test('Bug 2: Database schema should have is_decrypted column', () async {
+      final db = await LocalDbService().initDB(
+        overridePath: inMemoryDatabasePath,
+      );
+      
+      // Query the messages table schema
+      final columns = await db.rawQuery('PRAGMA table_info(messages)');
+      final names = columns.map((row) => row['name']).toSet();
+      
+      // Document current state before assertions
+      print('Current database schema columns: $names');
+      
+      // Assert that is_decrypted column DOES exist (will fail on unfixed code - confirms bug)
+      expect(names, contains('is_decrypted'),
+          reason: 'is_decrypted column should exist for independent decryption state tracking');
+      
+      // If we reach here, verify the column has correct type (INTEGER for boolean)
+      final isDecryptedColumn = columns.firstWhere(
+        (col) => col['name'] == 'is_decrypted',
+        orElse: () => <String, Object?>{},
+      );
+      
+      if (isDecryptedColumn.isNotEmpty) {
+        expect(isDecryptedColumn['type'], equals('INTEGER'),
+            reason: 'is_decrypted should be INTEGER type (0/1 for boolean)');
+        expect(isDecryptedColumn['dflt_value'], equals('0'),
+            reason: 'is_decrypted should default to 0 (false)');
+      }
+      
+      // Document counterexample when test fails
+      print('Counterexample: Database schema lacks is_decrypted column for independent state tracking');
+      print('Bug confirmed: Messages cannot track decryption state independently from read status');
+    });
+
     // Feature: encrypted-audio-messaging-ui-completion, Property 8: Database file_key round-trip
     // **Validates: Requirements 4.1, 4.2, 4.3, 5.2, 5.3, 5.4, 5.5**
     test('file_key column exists in messages table', () async {

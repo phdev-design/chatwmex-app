@@ -31,21 +31,22 @@ class LocalDbService {
   Future<Database> _openDatabase(String dbPath) async {
     return openDatabase(
       dbPath,
-      version: 5, // 👉 Bump to 5 for public_keys table
+      version: 6, // 👉 Bump to 6 for is_decrypted column
       onCreate: (db, version) async {
         await _createMessagesTable(db);
         await _createPublicKeysTable(db); // 👉 Add this
         await _logDbEvent('db_create', {'version': version});
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        await _ensureMessagesColumns(db);
         if (oldVersion < 5) {
           await _createPublicKeysTable(db); // 👉 Add this
+        }
+        if (oldVersion < 6) {
+          await _ensureMessagesColumns(db);
         }
         await _logDbEvent('db_upgrade', {'from': oldVersion, 'to': newVersion});
       },
       onOpen: (db) async {
-        await _ensureMessagesColumns(db);
         await _createPublicKeysTable(db); // 👉 Ensure table exists just in case
         final version = await db.rawQuery('PRAGMA user_version');
         await _logDbEvent('db_open', {'version': version});
@@ -83,7 +84,8 @@ class LocalDbService {
       'status TEXT DEFAULT "sent", ' // 訊息狀態：pending/sent/delivered/read/failed
       'link_preview TEXT, ' // 連結預覽
       'file_key TEXT, ' // 加密檔案金鑰（用於音訊/圖片/影片）
-      'decrypt_retry_count INTEGER DEFAULT 0' // 🔐 E2EE 解密重試計數器
+      'decrypt_retry_count INTEGER DEFAULT 0, ' // 🔐 E2EE 解密重試計數器
+      'is_decrypted INTEGER DEFAULT 0' // 🔐 解密狀態追蹤（獨立於 is_read）
       ')',
     );
   }
@@ -105,11 +107,13 @@ class LocalDbService {
       await _logDbEvent('db_repair', {'action': 'create_messages_table'});
       return;
     }
+    
+    // Fix 1: Correctly extract column names from PRAGMA table_info
     final existing = columns
-        .map((row) => row['name'])
-        .whereType<String>()
+        .map((row) => row['name'] as String)
         .toSet();
     await _logDbEvent('db_check', {'columns': existing.toList()});
+    
     final missing = <String, String>{
       'client_msg_id': 'ALTER TABLE messages ADD COLUMN client_msg_id TEXT',
       'reply_to_message_id':
@@ -127,11 +131,26 @@ class LocalDbService {
       'file_key': 'ALTER TABLE messages ADD COLUMN file_key TEXT',
       // 🔐 新增：decrypt_retry_count 欄位，用於 E2EE 解密重試計數
       'decrypt_retry_count': 'ALTER TABLE messages ADD COLUMN decrypt_retry_count INTEGER DEFAULT 0',
+      // 🔐 新增：is_decrypted 欄位，用於追蹤解密狀態（獨立於 is_read）
+      'is_decrypted': 'ALTER TABLE messages ADD COLUMN is_decrypted INTEGER DEFAULT 0',
     };
+    
     for (final entry in missing.entries) {
       if (!existing.contains(entry.key)) {
-        await db.execute(entry.value);
-        await _logDbEvent('db_repair', {'add_column': entry.key});
+        try {
+          await db.execute(entry.value);
+          await _logDbEvent('db_repair', {'add_column': entry.key});
+        } catch (e) {
+          // Fix 2: Handle duplicate column error gracefully
+          if (e.toString().contains('duplicate column')) {
+            await _logDbEvent('db_repair', {
+              'add_column': entry.key,
+              'status': 'already_exists',
+            });
+            continue;
+          }
+          rethrow;
+        }
       }
     }
   }
@@ -393,5 +412,54 @@ class LocalDbService {
     );
     
     return rows.map(Message.fromMap).toList();
+  }
+
+  /// 🔐 標記訊息為已解密（設定 is_decrypted = 1）
+  /// 用於接收到 re_encrypt_response 並成功解密後，更新本地資料庫
+  Future<void> markMessageAsDecrypted(String messageId) async {
+    if (messageId.isEmpty) return;
+    final db = await initDB();
+    
+    await db.update(
+      'messages',
+      {'is_decrypted': 1},
+      where: 'id = ? OR client_msg_id = ?',
+      whereArgs: [messageId, messageId],
+    );
+  }
+
+  /// 🔐 取得所有未解密的訊息（is_decrypted = 0）
+  /// 用於 E2EE Auto-Resend 初始化時，檢查哪些訊息需要重新加密
+  Future<List<Message>> getUndecryptedMessages() async {
+    final db = await initDB();
+    
+    final rows = await db.query(
+      'messages',
+      where: 'is_decrypted = ?',
+      whereArgs: [0],
+      orderBy: 'created_at ASC',
+    );
+    
+    return rows.map(Message.fromMap).toList();
+  }
+
+  /// 🔐 E2EE Key Recovery: 標記所有未解密訊息為永久無法復原
+  /// 當用戶強制生成新金鑰後，將所有 is_decrypted = 0 的訊息設定為：
+  /// - decrypt_retry_count = 999（最大值，停止重試）
+  /// - content = '🔐 訊息無法復原'
+  /// - status = 'failed'
+  Future<void> markAllUndecryptedAsUnrecoverable() async {
+    final db = await initDB();
+    
+    await db.update(
+      'messages',
+      {
+        'decrypt_retry_count': 999,
+        'content': '🔐 訊息無法復原',
+        'status': 'failed',
+      },
+      where: 'is_decrypted = ?',
+      whereArgs: [0],
+    );
   }
 }

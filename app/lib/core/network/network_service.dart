@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/features/auth/providers/auth_provider.dart';
 
 class NetworkService {
   late final Dio _dio;
   final StorageService _storageService;
+  final Ref _ref;
   static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
   static String get baseUrl {
     // 如果是 Debug 模式，強制使用本地環境（無視 .env 的正是機設定）
@@ -37,7 +39,7 @@ class NetworkService {
     return '${NetworkService.baseUrl}$path';
   }
 
-  NetworkService(this._storageService) {
+  NetworkService(this._storageService, this._ref) {
     // Detect Platform to set correct localhost
     final apiBaseUrl = '${NetworkService.baseUrl}/api/v1';
     _dio = Dio(
@@ -63,10 +65,38 @@ class NetworkService {
           }
           return handler.next(options);
         },
-        onError: (DioException e, handler) {
-          // Handle token expiration, etc.
+        onError: (DioException e, handler) async {
+          // Handle token expiration with automatic refresh
           if (e.response?.statusCode == 401) {
-            // Trigger logout or refresh
+            debugPrint('🔒 Received 401 error, attempting token refresh...');
+            
+            // Attempt to refresh the token
+            final authViewModel = _ref.read(authViewModelProvider.notifier);
+            final refreshSuccess = await authViewModel.refreshToken();
+            
+            if (refreshSuccess) {
+              debugPrint('✅ Token refresh successful, retrying original request...');
+              
+              // Get the new token
+              final newToken = await _storageService.read('jwt_token');
+              
+              if (newToken != null) {
+                // Clone the original request with the new token
+                final options = e.requestOptions;
+                options.headers['Authorization'] = 'Bearer $newToken';
+                
+                try {
+                  // Retry the request with the new token
+                  final response = await _dio.fetch(options);
+                  return handler.resolve(response);
+                } catch (retryError) {
+                  debugPrint('❌ Retry failed after token refresh: $retryError');
+                  return handler.next(e);
+                }
+              }
+            } else {
+              debugPrint('❌ Token refresh failed, proceeding with error');
+            }
           }
           return handler.next(e);
         },
@@ -130,5 +160,5 @@ class NetworkService {
 
 final networkServiceProvider = Provider<NetworkService>((ref) {
   final storage = ref.watch(storageServiceProvider);
-  return NetworkService(storage);
+  return NetworkService(storage, ref);
 });

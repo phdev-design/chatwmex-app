@@ -213,15 +213,31 @@ class CryptoService {
       final nonce = decodedBytes.sublist(0, 12);
       final macBytes = decodedBytes.sublist(12, 28);
       final cipherText = decodedBytes.sublist(28);
+      
+      if (messageId != null) {
+        final currentPubKey = _publicKeyBase64 ?? 'null';
+        final keyFingerprint = currentPubKey != 'null' ? currentPubKey.substring(0, 8) : 'null';
+        debugPrint('[CryptoService] 🔑 Attempting decryption with CURRENT key (fingerprint: $keyFingerprint...) for message: $messageId');
+      }
+      
       final sharedSecret = await _deriveSharedSecret(senderPublicKeyBase64);
       final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes));
       final plainTextBytes = await _aesGcm.decrypt(
         secretBox,
         secretKey: sharedSecret,
       );
+      
+      if (messageId != null) {
+        debugPrint('[CryptoService] ✅ Decryption succeeded with CURRENT key for message: $messageId');
+      }
+      
       return utf8.decode(plainTextBytes);
-    } catch (_) {
+    } catch (e) {
       // 當前金鑰解密失敗，繼續嘗試歷史金鑰
+      if (messageId != null) {
+        debugPrint('[CryptoService] ❌ Current key failed: $e');
+        debugPrint('[CryptoService] 🔄 Trying history keys...');
+      }
     }
 
     // Step 2: 嘗試所有歷史私鑰
@@ -233,14 +249,25 @@ class CryptoService {
         final cipherText = decodedBytes.sublist(28);
 
         final historyKeys = await _loadHistoryPrivateKeys();
+        
+        if (messageId != null) {
+          debugPrint('[CryptoService] 📚 Found ${historyKeys.length} history keys to try');
+        }
+        
         final targetPubKeyBytes = base64Decode(senderPublicKeyBase64);
         final targetPublicKey = SimplePublicKey(
           targetPubKeyBytes,
           type: KeyPairType.x25519,
         );
 
+        int keyIndex = 0;
         for (final histPrivKeyBase64 in historyKeys.reversed) {
           try {
+            if (messageId != null) {
+              final keyFingerprint = histPrivKeyBase64.substring(0, 8);
+              debugPrint('[CryptoService] 🔑 Trying history key #${keyIndex + 1}/${historyKeys.length} (fingerprint: $keyFingerprint...)');
+            }
+            
             final histPrivKeyBytes = base64Decode(histPrivKeyBase64);
             final histKeyPair = await _x25519.newKeyPairFromSeed(
               histPrivKeyBytes,
@@ -258,17 +285,31 @@ class CryptoService {
               secretBox,
               secretKey: sharedSecret,
             );
+            
+            if (messageId != null) {
+              debugPrint('[CryptoService] ✅ Decryption succeeded with history key #${keyIndex + 1} for message: $messageId');
+            }
+            
             return utf8.decode(plainTextBytes);
           } catch (_) {
+            keyIndex++;
             continue;
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      if (messageId != null) {
+        debugPrint('[CryptoService] ❌ History key decryption error: $e');
+      }
+    }
 
     // Step 3: 所有金鑰都失敗 - 拋出異常以觸發自動重新加密機制
     // 如果有提供 messageId 與 senderId，則拋出 DecryptionFailureException
     if (messageId != null && senderId != null) {
+      debugPrint('[CryptoService] ❌ ALL KEYS FAILED for message: $messageId');
+      debugPrint('[CryptoService]   Current key: tried');
+      debugPrint('[CryptoService]   History keys: tried all available');
+      debugPrint('[CryptoService]   Throwing DecryptionFailureException...');
       throw DecryptionFailureException(
         messageId: messageId,
         senderId: senderId,

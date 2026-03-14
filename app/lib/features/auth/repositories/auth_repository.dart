@@ -58,6 +58,43 @@ class AuthRepository {
     );
   }
 
+  /// 🔐 Key Recovery: 檢查伺服器端是否有金鑰備份
+  /// 回傳 null 表示沒有備份，否則回傳 {encrypted_private_key, salt}
+  Future<Map<String, String>?> getKeyBackup() async {
+    try {
+      final response = await _networkService.client.get('/users/key-backup');
+      final data = response.data['data'];
+      
+      if (data == null || 
+          data['encrypted_private_key'] == null || 
+          data['salt'] == null) {
+        return null;
+      }
+      
+      return {
+        'encrypted_private_key': data['encrypted_private_key'] as String,
+        'salt': data['salt'] as String,
+      };
+    } catch (e) {
+      debugPrint('Failed to get key backup: $e');
+      return null;
+    }
+  }
+
+  /// 🔐 Key Recovery: 上傳加密的私鑰備份到伺服器
+  Future<void> uploadKeyBackup({
+    required String encryptedPrivateKey,
+    required String salt,
+  }) async {
+    await _networkService.client.post(
+      '/users/key-backup',
+      data: {
+        'encrypted_private_key': encryptedPrivateKey,
+        'salt': salt,
+      },
+    );
+  }
+
   Future<void> logout() async {
     String? pendingDeviceId;
     try {

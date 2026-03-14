@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/features/auth/providers/auth_provider.dart';
 import 'package:uuid/uuid.dart';
 
 class WebSocketService {
   WebSocketChannel? _channel;
   final StorageService _storageService;
+  final Ref _ref;
   final StreamController<dynamic> _streamController =
       StreamController.broadcast();
 
@@ -19,6 +21,7 @@ class WebSocketService {
   bool _hasConnectedOnce = false;
   Timer? _reconnectTimer;
   int _retryAttempts = 0;
+  bool _isRefreshingToken = false;
 
   // 🔐 E2EE Auto-Resend: 公開連接狀態供外部檢查
   bool get isConnected => _isConnected;
@@ -27,7 +30,7 @@ class WebSocketService {
   final List<Map<String, dynamic>> _messageQueue = [];
   final Map<String, Completer<void>> _pendingAcks = {};
 
-  WebSocketService(this._storageService);
+  WebSocketService(this._storageService, this._ref);
 
   Future<void> connect() async {
     if (_isConnected) return;
@@ -89,14 +92,43 @@ class WebSocketService {
     } catch (e) {
       debugPrint('WebSocket connection failed: $e');
       
-      // 偵測 401 / token expired，停止重試
+      // 偵測 401 / token expired，嘗試刷新 token
       final errorStr = e.toString();
       if (errorStr.contains('not upgraded to websocket') ||
           errorStr.contains('401')) {
-        // 再確認是否真的是 token 問題（後端回的訊息）
-        _streamController.add({'event': 'auth_expired'});
-        debugPrint('WebSocket auth failed, stopping retry');
-        return; // 不呼叫 _handleDisconnect()，不排 retry
+        debugPrint('WebSocket auth failed (401), attempting token refresh...');
+        
+        // 避免重複刷新
+        if (_isRefreshingToken) {
+          debugPrint('Token refresh already in progress, skipping...');
+          _handleDisconnect();
+          return;
+        }
+        
+        _isRefreshingToken = true;
+        
+        try {
+          // 呼叫 auth provider 的 refreshToken 方法
+          final refreshSuccess = await _ref.read(authViewModelProvider.notifier).refreshToken();
+          
+          if (refreshSuccess) {
+            debugPrint('✅ Token refresh successful, retrying WebSocket connection...');
+            _isRefreshingToken = false;
+            _retryAttempts = 0; // 重置重試計數
+            await connect();
+            return;
+          } else {
+            debugPrint('❌ Token refresh failed, stopping WebSocket retry');
+            _isRefreshingToken = false;
+            _streamController.add({'event': 'auth_expired'});
+            return; // 不呼叫 _handleDisconnect()，不排 retry
+          }
+        } catch (refreshError) {
+          debugPrint('❌ Token refresh error: $refreshError');
+          _isRefreshingToken = false;
+          _streamController.add({'event': 'auth_expired'});
+          return; // 不呼叫 _handleDisconnect()，不排 retry
+        }
       }
       
       _handleDisconnect();
@@ -132,6 +164,10 @@ class WebSocketService {
   }
 
   void _handleDecodedEvent(Map<String, dynamic> decoded) {
+    // 🔍 Log EVERY incoming WebSocket message for debugging
+    final event = decoded['event'];
+    debugPrint('🌐 [WebSocket] Incoming message: event=$event');
+    
     if (decoded['event'] == 'message_ack') {
       final data = decoded['data'];
       if (data is Map) {
@@ -228,5 +264,5 @@ class WebSocketService {
 
 final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   final storage = ref.watch(storageServiceProvider);
-  return WebSocketService(storage);
+  return WebSocketService(storage, ref);
 });

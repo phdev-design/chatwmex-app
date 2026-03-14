@@ -7,6 +7,10 @@ import 'package:app/core/network/network_service.dart';
 import 'package:app/core/notification/notification_service.dart';
 import 'package:app/features/auth/repositories/auth_repository.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
+import 'package:app/features/auth/providers/auth_provider.dart';
+import 'package:app/features/auth/ui/widgets/key_recovery_dialog.dart';
+import 'package:app/features/auth/ui/widgets/key_backup_prompt_dialog.dart';
+import 'package:dio/dio.dart';
 import 'dart:io';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -41,6 +45,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       
       // 3. 2秒一到立即跳轉，不被背景 API 請求卡住
       context.go('/chat-list');
+      
+      // 4. 🔐 檢查是否需要提示金鑰備份
+      _checkKeyBackupPrompt();
     } else {
       context.go('/login');
     }
@@ -63,9 +70,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       final userId = await storage.read('user_id') ?? '';
       final crypto = ref.read(cryptoServiceProvider);
       
-      // 初始化金鑰
-      final pubKey = await crypto.initialize(userId: userId);
-      await ref.read(authRepositoryProvider).updatePublicKey(pubKey);
+      // 🔐 E2EE Key Recovery: 初始化金鑰並攔截私鑰遺失異常
+      try {
+        final pubKey = await crypto.initialize(userId: userId);
+        await ref.read(authRepositoryProvider).updatePublicKey(pubKey);
+      } on PrivateKeyNotFoundException catch (_) {
+        // 私鑰遺失，顯示金鑰還原對話框
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const KeyRecoveryDialog(),
+          );
+        }
+        return; // 等待用戶完成金鑰還原流程
+      }
 
       // 確保 public key 快取是最新的
       await ref.read(publicKeyCacheServiceProvider).clearAllCache();
@@ -108,8 +127,50 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           debugPrint('Splash device register warning: $e');
         }
       }
+    } on DioException catch (e) {
+      // Handle 401 Unauthorized errors with automatic token refresh
+      if (e.response?.statusCode == 401) {
+        debugPrint('🔒 401 error during splash initialization, attempting token refresh...');
+        
+        // Attempt to refresh the token
+        final refreshSuccess = await ref.read(authViewModelProvider.notifier).refreshToken();
+        
+        if (refreshSuccess) {
+          debugPrint('✅ Token refresh successful, retrying initialization...');
+          // Recursively retry initialization with new token
+          return _loadHeavyDataInBackground();
+        } else {
+          debugPrint('❌ Token refresh failed, logging out user...');
+          // Token refresh failed, log user out and redirect to login
+          await ref.read(authViewModelProvider.notifier).logout();
+          if (mounted) {
+            context.go('/login');
+          }
+        }
+      } else {
+        // Non-401 DioException, log and continue
+        debugPrint('Init sequence failed on splash: $e');
+      }
     } catch (e) {
+      // Generic error handling for non-Dio exceptions
       debugPrint('Init sequence failed on splash: $e');
+    }
+  }
+
+  /// 🔐 檢查是否需要提示用戶設定金鑰備份
+  Future<void> _checkKeyBackupPrompt() async {
+    // 延遲 1 秒，等待畫面完全載入
+    await Future.delayed(const Duration(seconds: 1));
+    
+    if (!mounted) return;
+    
+    final authState = ref.read(authViewModelProvider);
+    if (authState.needsKeyBackup) {
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const KeyBackupPromptDialog(),
+      );
     }
   }
 

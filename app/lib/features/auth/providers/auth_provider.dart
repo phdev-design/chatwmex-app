@@ -8,6 +8,7 @@ import 'package:app/core/notification/notification_service.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/storage/storage_service.dart';
+import 'package:app/core/storage/local_db_service.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:shared_preference_app_group/shared_preference_app_group.dart';
@@ -19,6 +20,9 @@ class AuthViewModel extends Notifier<AuthState> {
 
   // ⚠️ 替換成你在 Xcode 中設定的 App Group ID
   static const String _appGroupId = 'group.com.phdev.chat2mex';
+
+  // 🔒 Mutex to prevent concurrent token refresh attempts
+  bool _isRefreshing = false;
 
   @override
   AuthState build() {
@@ -138,6 +142,76 @@ class AuthViewModel extends Notifier<AuthState> {
     }
   }
 
+  /// Refreshes the JWT token when it expires
+  /// Returns true if refresh succeeds, false otherwise
+  /// Uses a lock to prevent concurrent refresh attempts
+  Future<bool> refreshToken() async {
+    // 🔒 Prevent concurrent refresh attempts
+    if (_isRefreshing) {
+      debugPrint('⏳ Token refresh already in progress, waiting...');
+      // Wait for the ongoing refresh to complete
+      while (_isRefreshing) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      // Check if we now have a valid token
+      final storage = ref.read(storageServiceProvider);
+      final token = await storage.read('jwt_token');
+      return token != null && token.isNotEmpty;
+    }
+
+    _isRefreshing = true;
+    try {
+      debugPrint('🔄 Attempting to refresh JWT token...');
+      
+      final storage = ref.read(storageServiceProvider);
+      final currentToken = await storage.read('jwt_token');
+      
+      if (currentToken == null || currentToken.isEmpty) {
+        debugPrint('❌ No token found to refresh');
+        return false;
+      }
+
+      // Make POST request to refresh endpoint with current token in body
+      final response = await _networkService.client.post(
+        '/auth/refresh',
+        data: {
+          'token': currentToken,
+        },
+      );
+
+      // Extract new token from response
+      final data = response.data['data'];
+      final newToken = data['token'] as String?;
+      
+      if (newToken == null || newToken.isEmpty) {
+        debugPrint('❌ Token refresh failed: no token in response');
+        return false;
+      }
+
+      // Save new token to storage
+      await storage.save('jwt_token', newToken);
+      
+      // ✅ Update App Group token for iOS notification extension
+      if (Platform.isIOS) {
+        try {
+          await SharedPreferenceAppGroup.setAppGroup(_appGroupId);
+          await SharedPreferenceAppGroup.setString('jwt_token', newToken);
+          debugPrint('✅ App Group token updated after refresh');
+        } catch (e) {
+          debugPrint('❌ App Group token update failed: $e');
+        }
+      }
+
+      debugPrint('✅ Token refresh successful');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Token refresh failed: $e');
+      return false;
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
   // 🔐 E2EE Key Recovery: 從雲端還原金鑰
   Future<void> recoverKeyFromBackup(String password) async {
     if (state.missingKeyUserId == null) {
@@ -148,39 +222,86 @@ class AuthViewModel extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final crypto = ref.read(cryptoServiceProvider);
+      final storage = ref.read(storageServiceProvider);
       
-      // TODO: 呼叫後端 API 取得加密的私鑰
-      // 目前後端尚未實作此 API，暫時拋出錯誤
-      // final response = await _networkService.client.get('/users/backup_key');
-      // final encryptedKeyBase64 = response.data['encrypted_private_key'];
-      // final saltBase64 = response.data['salt'];
+      // 1. 從後端取得加密的私鑰
+      final keyBackup = await _repository.getKeyBackup();
       
-      throw UnimplementedError('後端 API /users/backup_key 尚未實作');
+      if (keyBackup == null) {
+        state = state.copyWith(
+          isLoading: false,
+          error: '伺服器上沒有金鑰備份，請選擇「生成新金鑰」',
+        );
+        return;
+      }
       
-      // 使用 decryptPrivateKeyFromBackup 解密
-      // final decryptedKey = await crypto.decryptPrivateKeyFromBackup(
-      //   encryptedKeyBase64,
-      //   saltBase64,
-      //   password,
-      // );
+      final encryptedKeyBase64 = keyBackup['encrypted_private_key']!;
+      final saltBase64 = keyBackup['salt']!;
       
-      // 呼叫 restorePrivateKey 還原金鑰
-      // await crypto.restorePrivateKey(state.missingKeyUserId!, decryptedKey);
+      // 2. 使用密碼解密私鑰
+      final decryptedKey = await crypto.decryptPrivateKeyFromBackup(
+        encryptedKeyBase64,
+        saltBase64,
+        password,
+      );
       
-      // 重新初始化並繼續登入流程
-      // final pubKey = await crypto.initialize(userId: state.missingKeyUserId!);
-      // await _repository.updatePublicKey(pubKey);
+      // 3. 還原私鑰到本地儲存
+      await crypto.restorePrivateKey(decryptedKey);
       
-      // state = state.copyWith(
-      //   isLoading: false,
-      //   needsKeyRecovery: false,
-      //   missingKeyUserId: null,
-      //   isAuthenticated: true,
-      // );
+      // 4. 重新初始化並繼續登入流程
+      final pubKey = await crypto.initialize(userId: state.missingKeyUserId!);
+      await _repository.updatePublicKey(pubKey);
+
+      // 5. 清除舊的 public key 快取
+      await ref.read(publicKeyCacheServiceProvider).clearAllCache();
+
+      // 6. 確保 room list 是全新的
+      ref.invalidate(roomListViewModelProvider);
+
+      // 7. 同步 Token 到 App Group
+      final token = await storage.read('jwt_token') ?? '';
+      if (Platform.isIOS && token.isNotEmpty) {
+        try {
+          await SharedPreferenceAppGroup.setAppGroup(_appGroupId);
+          await SharedPreferenceAppGroup.setString('jwt_token', token);
+          debugPrint('✅ App Group token synced successfully');
+        } catch (e) {
+          debugPrint('❌ App Group token sync failed: $e');
+        }
+      }
+
+      // 8. 註冊推播通知
+      try {
+        await _notificationService.initOneSignal(
+          "88247551-a540-4ffc-89aa-e6ea9478b7be",
+        );
+        final subscriptionId = await _notificationService.getSubscriptionId();
+        if (subscriptionId != null) {
+          await _networkService.client.post(
+            '/devices/register',
+            data: {
+              'device_id': subscriptionId,
+              'platform': Platform.isAndroid ? 'android' : 'ios',
+            },
+          );
+        }
+        await _notificationService.handlePendingNavigation();
+      } catch (e) {
+        debugPrint('Post-login device registration warning: $e');
+      }
+      
+      state = state.copyWith(
+        isLoading: false,
+        needsKeyRecovery: false,
+        missingKeyUserId: null,
+        isAuthenticated: true,
+      );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: _parseError(e),
+        error: e.toString().contains('incorrect') || e.toString().contains('corrupted')
+            ? '密碼錯誤或備份檔案損壞，請重試'
+            : _parseError(e),
       );
     }
   }
@@ -197,20 +318,23 @@ class AuthViewModel extends Notifier<AuthState> {
       final crypto = ref.read(cryptoServiceProvider);
       final storage = ref.read(storageServiceProvider);
       
-      // 強制生成新金鑰
+      // 1. 標記所有未解密訊息為永久無法復原
+      await LocalDbService().markAllUndecryptedAsUnrecoverable();
+      
+      // 2. 強制生成新金鑰
       final pubKey = await crypto.initialize(
         userId: state.missingKeyUserId!,
         forceGenerate: true,
       );
       await _repository.updatePublicKey(pubKey);
 
-      // 登入後清除舊的 public key 快取
+      // 3. 登入後清除舊的 public key 快取
       await ref.read(publicKeyCacheServiceProvider).clearAllCache();
 
-      // 確保 room list 是全新的
+      // 4. 確保 room list 是全新的
       ref.invalidate(roomListViewModelProvider);
 
-      // 同步 Token 到 App Group
+      // 5. 同步 Token 到 App Group
       final token = await storage.read('jwt_token') ?? '';
       if (Platform.isIOS && token.isNotEmpty) {
         try {
@@ -222,7 +346,7 @@ class AuthViewModel extends Notifier<AuthState> {
         }
       }
 
-      // 註冊推播通知
+      // 6. 註冊推播通知
       try {
         await _notificationService.initOneSignal(
           "88247551-a540-4ffc-89aa-e6ea9478b7be",
@@ -245,6 +369,7 @@ class AuthViewModel extends Notifier<AuthState> {
       state = state.copyWith(
         isLoading: false,
         needsKeyRecovery: false,
+        needsKeyBackup: true, // 🆕 提示用戶設定金鑰備份
         missingKeyUserId: null,
         isAuthenticated: true,
       );

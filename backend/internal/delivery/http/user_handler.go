@@ -3,6 +3,7 @@ package http
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"chatwmex_backend/pkg/token"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type UserHandler struct {
@@ -40,6 +42,12 @@ func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string, prof
 	{
 		api.POST("/register", handler.Register)
 		api.POST("/login", handler.Login)
+	}
+
+	// Auth endpoints without middleware (token may be expired)
+	auth := r.Group("/api/v1/auth")
+	{
+		auth.POST("/refresh", handler.RefreshToken)
 	}
 
 	protected := r.Group("/api/v1/users")
@@ -75,6 +83,16 @@ type LoginRequest struct {
 type LoginResponse struct {
 	Token    string       `json:"token"`
 	UserInfo *domain.User `json:"user_info"`
+}
+
+// RefreshTokenRequest defines the request body for token refresh.
+type RefreshTokenRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+// RefreshTokenResponse defines the response body for token refresh.
+type RefreshTokenResponse struct {
+	Token string `json:"token"`
 }
 
 // UpdateProfileRequest defines the request body for updating user profile.
@@ -443,4 +461,74 @@ func (h *UserHandler) GetE2EEKeyBackup(c *gin.Context) {
 	}
 
 	response.Success(c, res)
+}
+
+// RefreshToken handles token refresh for expired or soon-to-expire tokens.
+func (h *UserHandler) RefreshToken(c *gin.Context) {
+	var req RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Parse the token without validating expiration
+	// We need to extract claims even if the token is expired
+	claims := &token.JWTClaims{}
+	tkn, err := token.ValidateToken(req.Token, h.JWTSecret)
+	
+	// Check if the error is due to expiration (which we allow for refresh)
+	if err != nil {
+		// Try to parse again with validation disabled to check signature
+		parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+		tkn, err = parser.ParseWithClaims(req.Token, claims, func(t *jwt.Token) (interface{}, error) {
+			// Verify signing method
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, errors.New("unexpected signing method")
+			}
+			return []byte(h.JWTSecret), nil
+		})
+		
+		if err != nil {
+			// Token signature is invalid or tampered
+			response.Error(c, http.StatusUnauthorized, "Invalid token signature")
+			return
+		}
+	} else {
+		// Token is still valid, extract claims
+		var ok bool
+		claims, ok = tkn.Claims.(*token.JWTClaims)
+		if !ok {
+			response.Error(c, http.StatusUnauthorized, "Invalid token claims")
+			return
+		}
+	}
+
+	// Extract user ID from claims
+	userID := claims.UserID
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "Invalid token: missing user ID")
+		return
+	}
+
+	// Verify the user still exists in the database
+	ctx := c.Request.Context()
+	_, err = h.UserUsecase.GetUserProfile(ctx, userID)
+	if err != nil {
+		// User no longer exists or error fetching user
+		response.Error(c, http.StatusUnauthorized, "User not found")
+		return
+	}
+
+	// Generate a new token valid for 7 days
+	newToken, err := token.GenerateToken(userID, h.JWTSecret, 7*24*time.Hour)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to generate new token")
+		return
+	}
+
+	resp := RefreshTokenResponse{
+		Token: newToken,
+	}
+
+	response.Success(c, resp)
 }
