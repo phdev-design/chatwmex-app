@@ -157,23 +157,26 @@ class RoomMediaNotifier
         // - 接收方用「發送方的公鑰」+ 自己的私鑰 → 生成相同共享密鑰 → 解密
         // 
         // 因此解密時：
-        // - 如果是「我發送的訊息」：我當初用「接收方公鑰」加密，現在要解密需要「接收方公鑰」
-        // - 如果是「別人發送的訊息」：對方用「我的公鑰」加密，現在要解密需要「發送方公鑰」
+        // 🔐 修復：群組聊天使用 fanout，不需要單獨解密
+        // - 群組聊天：訊息已經在 _tryDecryptMessage 中通過 fanout 解密
+        // - 一對一聊天：需要用對方的公鑰解密
         String? targetPubKey;
         
+        // 🔐 群組聊天跳過（已在 _tryDecryptMessage 中處理）
+        if (msg.roomId != null && msg.roomId!.isNotEmpty) {
+          // 群組訊息應該已經解密，直接使用
+          result.add(msg);
+          continue;
+        }
+        
+        // 🔐 一對一聊天：獲取對方的公鑰
         if (msg.senderId == _currentUserId) {
-          // 情況 1：這是我發送的訊息
-          // 當初我是用接收方的公鑰加密的
-          // 對於群組聊天，接收方是群組本身（使用 roomId）
-          // 對於一對一聊天，接收方是 receiverId
-          if (msg.roomId != null && msg.roomId!.isNotEmpty) {
-            targetPubKey = await cacheService.getPublicKey(msg.roomId!);
-          } else if (msg.receiverId != null && msg.receiverId!.isNotEmpty) {
+          // 情況 1：這是我發送的訊息，用接收方的公鑰加密
+          if (msg.receiverId != null && msg.receiverId!.isNotEmpty) {
             targetPubKey = await cacheService.getPublicKey(msg.receiverId!);
           }
         } else {
-          // 情況 2：這是別人發送的訊息
-          // 對方是用我的公鑰加密的，所以我用對方的公鑰解密
+          // 情況 2：這是別人發送的訊息，用發送方的公鑰解密
           targetPubKey = await cacheService.getPublicKey(msg.senderId);
         }
         

@@ -68,11 +68,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     try {
       final storage = ref.read(storageServiceProvider);
       final userId = await storage.read('user_id') ?? '';
+      
+      if (!mounted) return;
+      
       final crypto = ref.read(cryptoServiceProvider);
       
       // 🔐 E2EE Key Recovery: 初始化金鑰並攔截私鑰遺失異常
       try {
         final pubKey = await crypto.initialize(userId: userId);
+        
+        if (!mounted) return;
+        
         await ref.read(authRepositoryProvider).updatePublicKey(pubKey);
       } on PrivateKeyNotFoundException catch (_) {
         // 私鑰遺失，顯示金鑰還原對話框
@@ -86,13 +92,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         return; // 等待用戶完成金鑰還原流程
       }
 
+      if (!mounted) return;
+
       // 確保 public key 快取是最新的
       await ref.read(publicKeyCacheServiceProvider).clearAllCache();
+
+      if (!mounted) return;
 
       // Security logic: Cleanup pending unregistration
       final pendingDeviceId = await storage.read(
         'pending_unregister_device_id',
       );
+      
+      if (!mounted) return;
+      
       final networkService = ref.read(networkServiceProvider);
 
       if (pendingDeviceId != null) {
@@ -105,14 +118,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         }
       }
 
+      if (!mounted) return;
+
       // Re-register active device session for push
       await ref
           .read(notificationServiceProvider)
           .initOneSignal("88247551-a540-4ffc-89aa-e6ea9478b7be");
+      
+      if (!mounted) return;
           
       final subscriptionId = await ref
           .read(notificationServiceProvider)
           .getSubscriptionId();
+      
+      if (!mounted) return;
           
       if (subscriptionId != null) {
         try {
@@ -132,8 +151,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       if (e.response?.statusCode == 401) {
         debugPrint('🔒 401 error during splash initialization, attempting token refresh...');
         
+        if (!mounted) return;
+        
         // Attempt to refresh the token
         final refreshSuccess = await ref.read(authViewModelProvider.notifier).refreshToken();
+        
+        if (!mounted) return;
         
         if (refreshSuccess) {
           debugPrint('✅ Token refresh successful, retrying initialization...');

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:app/core/network/network_service.dart';
 import 'package:app/core/storage/local_db_service.dart';
+import 'package:app/core/storage/storage_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/websocket/websocket_service.dart';
 import 'package:app/features/chat/models/room.dart';
@@ -27,12 +28,14 @@ class ChatRepository {
   final LocalDbService _localDb;
   final CryptoService _cryptoService;
   final WebSocketService _webSocketService;
+  final StorageService _storageService;
 
   ChatRepository(
     this._networkService,
     this._localDb,
     this._cryptoService,
     this._webSocketService,
+    this._storageService,
   );
 
   Future<List<Room>> getMyRooms({String query = ''}) async {
@@ -490,11 +493,14 @@ class ChatRepository {
       final clientMsgId = const Uuid().v4();
       final now = DateTime.now();
       
+      // 🔐 獲取當前用戶 ID
+      final currentUserId = await _storageService.read('user_id') ?? '';
+      
       final message = Message(
         id: clientMsgId, // Will be replaced by server ID
         clientMsgId: clientMsgId,
         content: audioUrl,
-        senderId: '', // Will be filled by server
+        senderId: currentUserId,
         receiverId: receiverId,
         roomId: roomId,
         type: MessageType.voice,
@@ -564,6 +570,392 @@ class ChatRepository {
       throw Exception('Failed to upload encrypted audio: $e');
     }
   }
+
+  /// 🔐 E2EE Image Message: Encrypts and sends image message
+  /// 1. Reads image bytes from file
+  /// 2. Generates random fileKey
+  /// 3. Encrypts image bytes with AES-GCM
+  /// 4. Uploads encrypted bytes to server
+  /// 5. For group chats: Encrypts fileKey for each member (fanout)
+  /// 6. For DM: Encrypts imageUrl with receiver's public key
+  /// 7. Sends message via WebSocket with encrypted URL and keys
+  Future<Message> sendImageMessage({
+    required String imagePath,
+    required String roomId,
+    String? receiverId,
+  }) async {
+    try {
+      // 1. Read image file bytes
+      final imageFile = File(imagePath);
+      if (!await imageFile.exists()) {
+        throw Exception('Image file not found: $imagePath');
+      }
+      final imageBytes = await imageFile.readAsBytes();
+
+      // 2. Generate random encryption key
+      final fileKey = await _cryptoService.generateRandomKey();
+
+      // 3. Encrypt image bytes
+      final encryptedBytes = await _cryptoService.encryptBytes(
+        Uint8List.fromList(imageBytes),
+        fileKey,
+      );
+
+      // 4. Upload encrypted image
+      final imageUrl = await _uploadEncryptedImage(encryptedBytes);
+
+      // 5. 🔐 群組訊息：為每個成員加密 content (imageUrl) 和 fileKey (fanout)
+      Map<String, dynamic>? fileKeysFanout;
+      Map<String, String>? encryptedContentsFanout;
+      String? encryptedContent;
+      final isGroupMessage = roomId.isNotEmpty;
+      
+      if (isGroupMessage) {
+        try {
+          // 取得群組所有成員
+          final members = await getRoomMemberProfiles(roomId);
+          final memberIds = members.map((m) => m.id).toList();
+          
+          debugPrint('[sendImageMessage] 🔐 Encrypting for ${memberIds.length} members');
+          
+          // 為每個成員用其公鑰加密 fileKey 和 content
+          final encryptedKeys = <String, String>{};
+          final encryptedContents = <String, String>{};
+          for (final memberId in memberIds) {
+            try {
+              final memberPublicKey = await getUserPublicKey(memberId);
+              if (memberPublicKey != null && memberPublicKey.isNotEmpty) {
+                // 加密 fileKey
+                final encryptedKey = await _cryptoService.encryptMessage(
+                  fileKey,
+                  memberPublicKey,
+                );
+                encryptedKeys[memberId] = encryptedKey;
+                
+                // 加密 content (imageUrl)
+                final encryptedContentForMember = await _cryptoService.encryptMessage(
+                  imageUrl,
+                  memberPublicKey,
+                );
+                encryptedContents[memberId] = encryptedContentForMember;
+                
+                debugPrint('[sendImageMessage] ✅ Encrypted for member: $memberId');
+              } else {
+                debugPrint('[sendImageMessage] ⚠️ No public key found for member: $memberId');
+              }
+            } catch (e) {
+              debugPrint('[sendImageMessage] ❌ Failed to encrypt for member $memberId: $e');
+            }
+          }
+          
+          if (encryptedKeys.isNotEmpty) {
+            fileKeysFanout = {
+              'is_fanout': true,
+              'keys': encryptedKeys,
+            };
+            encryptedContentsFanout = encryptedContents;
+            debugPrint('[sendImageMessage] 🔐 Created fanout with ${encryptedKeys.length} keys');
+          }
+        } catch (e) {
+          debugPrint('[sendImageMessage] ⚠️ Failed to create fanout: $e');
+        }
+      } else if (receiverId != null && receiverId.isNotEmpty) {
+        // DM: 用接收方公鑰加密 imageUrl
+        try {
+          final receiverPublicKey = await getUserPublicKey(receiverId);
+          if (receiverPublicKey != null && receiverPublicKey.isNotEmpty) {
+            encryptedContent = await _cryptoService.encryptMessage(
+              imageUrl,
+              receiverPublicKey,
+            );
+            debugPrint('[sendImageMessage] 🔐 Encrypted content for DM');
+          }
+        } catch (e) {
+          debugPrint('[sendImageMessage] ⚠️ Failed to encrypt content for DM: $e');
+        }
+      }
+
+      // 6. Create message object for local optimistic update
+      final clientMsgId = const Uuid().v4();
+      final now = DateTime.now();
+      
+      // 🔐 獲取當前用戶 ID
+      final currentUserId = await _storageService.read('user_id') ?? '';
+      
+      // 🔐 對於群組訊息，content 使用第一個成員的加密內容（用於本地顯示）
+      // 實際發送時，每個成員會從 encrypted_contents_fanout 取得自己的版本
+      String contentForLocal = imageUrl;
+      if (encryptedContentsFanout != null && encryptedContentsFanout.isNotEmpty) {
+        contentForLocal = encryptedContentsFanout.values.first;
+      } else if (encryptedContent != null) {
+        contentForLocal = encryptedContent;
+      }
+      
+      final message = Message(
+        id: clientMsgId,
+        clientMsgId: clientMsgId,
+        content: contentForLocal,
+        senderId: currentUserId,
+        receiverId: receiverId,
+        roomId: roomId,
+        type: MessageType.image,
+        createdAt: now,
+        status: MessageStatus.sending,
+        fileKey: isGroupMessage ? null : fileKey, // 🔐 群組訊息不使用明文 fileKey
+        fileKeysFanout: fileKeysFanout,
+        encryptedContentsFanout: encryptedContentsFanout,
+      );
+
+      // 7. Store optimistic message in local DB
+      try {
+        await _localDb.insertMessages([message]);
+      } catch (e) {
+        debugPrint('⚠️ Failed to store optimistic message: $e');
+      }
+
+      // 8. Send message via WebSocket
+      final payload = <String, dynamic>{
+        'client_msg_id': clientMsgId,
+        'type': 'image',
+        'room_id': roomId,
+        'receiver_id': receiverId,
+      };
+      
+      // 🔐 群組訊息：使用 fanout，content 留空（後端會從 fanout 中處理）
+      if (fileKeysFanout != null) {
+        payload['file_keys_fanout'] = fileKeysFanout;
+        payload['encrypted_contents_fanout'] = encryptedContentsFanout;
+        // 群組訊息不傳送 content，後端會從 encrypted_contents_fanout 中取得
+        payload['content'] = ''; // 空字串，後端允許 fanout 訊息的 content 為空
+        debugPrint('[sendImageMessage] 🔐 Sending with fanout (content empty)');
+      } else {
+        // DM：傳送加密的 content 和明文 fileKey
+        payload['content'] = encryptedContent ?? imageUrl;
+        payload['file_key'] = fileKey;
+        debugPrint('[sendImageMessage] 📤 Sending DM with encrypted content');
+      }
+      
+      await _webSocketService.send('chat_message', payload);
+
+      debugPrint('✅ Encrypted image message sent: $imageUrl');
+      return message;
+    } catch (e) {
+      debugPrint('❌ Failed to send image message: $e');
+      rethrow;
+    }
+  }
+
+  /// Helper: Encrypts and uploads image file
+  Future<String> _uploadEncryptedImage(Uint8List encryptedBytes) async {
+    try {
+      final tempDir = await Directory.systemTemp.createTemp('encrypted_image_');
+      final tempFile = File('${tempDir.path}/encrypted_image.jpg');
+      await tempFile.writeAsBytes(encryptedBytes);
+
+      final imageUrl = await uploadMedia(tempFile, 'image');
+
+      try {
+        await tempFile.delete();
+        await tempDir.delete();
+      } catch (e) {
+        debugPrint('⚠️ Failed to clean up temp file: $e');
+      }
+
+      return imageUrl;
+    } catch (e) {
+      throw Exception('Failed to upload encrypted image: $e');
+    }
+  }
+
+  /// 🔐 E2EE Video Message: Encrypts and sends video message
+  /// 1. Reads video bytes from file
+  /// 2. Generates random fileKey
+  /// 3. Encrypts video bytes with AES-GCM
+  /// 4. Uploads encrypted bytes to server
+  /// 5. For group chats: Encrypts fileKey for each member (fanout)
+  /// 6. For DM: Encrypts videoUrl with receiver's public key
+  /// 7. Sends message via WebSocket with encrypted URL and keys
+  Future<Message> sendVideoMessage({
+    required String videoPath,
+    required String roomId,
+    String? receiverId,
+  }) async {
+    try {
+      // 1. Read video file bytes
+      final videoFile = File(videoPath);
+      if (!await videoFile.exists()) {
+        throw Exception('Video file not found: $videoPath');
+      }
+      final videoBytes = await videoFile.readAsBytes();
+
+      // 2. Generate random encryption key
+      final fileKey = await _cryptoService.generateRandomKey();
+
+      // 3. Encrypt video bytes
+      final encryptedBytes = await _cryptoService.encryptBytes(
+        Uint8List.fromList(videoBytes),
+        fileKey,
+      );
+
+      // 4. Upload encrypted video
+      final videoUrl = await _uploadEncryptedVideo(encryptedBytes);
+
+      // 5. 🔐 群組訊息：為每個成員加密 content (videoUrl) 和 fileKey (fanout)
+      Map<String, dynamic>? fileKeysFanout;
+      Map<String, String>? encryptedContentsFanout;
+      String? encryptedContent;
+      final isGroupMessage = roomId.isNotEmpty;
+      
+      if (isGroupMessage) {
+        try {
+          final members = await getRoomMemberProfiles(roomId);
+          final memberIds = members.map((m) => m.id).toList();
+          
+          debugPrint('[sendVideoMessage] 🔐 Encrypting for ${memberIds.length} members');
+          
+          final encryptedKeys = <String, String>{};
+          final encryptedContents = <String, String>{};
+          for (final memberId in memberIds) {
+            try {
+              final memberPublicKey = await getUserPublicKey(memberId);
+              if (memberPublicKey != null && memberPublicKey.isNotEmpty) {
+                final encryptedKey = await _cryptoService.encryptMessage(
+                  fileKey,
+                  memberPublicKey,
+                );
+                encryptedKeys[memberId] = encryptedKey;
+                
+                final encryptedContentForMember = await _cryptoService.encryptMessage(
+                  videoUrl,
+                  memberPublicKey,
+                );
+                encryptedContents[memberId] = encryptedContentForMember;
+                
+                debugPrint('[sendVideoMessage] ✅ Encrypted for member: $memberId');
+              } else {
+                debugPrint('[sendVideoMessage] ⚠️ No public key found for member: $memberId');
+              }
+            } catch (e) {
+              debugPrint('[sendVideoMessage] ❌ Failed to encrypt for member $memberId: $e');
+            }
+          }
+          
+          if (encryptedKeys.isNotEmpty) {
+            fileKeysFanout = {
+              'is_fanout': true,
+              'keys': encryptedKeys,
+            };
+            encryptedContentsFanout = encryptedContents;
+            debugPrint('[sendVideoMessage] 🔐 Created fanout with ${encryptedKeys.length} keys');
+          }
+        } catch (e) {
+          debugPrint('[sendVideoMessage] ⚠️ Failed to create fanout: $e');
+        }
+      } else if (receiverId != null && receiverId.isNotEmpty) {
+        // DM: 用接收方公鑰加密 videoUrl
+        try {
+          final receiverPublicKey = await getUserPublicKey(receiverId);
+          if (receiverPublicKey != null && receiverPublicKey.isNotEmpty) {
+            encryptedContent = await _cryptoService.encryptMessage(
+              videoUrl,
+              receiverPublicKey,
+            );
+            debugPrint('[sendVideoMessage] 🔐 Encrypted content for DM');
+          }
+        } catch (e) {
+          debugPrint('[sendVideoMessage] ⚠️ Failed to encrypt content for DM: $e');
+        }
+      }
+
+      // 6. Create message object
+      final clientMsgId = const Uuid().v4();
+      final now = DateTime.now();
+      
+      // 🔐 獲取當前用戶 ID
+      final currentUserId = await _storageService.read('user_id') ?? '';
+      
+      // 🔐 對於群組訊息，content 使用第一個成員的加密內容（用於本地顯示）
+      String contentForLocal = videoUrl;
+      if (encryptedContentsFanout != null && encryptedContentsFanout.isNotEmpty) {
+        contentForLocal = encryptedContentsFanout.values.first;
+      } else if (encryptedContent != null) {
+        contentForLocal = encryptedContent;
+      }
+      
+      final message = Message(
+        id: clientMsgId,
+        clientMsgId: clientMsgId,
+        content: contentForLocal,
+        senderId: currentUserId,
+        receiverId: receiverId,
+        roomId: roomId,
+        type: MessageType.video,
+        createdAt: now,
+        status: MessageStatus.sending,
+        fileKey: isGroupMessage ? null : fileKey,
+        fileKeysFanout: fileKeysFanout,
+        encryptedContentsFanout: encryptedContentsFanout,
+      );
+
+      // 7. Store optimistic message
+      try {
+        await _localDb.insertMessages([message]);
+      } catch (e) {
+        debugPrint('⚠️ Failed to store optimistic message: $e');
+      }
+
+      // 8. Send via WebSocket
+      final payload = <String, dynamic>{
+        'client_msg_id': clientMsgId,
+        'type': 'video',
+        'room_id': roomId,
+        'receiver_id': receiverId,
+      };
+      
+      // 🔐 群組訊息：使用 fanout，content 留空
+      if (fileKeysFanout != null) {
+        payload['file_keys_fanout'] = fileKeysFanout;
+        payload['encrypted_contents_fanout'] = encryptedContentsFanout;
+        payload['content'] = ''; // 空字串，後端允許 fanout 訊息的 content 為空
+        debugPrint('[sendVideoMessage] 🔐 Sending with fanout (content empty)');
+      } else {
+        // DM：傳送加密的 content 和明文 fileKey
+        payload['content'] = encryptedContent ?? videoUrl;
+        payload['file_key'] = fileKey;
+        debugPrint('[sendVideoMessage] 📤 Sending DM with encrypted content');
+      }
+      
+      await _webSocketService.send('chat_message', payload);
+
+      debugPrint('✅ Encrypted video message sent: $videoUrl');
+      return message;
+    } catch (e) {
+      debugPrint('❌ Failed to send video message: $e');
+      rethrow;
+    }
+  }
+
+  /// Helper: Encrypts and uploads video file
+  Future<String> _uploadEncryptedVideo(Uint8List encryptedBytes) async {
+    try {
+      final tempDir = await Directory.systemTemp.createTemp('encrypted_video_');
+      final tempFile = File('${tempDir.path}/encrypted_video.mp4');
+      await tempFile.writeAsBytes(encryptedBytes);
+
+      final videoUrl = await uploadMedia(tempFile, 'video');
+
+      try {
+        await tempFile.delete();
+        await tempDir.delete();
+      } catch (e) {
+        debugPrint('⚠️ Failed to clean up temp file: $e');
+      }
+
+      return videoUrl;
+    } catch (e) {
+      throw Exception('Failed to upload encrypted video: $e');
+    }
+  }
 }
 
 class _DedupedResult {
@@ -577,5 +969,6 @@ final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   final network = ref.watch(networkServiceProvider);
   final crypto = ref.watch(cryptoServiceProvider);
   final webSocket = ref.watch(webSocketServiceProvider);
-  return ChatRepository(network, LocalDbService(), crypto, webSocket);
+  final storage = ref.watch(storageServiceProvider);
+  return ChatRepository(network, LocalDbService(), crypto, webSocket, storage);
 });

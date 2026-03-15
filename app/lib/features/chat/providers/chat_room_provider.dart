@@ -167,6 +167,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           _isAutoResendInitialized = false;
         } else if (event == 'chat_message') {
           try {
+            // 🔍 DEBUG: 檢查接收到的 sender_id 和 room_id
+            debugPrint('[DEBUG] received chat_message: sender_id=${payload['sender_id']}, room_id=${payload['room_id']}, type=${payload['type']}');
+            
             final rawMessage = Message.fromJson(payload);
             _tryDecryptMessage(rawMessage).then((message) async {
               if ((arg.isRoom && message.roomId == arg.roomId) ||
@@ -754,7 +757,8 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   }
 
   Future<String?> _getPublicKey(String userId) async {
-    if (arg.isRoom) return null;
+    // 🔐 修復：群組聊天也需要獲取成員的公鑰來解密訊息
+    // 移除 isRoom 檢查，直接使用 userId 獲取公鑰
     return await _publicKeyCacheService.getPublicKey(userId);
   }
 
@@ -1302,6 +1306,32 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             }
           } catch (e) {
             debugPrint('[_tryDecryptMessage] ❌ Error extracting fileKey from fanout: $e');
+          }
+        }
+        
+        // 🔐 群組媒體訊息：從 encryptedContentsFanout 解密圖片/影片 URL
+        if ((m.type == MessageType.image || m.type == MessageType.video) &&
+            m.encryptedContentsFanout != null &&
+            (m.content.isEmpty || _looksLikeE2EECiphertext(m.content))) {
+          final myEncryptedUrl = m.encryptedContentsFanout![arg.currentUserId];
+          if (myEncryptedUrl != null && myEncryptedUrl.isNotEmpty) {
+            try {
+              final senderPubKey = await _getPublicKey(m.senderId);
+              if (senderPubKey != null) {
+                final decryptedUrl = await _cryptoService.decryptMessage(
+                  myEncryptedUrl,
+                  senderPubKey,
+                  messageId: m.id,
+                  senderId: m.senderId,
+                );
+                updatedMessage = updatedMessage.copyWith(content: decryptedUrl);
+                debugPrint('[E2EE] ✅ Decrypted media URL for message ${m.id}');
+              } else {
+                debugPrint('[E2EE] ⚠️ Sender public key unavailable for media URL decryption: ${m.senderId}');
+              }
+            } catch (e) {
+              debugPrint('[E2EE] ❌ Failed to decrypt media URL: $e');
+            }
           }
         }
         

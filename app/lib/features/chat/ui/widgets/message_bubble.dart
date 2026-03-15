@@ -156,6 +156,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
               ),
               child: CachedNetworkImageWidget(
                 imageUrl: imageUrl,
+                fileKey: msg.fileKey, // 🔐 傳遞 fileKey 用於解密
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
                 placeholder: const SizedBox(
@@ -182,6 +183,60 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       );
     } else if (msg.type == MessageType.voice) {
       content = AudioMessageBubble(message: msg);
+    } else if (msg.type == MessageType.video) {
+      // 🔐 E2EE Video: 簡單的影片訊息顯示（未來可擴展為完整播放器）
+      content = GestureDetector(
+        onTap: () {
+          // TODO: 實作影片播放器
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('影片播放功能開發中')),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isMe
+                ? tokens.bubbleOutgoingBackground.withValues(alpha: 0.5)
+                : tokens.bubbleIncomingBackground.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.play_circle_outline,
+                size: 40,
+                color: textColor,
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '影片訊息',
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '點擊播放',
+                      style: TextStyle(
+                        color: subtleTextColor,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     } else if (msg.type == MessageType.file) {
       final fileUrl = resolveFullUrl(msg.content);
       final parsed = Uri.tryParse(fileUrl);

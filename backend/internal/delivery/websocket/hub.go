@@ -230,6 +230,10 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 
 			// 為每個接收方建立個人化訊息
 			personalMsg := *msg // 複製訊息結構
+			
+			// 🔍 DEBUG: 檢查複製後的 SenderID
+			log.Printf("[DEBUG] routeMessage: original msg.SenderID=%s, personalMsg.SenderID=%s, memberID=%s, roomID=%s", 
+				msg.SenderID, personalMsg.SenderID, memberID, msg.RoomID)
 
 			if hasFanout {
 				// 從 fanout map 中取出該成員的專屬密文
@@ -249,6 +253,11 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 				"event": "chat_message",
 				"data":  personalMsg,
 			}
+			
+			// 🔍 DEBUG: 檢查序列化前的 personalMsg
+			log.Printf("[DEBUG] Before marshal: personalMsg.SenderID=%s, personalMsg.RoomID=%s, personalMsg.Type=%s", 
+				personalMsg.SenderID, personalMsg.RoomID, personalMsg.Type)
+			
 			personalMessageBytes, err := json.Marshal(personalPayload)
 			if err != nil {
 				log.Printf("Error encoding personal message for member %s: %v", memberID, err)

@@ -63,7 +63,9 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 		return errors.New("sender ID cannot be empty")
 	}
 
-	if strings.TrimSpace(msg.Content) == "" {
+	// 🔐 E2EE: 允許使用 EncryptedContentsFanout 的訊息 content 為空
+	// 群組訊息使用 fanout 時，每個成員的內容在 EncryptedContentsFanout 中
+	if strings.TrimSpace(msg.Content) == "" && len(msg.EncryptedContentsFanout) == 0 {
 		return errors.New("message content cannot be empty")
 	}
 

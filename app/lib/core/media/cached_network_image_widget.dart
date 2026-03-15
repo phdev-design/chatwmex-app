@@ -6,6 +6,7 @@ import 'package:app/core/media/image_cache_service.dart';
 /// 帶快取功能的網路圖片 Widget
 /// 
 /// 自動處理圖片快取，優先從本地讀取，沒有則下載
+/// 支援 E2EE 加密圖片的解密
 class CachedNetworkImageWidget extends ConsumerStatefulWidget {
   final String imageUrl;
   final BoxFit fit;
@@ -14,6 +15,8 @@ class CachedNetworkImageWidget extends ConsumerStatefulWidget {
   final Widget? placeholder;
   final Widget? errorWidget;
   final Alignment alignment;
+  /// 🔐 E2EE: 可選的解密金鑰，若提供則會解密圖片
+  final String? fileKey;
 
   const CachedNetworkImageWidget({
     super.key,
@@ -24,6 +27,7 @@ class CachedNetworkImageWidget extends ConsumerStatefulWidget {
     this.placeholder,
     this.errorWidget,
     this.alignment = Alignment.center,
+    this.fileKey,
   });
 
   @override
@@ -46,7 +50,8 @@ class _CachedNetworkImageWidgetState
   @override
   void didUpdateWidget(CachedNetworkImageWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
+    if (oldWidget.imageUrl != widget.imageUrl || 
+        oldWidget.fileKey != widget.fileKey) {
       _loadImage();
     }
   }
@@ -62,7 +67,11 @@ class _CachedNetworkImageWidgetState
 
     try {
       final cacheService = ref.read(imageCacheServiceProvider);
-      final file = await cacheService.getImage(widget.imageUrl);
+      // 🔐 傳遞 fileKey 給 getImage，若有則會解密
+      final file = await cacheService.getImage(
+        widget.imageUrl,
+        fileKey: widget.fileKey,
+      );
 
       if (!mounted) return;
 

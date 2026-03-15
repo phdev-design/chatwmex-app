@@ -97,7 +97,8 @@ func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 	}
 
 	// Validate common fields
-	if msg.Content == "" && msg.Type == "text" {
+	// 🔐 E2EE: 允許使用 EncryptedContentsFanout 的訊息 content 為空
+	if msg.Content == "" && msg.Type == "text" && len(msg.EncryptedContentsFanout) == 0 {
 		c.respondError(client, "error", "Content is required")
 		return
 	}
@@ -105,6 +106,10 @@ func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 	// Set system fields
 	msg.SenderID = client.userID
 	msg.CreatedAt = time.Now()
+	
+	// 🔍 DEBUG: 檢查訊息創建時的 SenderID
+	log.Printf("[DEBUG] OnChatMessage: client.userID=%s, msg.SenderID=%s, msg.RoomID=%s, msg.Type=%s", 
+		client.userID, msg.SenderID, msg.RoomID, msg.Type)
 
 	// Block Validation for DMs
 	if msg.RoomID == "" && msg.ReceiverID != "" {
@@ -167,10 +172,11 @@ func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 // handleMediaMessage handles validation and processing for media messages.
 // This implements the DRY principle for image, voice, and video types.
 func (c *SocketController) handleMediaMessage(client *Client, msg *domain.Message) error {
-	// 1. Validate specific media fields (if any)
-	// For example, we might expect 'metadata' in content or separate fields.
-	// Since domain.Message is simple, we assume Content contains the URL/ID.
-	if msg.Content == "" {
+	// 1. Validate specific media fields
+	// 🔐 E2EE: 對於群組訊息，content 可能為空（使用 encrypted_contents_fanout）
+	// 只有在非 fanout 模式下才檢查 content
+	hasFanout := msg.EncryptedContentsFanout != nil && len(msg.EncryptedContentsFanout) > 0
+	if msg.Content == "" && !hasFanout {
 		c.respondError(client, "error", "Media content (URL) is required")
 		return context.DeadlineExceeded // Just a placeholder error
 	}

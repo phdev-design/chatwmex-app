@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:app/core/crypto/crypto_service.dart';
 
 /// 圖片快取服務
 /// 
@@ -15,6 +16,11 @@ class ImageCacheService {
   static const String _cacheDir = 'image_cache';
   static const int _maxCacheSize = 500 * 1024 * 1024; // 500MB
   static const Duration _cacheExpiry = Duration(days: 30);
+
+  final CryptoService _cryptoService;
+  final Dio _dio;
+
+  ImageCacheService(this._cryptoService, this._dio);
 
   /// 獲取快取目錄
   Future<Directory> _getCacheDirectory() async {
@@ -153,7 +159,10 @@ class ImageCacheService {
   }
 
   /// 獲取圖片（優先從快取，沒有則下載）
-  Future<File?> getImage(String url) async {
+  /// 
+  /// [url] 圖片 URL（可能是加密的）
+  /// [fileKey] 可選的解密金鑰，若提供則會解密圖片
+  Future<File?> getImage(String url, {String? fileKey}) async {
     try {
       // 1. 檢查快取
       final cachedFile = await getCachedImage(url);
@@ -162,12 +171,55 @@ class ImageCacheService {
         return cachedFile;
       }
       
-      // 2. 下載並快取
+      // 2. 下載圖片
       debugPrint('📥 [ImageCache] 下載圖片: $url');
+      
+      // 如果有 fileKey，需要下載並解密
+      if (fileKey != null && fileKey.isNotEmpty) {
+        try {
+          // 下載加密的圖片
+          final encryptedBytes = await _downloadEncryptedImage(url);
+          
+          // 解密圖片
+          final decryptedBytes = await _cryptoService.decryptBytes(
+            encryptedBytes,
+            fileKey,
+          );
+          
+          // 快取解密後的圖片
+          return await cacheImage(url, imageData: decryptedBytes);
+        } catch (e) {
+          debugPrint('❌ [ImageCache] 解密失敗: $e');
+          return null;
+        }
+      }
+      
+      // 沒有 fileKey，直接下載並快取（向後兼容）
       return await cacheImage(url);
     } catch (e) {
       debugPrint('❌ [ImageCache] 獲取圖片失敗: $e');
       return null;
+    }
+  }
+
+  /// 下載加密的圖片
+  Future<Uint8List> _downloadEncryptedImage(String imageUrl) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        imageUrl,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      );
+
+      if (response.data == null) {
+        throw Exception('Download failed: empty response');
+      }
+
+      return Uint8List.fromList(response.data!);
+    } catch (e) {
+      throw Exception('Failed to download encrypted image: $e');
     }
   }
 
@@ -252,5 +304,7 @@ class ImageCacheService {
 }
 
 final imageCacheServiceProvider = Provider<ImageCacheService>((ref) {
-  return ImageCacheService();
+  final cryptoService = ref.watch(cryptoServiceProvider);
+  final dio = Dio();
+  return ImageCacheService(cryptoService, dio);
 });

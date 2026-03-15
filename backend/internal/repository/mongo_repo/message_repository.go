@@ -37,6 +37,8 @@ type mongoMessage struct {
 	LinkPreview      *domain.LinkPreview `bson:"link_preview,omitempty"`
 	ExpiresAt        *time.Time          `bson:"expires_at,omitempty"` // For disappearing messages TTL
 	CreatedAt        time.Time           `bson:"created_at"`
+	// 🔐 E2EE DM Media: FileKey 用於 DM 媒體訊息的 fileKey 儲存
+	FileKey string `bson:"file_key,omitempty"`
 	// 🔐 E2EE Group Media: FileKeysFanout 用於群組媒體加密
 	FileKeysFanout map[string]interface{} `bson:"file_keys_fanout,omitempty"`
 	// 🔐 E2EE Group Text Messages: EncryptedContentsFanout 用於群組文字訊息加密
@@ -142,6 +144,7 @@ func (r *MessageRepository) toDomain(m *mongoMessage) (*domain.Message, error) {
 		LinkPreview:             m.LinkPreview,
 		ExpiresAt:               m.ExpiresAt,
 		CreatedAt:               m.CreatedAt,
+		FileKey:                 m.FileKey,
 		FileKeysFanout:          m.FileKeysFanout,
 		EncryptedContentsFanout: m.EncryptedContentsFanout,
 	}, nil
@@ -188,6 +191,7 @@ func (r *MessageRepository) fromDomain(m *domain.Message) (*mongoMessage, error)
 		LinkPreview:             m.LinkPreview,
 		ExpiresAt:               m.ExpiresAt,
 		CreatedAt:               m.CreatedAt,
+		FileKey:                 m.FileKey,
 		FileKeysFanout:          m.FileKeysFanout,
 		EncryptedContentsFanout: m.EncryptedContentsFanout,
 	}, nil
