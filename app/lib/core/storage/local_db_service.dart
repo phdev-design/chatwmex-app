@@ -31,7 +31,7 @@ class LocalDbService {
   Future<Database> _openDatabase(String dbPath) async {
     return openDatabase(
       dbPath,
-      version: 6, // 👉 Bump to 6 for is_decrypted column
+      version: 8, // 👉 Bump to 8 for encrypted_contents_fanout column
       onCreate: (db, version) async {
         await _createMessagesTable(db);
         await _createPublicKeysTable(db); // 👉 Add this
@@ -43,6 +43,16 @@ class LocalDbService {
         }
         if (oldVersion < 6) {
           await _ensureMessagesColumns(db);
+        }
+        if (oldVersion < 7) {
+          // 🔐 Add file_keys_fanout column for group media encryption
+          await db.execute('ALTER TABLE messages ADD COLUMN file_keys_fanout TEXT');
+          await _logDbEvent('db_upgrade', {'action': 'add_file_keys_fanout_column'});
+        }
+        if (oldVersion < 8) {
+          // 🔐 Add encrypted_contents_fanout column for group text message encryption
+          await db.execute('ALTER TABLE messages ADD COLUMN encrypted_contents_fanout TEXT');
+          await _logDbEvent('db_upgrade', {'action': 'add_encrypted_contents_fanout_column'});
         }
         await _logDbEvent('db_upgrade', {'from': oldVersion, 'to': newVersion});
       },
@@ -84,6 +94,8 @@ class LocalDbService {
       'status TEXT DEFAULT "sent", ' // 訊息狀態：pending/sent/delivered/read/failed
       'link_preview TEXT, ' // 連結預覽
       'file_key TEXT, ' // 加密檔案金鑰（用於音訊/圖片/影片）
+      'file_keys_fanout TEXT, ' // 🔐 群組媒體加密金鑰分發（JSON map: userId -> encryptedFileKey）
+      'encrypted_contents_fanout TEXT, ' // 🔐 群組文字訊息加密內容分發（JSON map: userId -> encryptedContent）
       'decrypt_retry_count INTEGER DEFAULT 0, ' // 🔐 E2EE 解密重試計數器
       'is_decrypted INTEGER DEFAULT 0' // 🔐 解密狀態追蹤（獨立於 is_read）
       ')',
@@ -129,6 +141,10 @@ class LocalDbService {
       'status': 'ALTER TABLE messages ADD COLUMN status TEXT DEFAULT "sent"',
       // 新増：file_key 欄位，用於加密音訊/圖片/影片
       'file_key': 'ALTER TABLE messages ADD COLUMN file_key TEXT',
+      // 🔐 新增：file_keys_fanout 欄位，用於群組媒體加密
+      'file_keys_fanout': 'ALTER TABLE messages ADD COLUMN file_keys_fanout TEXT',
+      // 🔐 新增：encrypted_contents_fanout 欄位，用於群組文字訊息加密
+      'encrypted_contents_fanout': 'ALTER TABLE messages ADD COLUMN encrypted_contents_fanout TEXT',
       // 🔐 新增：decrypt_retry_count 欄位，用於 E2EE 解密重試計數
       'decrypt_retry_count': 'ALTER TABLE messages ADD COLUMN decrypt_retry_count INTEGER DEFAULT 0',
       // 🔐 新增：is_decrypted 欄位，用於追蹤解密狀態（獨立於 is_read）
@@ -364,7 +380,8 @@ class LocalDbService {
   }
 
   /// 更新訊息的解密重試計數器
-  /// 每次解密失敗時呼叫，用於追蹤重試次數（最多 2 次）
+  /// 每次解密失敗時呼叫，用於追蹤重試次數並計算指數退避延遲
+  /// 使用指數退避策略持續重試，直到成功或後端 TTL 過期（7 天）
   Future<void> updateDecryptRetryCount(String messageId, int retryCount) async {
     if (messageId.isEmpty) return;
     final db = await initDB();

@@ -4,6 +4,7 @@ import 'package:app/features/chat/ui/conversations_settings_page.dart';
 import 'package:app/features/chat/ui/room_labels_settings_page.dart';
 import 'package:app/core/backup/backup_manager.dart';
 import 'package:app/models/backup_mode.dart';
+import 'package:app/features/settings/providers/crypto_health_provider.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -41,6 +42,64 @@ class SettingsPage extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
+            // E2EE 金鑰健康狀態 Banner
+            Consumer(
+              builder: (context, ref, child) {
+                final cryptoHealthAsync = ref.watch(cryptoHealthProvider);
+                
+                return cryptoHealthAsync.when(
+                  data: (health) {
+                    // 有溢出警告 - 顯示橙色警告 Banner
+                    if (health.hasRecentOverflow) {
+                      return _buildWarningBanner(
+                        context: context,
+                        isDark: isDark,
+                        color: Colors.orange,
+                        icon: Icons.warning_rounded,
+                        title: '金鑰淘汰警告',
+                        message: '部分舊訊息的解密金鑰已被自動淘汰，這些訊息可能已無法解密。建議立即備份目前的加密金鑰。',
+                        buttonText: '立即備份',
+                        onPressed: () {
+                          // TODO: 導向金鑰備份頁面
+                          // Navigator.of(context).push(
+                          //   MaterialPageRoute(
+                          //     builder: (_) => const KeyBackupPage(),
+                          //   ),
+                          // );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('金鑰備份功能開發中')),
+                          );
+                        },
+                      );
+                    }
+                    
+                    // 接近上限 - 顯示藍色提示 Banner
+                    if (health.isNearLimit) {
+                      return _buildWarningBanner(
+                        context: context,
+                        isDark: isDark,
+                        color: Colors.blue,
+                        icon: Icons.info_rounded,
+                        title: '金鑰使用提示',
+                        message: '加密金鑰歷史紀錄已使用 ${health.historyKeyCount}/50，建議定期備份金鑰。',
+                        buttonText: '了解更多',
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('定期備份金鑰可確保訊息安全')),
+                          );
+                        },
+                      );
+                    }
+                    
+                    // 正常狀態 - 不顯示
+                    return const SizedBox.shrink();
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                );
+              },
+            ),
+            
             _buildSectionGroup(
               title: '一般設定',
               isDark: isDark,
@@ -133,6 +192,83 @@ class SettingsPage extends ConsumerWidget {
         ),
         const SizedBox(height: 24), // 區塊間距
       ],
+    );
+  }
+
+  /// 建立警告或提示 Banner
+  Widget _buildWarningBanner({
+    required BuildContext context,
+    required bool isDark,
+    required Color color,
+    required IconData icon,
+    required String title,
+    required String message,
+    required String buttonText,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.2 : 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withValues(alpha: isDark ? 0.4 : 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? Colors.white70 : Colors.black54,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: onPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                buttonText,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

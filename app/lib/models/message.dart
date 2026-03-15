@@ -90,6 +90,15 @@ class Message extends Equatable {
   /// Stores the symmetric encryption key (base64 encoded)
   final String? fileKey;
   
+  /// 🔐 E2EE Group Media: FileKeysFanout 用於群組媒體加密
+  /// 每個成員的 fileKey 用該成員的公鑰加密，格式：{"is_fanout": true, "keys": {userId: encryptedKey, ...}}
+  final Map<String, dynamic>? fileKeysFanout;
+  
+  /// 🔐 E2EE Group Text Messages: EncryptedContentsFanout 用於群組文字訊息加密
+  /// 每個成員的訊息內容用該成員的公鑰加密，格式：{userId: encryptedContent, ...}
+  /// key = userId, value = 該成員專屬的加密密文（base64 字串）
+  final Map<String, String>? encryptedContentsFanout;
+  
   /// 🔐 E2EE Auto-Resend: 解密重試計數器
   /// 記錄此訊息已嘗試重新加密的次數（最多 2 次）
   /// null 表示從未失敗過，0 表示第一次失敗
@@ -119,6 +128,8 @@ class Message extends Equatable {
     this.readBy = const [],
     this.linkPreview,
     this.fileKey,
+    this.fileKeysFanout,
+    this.encryptedContentsFanout,
     this.decryptRetryCount,  // 🔐 新增
     this.isDecrypted = false,  // 🔐 新增：預設為 false
   });
@@ -165,6 +176,14 @@ class Message extends Equatable {
             )
           : null,
       fileKey: json['file_key'],
+      fileKeysFanout: json['file_keys_fanout'] is Map
+          ? Map<String, dynamic>.from(json['file_keys_fanout'])
+          : null,
+      encryptedContentsFanout: json['encrypted_contents_fanout'] is Map
+          ? (json['encrypted_contents_fanout'] as Map).map(
+              (k, v) => MapEntry(k.toString(), v.toString()),
+            )
+          : null,
       decryptRetryCount: json['decrypt_retry_count'],  // 🔐 新增
       isDecrypted: json['is_decrypted'] == 1 || json['is_decrypted'] == true,  // 🔐 新增
     );
@@ -188,6 +207,8 @@ class Message extends Equatable {
       'read_by': readBy,
       'link_preview': linkPreview?.toJson(),
       'file_key': fileKey,
+      'file_keys_fanout': fileKeysFanout,
+      'encrypted_contents_fanout': encryptedContentsFanout,
       'decrypt_retry_count': decryptRetryCount,  // 🔐 新增
       'is_decrypted': isDecrypted,  // 🔐 新增
     };
@@ -216,6 +237,12 @@ class Message extends Equatable {
           ? jsonEncode(linkPreview!.toJson())
           : null,
       'file_key': fileKey,
+      'file_keys_fanout': fileKeysFanout != null
+          ? jsonEncode(fileKeysFanout!)
+          : null,
+      'encrypted_contents_fanout': encryptedContentsFanout != null
+          ? jsonEncode(encryptedContentsFanout!)
+          : null,
       'decrypt_retry_count': decryptRetryCount,  // 🔐 新增
       'is_decrypted': isDecrypted ? 1 : 0,  // 🔐 新增：轉換為 INTEGER
     };
@@ -258,6 +285,39 @@ class Message extends Equatable {
       );
     }
 
+    // 🔐 解析 file_keys_fanout JSON 字串
+    Map<String, dynamic>? parsedFileKeysFanout;
+    final fileKeysFanoutRaw = map['file_keys_fanout'];
+    if (fileKeysFanoutRaw is String && fileKeysFanoutRaw.isNotEmpty) {
+      try {
+        parsedFileKeysFanout = Map<String, dynamic>.from(jsonDecode(fileKeysFanoutRaw));
+      } catch (e) {
+        // 解析失敗時忽略
+      }
+    } else if (fileKeysFanoutRaw is Map) {
+      parsedFileKeysFanout = Map<String, dynamic>.from(fileKeysFanoutRaw);
+    }
+
+    // 🔐 解析 encrypted_contents_fanout JSON 字串
+    Map<String, String>? parsedEncryptedContentsFanout;
+    final encryptedContentsFanoutRaw = map['encrypted_contents_fanout'];
+    if (encryptedContentsFanoutRaw is String && encryptedContentsFanoutRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(encryptedContentsFanoutRaw);
+        if (decoded is Map) {
+          parsedEncryptedContentsFanout = decoded.map(
+            (k, v) => MapEntry(k.toString(), v.toString()),
+          );
+        }
+      } catch (e) {
+        // 解析失敗時忽略
+      }
+    } else if (encryptedContentsFanoutRaw is Map) {
+      parsedEncryptedContentsFanout = encryptedContentsFanoutRaw.map(
+        (k, v) => MapEntry(k.toString(), v.toString()),
+      );
+    }
+
     return Message(
       id: map['id'] ?? '',
       clientMsgId: map['client_msg_id'],
@@ -285,6 +345,8 @@ class Message extends Equatable {
       readBy: readByList,
       linkPreview: parsedLinkPreview,
       fileKey: map['file_key'],
+      fileKeysFanout: parsedFileKeysFanout,
+      encryptedContentsFanout: parsedEncryptedContentsFanout,
       decryptRetryCount: map['decrypt_retry_count'],  // 🔐 新增
       isDecrypted: (map['is_decrypted'] ?? 0) == 1,  // 🔐 新增
     );
@@ -357,6 +419,8 @@ class Message extends Equatable {
     readBy,
     linkPreview,
     fileKey,
+    fileKeysFanout,
+    encryptedContentsFanout,
     decryptRetryCount,  // 🔐 新增
     isDecrypted,  // 🔐 新增
   ];
@@ -380,6 +444,8 @@ class Message extends Equatable {
     List<String>? readBy,
     LinkPreview? linkPreview,
     String? fileKey,
+    Map<String, dynamic>? fileKeysFanout,
+    Map<String, String>? encryptedContentsFanout,
     int? decryptRetryCount,  // 🔐 新增
     bool? isDecrypted,  // 🔐 新增
   }) {
@@ -402,6 +468,8 @@ class Message extends Equatable {
       readBy: readBy ?? this.readBy,
       linkPreview: linkPreview ?? this.linkPreview,
       fileKey: fileKey ?? this.fileKey,
+      fileKeysFanout: fileKeysFanout ?? this.fileKeysFanout,
+      encryptedContentsFanout: encryptedContentsFanout ?? this.encryptedContentsFanout,
       decryptRetryCount: decryptRetryCount ?? this.decryptRetryCount,  // 🔐 新增
       isDecrypted: isDecrypted ?? this.isDecrypted,  // 🔐 新增
     );

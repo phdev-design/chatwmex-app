@@ -298,7 +298,7 @@
     - Test App Group token update for iOS
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
   
-  - [~] 6.2 Unit test for Dio interceptor 401 handler
+  - [ ] 6.2 Unit test for Dio interceptor 401 handler
     - Test 401 error triggers token refresh
     - Test request retry after successful refresh
     - Test error propagation after failed refresh
@@ -306,7 +306,7 @@
     - Test concurrent 401 errors use same refresh
     - _Requirements: 2.2, 3.2_
   
-  - [~] 6.3 Unit test for WebSocket 401 detection
+  - [ ] 6.3 Unit test for WebSocket 401 detection
     - Test 401 detection in WebSocket handshake
     - Test token refresh trigger on 401
     - Test reconnection after successful refresh
@@ -314,7 +314,7 @@
     - Test valid token connections unchanged
     - _Requirements: 2.1, 3.7_
   
-  - [~] 6.4 Unit test for SplashScreen initialization retry
+  - [ ] 6.4 Unit test for SplashScreen initialization retry
     - Test 401 detection in initialization flow
     - Test token refresh trigger on 401
     - Test initialization retry after successful refresh
@@ -344,14 +344,14 @@
     - Test query performance with large datasets
     - _Requirements: 2.6, 3.3_
   
-  - [~] 6.8 Unit test for E2EE Auto-Resend skip logic
+  - [ ] 6.8 Unit test for E2EE Auto-Resend skip logic
     - Test messages with isDecrypted = true are skipped
     - Test messages with isDecrypted = false trigger re_encrypt_request
     - Test status field is ignored in skip decision
     - Test read but undecrypted messages are processed
     - _Requirements: 2.5, 2.8, 3.4_
   
-  - [~] 6.9 Unit test for re_encrypt_response handler
+  - [ ] 6.9 Unit test for re_encrypt_response handler
     - Test successful decryption updates content
     - Test successful decryption calls markMessageAsDecrypted()
     - Test isDecrypted field is set to true
@@ -361,7 +361,7 @@
 
 - [ ] 7. Write integration tests for full flows
 
-  - [~] 7.1 Integration test: Expired token app launch flow
+  - [ ] 7.1 Integration test: Expired token app launch flow
     - Set JWT token to expired value
     - Launch app and trigger SplashScreen initialization
     - Verify automatic token refresh occurs
@@ -370,7 +370,7 @@
     - Verify no error is shown to user
     - _Requirements: 2.1, 2.2, 2.4, 3.1, 3.7_
   
-  - [~] 7.2 Integration test: Multi-device message recovery flow
+  - [ ] 7.2 Integration test: Multi-device message recovery flow
     - Device A sends 30 messages to Device B
     - Device B receives messages but cannot decrypt (simulate missing private key)
     - Mark all 30 messages as read on Device B
@@ -380,7 +380,7 @@
     - Verify messages display correctly after recovery
     - _Requirements: 2.5, 2.6, 2.7, 2.8, 3.3, 3.4, 3.5, 3.6_
   
-  - [~] 7.3 Integration test: Expired token during active session
+  - [ ] 7.3 Integration test: Expired token during active session
     - Establish WebSocket connection with valid token
     - Simulate token expiration during session
     - Send message from another device
@@ -389,14 +389,14 @@
     - Verify message is received correctly
     - _Requirements: 2.1, 3.1, 3.7, 3.9_
   
-  - [~] 7.4 Integration test: Concurrent 401 errors
+  - [ ] 7.4 Integration test: Concurrent 401 errors
     - Trigger multiple API calls simultaneously with expired token
     - Verify only one token refresh attempt occurs (refresh lock)
     - Verify all API calls retry with new token
     - Verify all operations complete successfully
     - _Requirements: 2.2, 3.1, 3.2_
   
-  - [~] 7.5 Integration test: Database migration with existing data
+  - [ ] 7.5 Integration test: Database migration with existing data
     - Install app with version 5 database schema
     - Add sample messages to database
     - Upgrade app to version 6
@@ -406,7 +406,7 @@
     - Verify E2EE Auto-Resend works with migrated data
     - _Requirements: 2.6, 2.7, 3.3_
   
-  - [~] 7.6 Integration test: WebSocket reconnection with token refresh
+  - [ ] 7.6 Integration test: WebSocket reconnection with token refresh
     - Establish WebSocket connection with valid token
     - Simulate token expiration
     - Trigger WebSocket disconnection (network issue or server restart)

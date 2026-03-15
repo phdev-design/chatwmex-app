@@ -51,6 +51,8 @@ class CryptoService {
   String? _currentUserId;
   String _privateKeyStorageKey(String userId) => 'e2ee_private_key_$userId';
   static const String _privateKeyHistoryStorageKey = 'e2ee_private_key_history';
+  static const String _keyOverflowWarningKey = 'e2ee_key_overflow_warning';
+  static const int _maxHistoryKeys = 50;
 
   bool get isInitialized => _keyPair != null;
   String? get publicKeyBase64 => _publicKeyBase64;
@@ -72,14 +74,24 @@ class CryptoService {
     final history = await _loadHistoryPrivateKeys();
     if (!history.contains(privateKeyBase64)) {
       history.add(privateKeyBase64);
-      // 最多保留 20 把歷史金鑰，防止無限增長
-      final trimmed = history.length > 20
-          ? history.sublist(history.length - 20)
-          : history;
-      await _secureStorage.write(
-        key: _privateKeyHistoryStorageKey,
-        value: jsonEncode(trimmed),
-      );
+      // 最多保留 50 把歷史金鑰，防止無限增長
+      if (history.length > _maxHistoryKeys) {
+        // 即將丟棄最舊金鑰，寫入警告標記
+        await _secureStorage.write(
+          key: _keyOverflowWarningKey,
+          value: DateTime.now().toIso8601String(),
+        );
+        final trimmed = history.sublist(history.length - _maxHistoryKeys);
+        await _secureStorage.write(
+          key: _privateKeyHistoryStorageKey,
+          value: jsonEncode(trimmed),
+        );
+      } else {
+        await _secureStorage.write(
+          key: _privateKeyHistoryStorageKey,
+          value: jsonEncode(history),
+        );
+      }
     }
   }
 
@@ -512,12 +524,78 @@ class CryptoService {
     return encryptedOrPlainText;
   }
 
+  /// 🔐 E2EE Group Media: 從 fileKeysFanout 中提取並解密當前用戶的 fileKey
+  /// 
+  /// 參數：
+  /// - fileKeysFanout: 包含所有成員加密 fileKey 的 map，格式：{"is_fanout": true, "keys": {userId: encryptedKey, ...}}
+  /// - currentUserId: 當前用戶 ID
+  /// - senderPublicKey: 發送方公鑰（用於 ECDH 解密）
+  /// 
+  /// 回傳：
+  /// - 成功：解密後的明文 fileKey (base64)
+  /// - 失敗：null（找不到對應 userId 或解密失敗）
+  Future<String?> extractFileKeyFromFanout(
+    Map<String, dynamic> fileKeysFanout,
+    String currentUserId,
+    String senderPublicKey,
+  ) async {
+    try {
+      // 檢查格式是否正確
+      if (fileKeysFanout['is_fanout'] != true) {
+        debugPrint('[CryptoService] ⚠️ fileKeysFanout is_fanout flag is not true');
+        return null;
+      }
+
+      final keys = fileKeysFanout['keys'];
+      if (keys is! Map) {
+        debugPrint('[CryptoService] ⚠️ fileKeysFanout keys is not a Map');
+        return null;
+      }
+
+      // 取得當前用戶的加密 fileKey
+      final encryptedKey = keys[currentUserId];
+      if (encryptedKey == null) {
+        debugPrint('[CryptoService] ⚠️ No encrypted fileKey found for user: $currentUserId');
+        return null;
+      }
+
+      // 使用 ECDH 解密 fileKey
+      final decryptedFileKey = await decryptMessage(
+        encryptedKey.toString(),
+        senderPublicKey,
+      );
+
+      debugPrint('[CryptoService] ✅ Successfully extracted fileKey from fanout for user: $currentUserId');
+      return decryptedFileKey;
+    } catch (e) {
+      debugPrint('[CryptoService] ❌ Failed to extract fileKey from fanout: $e');
+      return null;
+    }
+  }
+
   // Clear keys for logout — 只清記憶體，保留 SecureStorage 讓舊訊息可繼續解密
   Future<void> clearKeys() async {
     _keyPair = null;
     _publicKeyBase64 = null;
     _currentUserId = null;
     // ✅ 不刪除 SecureStorage，各帳號的 key 和 history 永久保留
+  }
+
+  /// 取得目前歷史金鑰數量
+  Future<int> getHistoryKeyCount() async {
+    final history = await _loadHistoryPrivateKeys();
+    return history.length;
+  }
+
+  /// 檢查並清除金鑰溢出警告標記（一次性讀取）
+  /// 回傳是否有警告標記
+  Future<bool> checkAndClearKeyOverflowWarning() async {
+    final warning = await _secureStorage.read(key: _keyOverflowWarningKey);
+    if (warning != null) {
+      await _secureStorage.delete(key: _keyOverflowWarningKey);
+      return true;
+    }
+    return false;
   }
 
   // --- Audio/File Encryption Methods ---

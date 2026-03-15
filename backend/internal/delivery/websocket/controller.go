@@ -11,17 +11,19 @@ import (
 
 // SocketController handles WebSocket events.
 type SocketController struct {
-	hub            *Hub
-	messageUsecase domain.MessageUsecase
-	friendRepo     domain.FriendRepository
+	hub                      *Hub
+	messageUsecase           domain.MessageUsecase
+	friendRepo               domain.FriendRepository
+	pendingReEncryptRepo     domain.PendingReEncryptRepository
 }
 
 // NewSocketController creates a new SocketController.
-func NewSocketController(hub *Hub, mu domain.MessageUsecase, fr domain.FriendRepository) *SocketController {
+func NewSocketController(hub *Hub, mu domain.MessageUsecase, fr domain.FriendRepository, prr domain.PendingReEncryptRepository) *SocketController {
 	return &SocketController{
-		hub:            hub,
-		messageUsecase: mu,
-		friendRepo:     fr,
+		hub:                  hub,
+		messageUsecase:       mu,
+		friendRepo:           fr,
+		pendingReEncryptRepo: prr,
 	}
 }
 
@@ -297,6 +299,7 @@ func (c *SocketController) OnReEncryptRequest(client *Client, data []byte) {
 		MessageID  string `json:"message_id"`   // 需要重新加密的訊息 ID
 		SenderID   string `json:"sender_id"`    // 原始發送方 ID
 		ReceiverID string `json:"receiver_id"`  // 請求方 ID (當前 client)
+		RoomID     string `json:"room_id"`      // 聊天室 ID (可選)
 	}
 	
 	var payload ReEncryptRequestPayload
@@ -319,8 +322,44 @@ func (c *SocketController) OnReEncryptRequest(client *Client, data []byte) {
 	log.Printf("🔐 [E2EE] Re-encrypt request: messageID=%s, from=%s, to=%s", 
 		payload.MessageID, payload.ReceiverID, payload.SenderID)
 	
-	// 轉發給原始發送方（不寫入資料庫）
-	c.hub.SendNotification(payload.SenderID, "re_encrypt_request", payload)
+	// Check if sender is online
+	isSenderOnline := c.hub.IsUserOnline(payload.SenderID)
+	
+	if isSenderOnline {
+		// PRESERVATION: Sender is online, use existing direct WebSocket forwarding
+		log.Printf("🔐 [E2EE] Sender %s is online, forwarding request directly via WebSocket", payload.SenderID)
+		c.hub.SendNotification(payload.SenderID, "re_encrypt_request", payload)
+	} else {
+		// BUG FIX: Sender is offline, persist request to MongoDB
+		log.Printf("🔐 [E2EE] Sender %s is offline, persisting request to database", payload.SenderID)
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		
+		pendingReq := &domain.PendingReEncryptRequest{
+			MessageID:  payload.MessageID,
+			SenderID:   payload.SenderID,
+			ReceiverID: payload.ReceiverID,
+			RoomID:     payload.RoomID,
+			CreatedAt:  time.Now(),
+			ExpiresAt:  time.Now().Add(7 * 24 * time.Hour), // 7 days TTL
+		}
+		
+		if err := c.pendingReEncryptRepo.Store(ctx, pendingReq); err != nil {
+			log.Printf("❌ [E2EE] Failed to persist re_encrypt_request to database: %v", err)
+			c.respondError(client, "error", "Failed to persist re_encrypt_request")
+			return
+		}
+		
+		log.Printf("✅ [E2EE] Successfully persisted re_encrypt_request to database: messageID=%s, senderID=%s, receiverID=%s", 
+			payload.MessageID, payload.SenderID, payload.ReceiverID)
+		
+		// Send success response to receiver
+		c.respondSuccess(client, "re_encrypt_request_queued", map[string]string{
+			"message_id": payload.MessageID,
+			"status":     "queued",
+		})
+	}
 }
 
 // OnReEncryptResponse handles re-encrypted message responses from senders.

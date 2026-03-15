@@ -1,0 +1,114 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - Offline Re-encrypt Request Persistence
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the bug exists
+  - **Scoped PBT Approach**: Scope the property to concrete failing cases: sender offline when receiver sends re_encrypt_request
+  - Test that when sender is offline and receiver sends re_encrypt_request, the request is NOT persisted to database (from Bug Condition in design)
+  - Test that when sender reconnects, they do NOT receive the previously lost request
+  - Test that receiver gives up after 2 retries and marks message as permanently failed
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists)
+  - Document counterexamples found to understand root cause:
+    - re_encrypt_request not stored in database when sender offline
+    - sender receives no pending requests upon reconnection
+    - message permanently marked as decryption failed after 2 retries
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Online Re-encrypt Request Behavior
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-buggy inputs (sender online scenarios)
+  - Observe: When sender is online, re_encrypt_request is forwarded directly via WebSocket without database persistence
+  - Observe: Normal message sending and receiving flow works correctly
+  - Observe: Other WebSocket events (typing indicators, read receipts) work correctly
+  - Observe: Successful re_encrypt_response leads to successful decryption
+  - Write property-based tests capturing observed behavior patterns from Preservation Requirements
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [ ] 3. Fix for E2EE re-encrypt request offline persistence
+
+  - [x] 3.1 Create MongoDB schema for pending re-encrypt requests
+    - Create new file `backend/src/models/PendingReEncryptRequest.ts`
+    - Define Mongoose Schema with fields: messageId, senderId, receiverId, roomId, createdAt, expiresAt
+    - Set TTL index on expiresAt field (7 days expiration)
+    - Create compound index on senderId + createdAt for query optimization
+    - Provide CRUD helper methods
+    - _Bug_Condition: isBugCondition(input) where input.eventType == 're_encrypt_request' AND NOT isUserOnline(input.senderID)_
+    - _Expected_Behavior: Request SHALL be persisted to MongoDB when sender is offline_
+    - _Preservation: Online sender behavior SHALL remain unchanged (direct WebSocket forwarding)_
+    - _Requirements: 2.1, 2.5_
+
+  - [x] 3.2 Modify re_encrypt_request handler to add offline persistence
+    - Modify `backend/src/services/websocket/handlers/reEncryptHandler.ts` (or similar file)
+    - In handleReEncryptRequest function, add sender online status check
+    - If sender is online: keep existing logic (direct WebSocket forwarding)
+    - If sender is offline: persist request to MongoDB, return success status to receiver
+    - Add error handling for database write failures
+    - Add logging for key operations
+    - _Bug_Condition: isBugCondition(input) where sender is offline_
+    - _Expected_Behavior: Request SHALL be persisted when sender offline, forwarded when sender online_
+    - _Preservation: All existing WebSocket event handling SHALL remain unchanged_
+    - _Requirements: 2.1, 3.1_
+
+  - [x] 3.3 Add reconnection handler to deliver pending requests
+    - Modify WebSocket connection handler (onConnection or onAuthenticated event)
+    - Query all pending re_encrypt_requests for the reconnected user (sorted by createdAt)
+    - Deliver each request via WebSocket to the sender
+    - Delete request from database after successful delivery
+    - Add retry mechanism if delivery fails (user disconnects immediately)
+    - Add logging for tracking and debugging
+    - _Bug_Condition: Addresses the case where sender was offline when request was sent_
+    - _Expected_Behavior: SHALL automatically deliver pending requests when sender comes online_
+    - _Preservation: Normal connection flow SHALL remain unchanged_
+    - _Requirements: 2.2, 2.3_
+
+  - [x] 3.4 Remove receiver retry limit and implement exponential backoff
+    - Modify `frontend/src/services/encryption/decryptionRetry.ts` (or similar file)
+    - Remove maxRetries = 2 hard limit check
+    - Implement exponential backoff retry strategy
+    - Rely on backend 7-day TTL as final expiration mechanism
+    - Optionally add manual retry interface for users
+    - _Bug_Condition: Prevents permanent failure when sender is temporarily offline_
+    - _Expected_Behavior: SHALL allow continuous retries until success or expiration_
+    - _Preservation: Successful decryption flow SHALL remain unchanged_
+    - _Requirements: 2.4_
+
+  - [x] 3.5 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Offline Re-encrypt Request Persistence
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - Verify that re_encrypt_request is persisted when sender is offline
+    - Verify that sender receives pending requests upon reconnection
+    - Verify that receiver can continue retrying beyond 2 attempts
+    - _Requirements: 2.1, 2.2, 2.3, 2.4_
+
+  - [x] 3.6 Verify preservation tests still pass
+    - **Property 2: Preservation** - Online Re-encrypt Request Behavior
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm online sender behavior unchanged (direct WebSocket forwarding)
+    - Confirm normal message flow unchanged
+    - Confirm other WebSocket events work correctly
+    - Confirm successful decryption flow unchanged
+
+- [x] 4. Checkpoint - Ensure all tests pass
+  - Run all unit tests, property-based tests, and integration tests
+  - Verify bug condition test passes (confirms fix works)
+  - Verify preservation tests pass (confirms no regressions)
+  - Test complete flow: sender offline → request persisted → sender reconnects → request delivered → response received → decryption succeeds
+  - Test TTL expiration mechanism (7-day cleanup)
+  - Test concurrent scenarios and network instability cases
+  - Ensure all tests pass, ask the user if questions arise

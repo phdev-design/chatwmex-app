@@ -50,6 +50,13 @@ type Message struct {
 	LinkPreview *LinkPreview `json:"link_preview,omitempty" bson:"link_preview,omitempty"`
 	ExpiresAt   *time.Time   `json:"expires_at,omitempty"` // For disappearing messages (MongoDB TTL)
 	CreatedAt   time.Time    `json:"created_at"`
+	// 🔐 E2EE Group Media: FileKeysFanout 用於群組媒體加密
+	// 每個成員的 fileKey 用該成員的公鑰加密，格式：{"is_fanout": true, "keys": {userId: encryptedKey, ...}}
+	FileKeysFanout map[string]interface{} `json:"file_keys_fanout,omitempty" bson:"file_keys_fanout,omitempty"`
+	// 🔐 E2EE Group Text Messages: EncryptedContentsFanout 用於群組文字訊息加密
+	// 每個成員的訊息內容用該成員的公鑰加密，格式：{userId: encryptedContent, ...}
+	// key = userId, value = 該成員專屬的加密密文（base64 字串）
+	EncryptedContentsFanout map[string]string `json:"encrypted_contents_fanout,omitempty" bson:"encrypted_contents_fanout,omitempty"`
 }
 
 type LinkPreview struct {

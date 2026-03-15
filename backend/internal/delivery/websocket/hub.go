@@ -36,6 +36,8 @@ type Hub struct {
 	roomUsecase domain.RoomUsecase
 	// Online Repository for tracking online status
 	onlineRepo domain.OnlineRepository
+	// Pending ReEncrypt Repository for offline re-encrypt request persistence
+	pendingReEncryptRepo domain.PendingReEncryptRepository
 
 	// RabbitMQ Client for cross-server broadcast
 	rabbitMQ *rabbitmq.RabbitMQClient
@@ -53,21 +55,28 @@ func (h *Hub) GetActiveConnectionCount() int {
 	return len(h.clients)
 }
 
+// IsUserOnline checks if a user is currently connected to this Hub instance.
+func (h *Hub) IsUserOnline(userID string) bool {
+	_, ok := h.userClients[userID]
+	return ok
+}
+
 // NewHub creates a new Hub instance.
-func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService) *Hub {
+func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService, pr domain.PendingReEncryptRepository) *Hub {
 	return &Hub{
-		broadcast:           make(chan *domain.Message),
-		register:            make(chan *Client),
-		unregister:          make(chan *Client),
-		clients:             make(map[*Client]bool),
-		userClients:         make(map[string]*Client),
-		messageUsecase:      mu,
-		roomUsecase:         ru,
-		onlineRepo:          or,
-		rabbitMQ:            rabbit,
-		rabbitIngress:       rabbitIngress,
-		rabbitEventIngress:  rabbitEventIngress,
-		notificationService: ns,
+		broadcast:            make(chan *domain.Message),
+		register:             make(chan *Client),
+		unregister:           make(chan *Client),
+		clients:              make(map[*Client]bool),
+		userClients:          make(map[string]*Client),
+		messageUsecase:       mu,
+		roomUsecase:          ru,
+		onlineRepo:           or,
+		rabbitMQ:             rabbit,
+		rabbitIngress:        rabbitIngress,
+		rabbitEventIngress:   rabbitEventIngress,
+		notificationService:  ns,
+		pendingReEncryptRepo: pr,
 	}
 }
 
@@ -122,6 +131,11 @@ func (h *Hub) Run() {
 						client.send <- bytes
 					}
 				}
+
+				// Deliver pending re-encrypt requests
+				if h.pendingReEncryptRepo != nil {
+					h.deliverPendingReEncryptRequests(ctx, uid, client)
+				}
 			}(client.userID)
 			log.Printf("Client connected: %s", client.userID)
 
@@ -168,6 +182,93 @@ func (h *Hub) Run() {
 
 // routeMessage handles the delivery of a message to connected clients.
 func (h *Hub) routeMessage(msg *domain.Message) {
+	// 2. Room Logic (Group Chat)
+	if msg.RoomID != "" {
+		// Fetch members of the room
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		members, err := h.roomUsecase.GetRoomMembers(ctx, msg.RoomID)
+		cancel()
+
+		if err != nil {
+			log.Printf("Error fetching room members for broadcast: %v", err)
+			return
+		}
+
+		// 🔐 E2EE Group Messages: 為每個成員裁切 payload
+		// 如果訊息包含 EncryptedContentsFanout，為每個接收方只發送其專屬密文
+		hasFanout := msg.EncryptedContentsFanout != nil && len(msg.EncryptedContentsFanout) > 0
+
+		// 1. 先發送給發送方（完整副本，包含 EncryptedContentsFanout）
+		if sourceClient, ok := h.userClients[msg.SenderID]; ok {
+			fullPayload := map[string]interface{}{
+				"event": "chat_message",
+				"data":  msg,
+			}
+			fullMessageBytes, err := json.Marshal(fullPayload)
+			if err == nil {
+				select {
+				case sourceClient.send <- fullMessageBytes:
+				default:
+					close(sourceClient.send)
+					delete(h.clients, sourceClient)
+					delete(h.userClients, sourceClient.userID)
+				}
+			}
+		}
+
+		// 2. 廣播給其他成員（裁切後的版本）
+		for _, memberID := range members {
+			// 跳過發送者（已在上面處理）
+			if memberID == msg.SenderID {
+				continue
+			}
+
+			destClient, ok := h.userClients[memberID]
+			if !ok {
+				continue
+			}
+
+			// 為每個接收方建立個人化訊息
+			personalMsg := *msg // 複製訊息結構
+
+			if hasFanout {
+				// 從 fanout map 中取出該成員的專屬密文
+				if ciphertext, exists := msg.EncryptedContentsFanout[memberID]; exists {
+					personalMsg.Content = ciphertext
+				} else {
+					// 如果該成員沒有對應的密文，跳過（可能是加密時該成員不在線）
+					log.Printf("⚠️ [E2EE] Member %s has no ciphertext in fanout for message %s", memberID, msg.ID)
+					continue
+				}
+				// 移除 EncryptedContentsFanout，不把整個 fanout map 傳給每個人
+				personalMsg.EncryptedContentsFanout = nil
+			}
+
+			// 序列化個人化訊息
+			personalPayload := map[string]interface{}{
+				"event": "chat_message",
+				"data":  personalMsg,
+			}
+			personalMessageBytes, err := json.Marshal(personalPayload)
+			if err != nil {
+				log.Printf("Error encoding personal message for member %s: %v", memberID, err)
+				continue
+			}
+
+			// 發送給該成員
+			select {
+			case destClient.send <- personalMessageBytes:
+			default:
+				close(destClient.send)
+				delete(h.clients, destClient)
+				delete(h.userClients, destClient.userID)
+			}
+		}
+
+		return
+	}
+
+	// 1-on-1 DM Logic (保持原有邏輯)
 	payload := map[string]interface{}{
 		"event": "chat_message",
 		"data":  msg,
@@ -179,8 +280,6 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 	}
 
 	// 1. Send back to Sender (Confirmation)
-	// Even if it came from RabbitMQ (another server), if the sender is somehow connected here
-	// (e.g. multi-device), they get it.
 	if sourceClient, ok := h.userClients[msg.SenderID]; ok {
 		select {
 		case sourceClient.send <- messageBytes:
@@ -191,38 +290,8 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 		}
 	}
 
-	// 2. Room Logic (Group Chat)
-	if msg.RoomID != "" {
-		// Fetch members of the room
-		// Use a short timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		members, err := h.roomUsecase.GetRoomMembers(ctx, msg.RoomID)
-		cancel()
-
-		if err != nil {
-			log.Printf("Error fetching room members for broadcast: %v", err)
-			return
-		}
-
-		// Broadcast to all online members
-		for _, memberID := range members {
-			// Skip sender if desired
-			if memberID == msg.SenderID {
-				continue
-			}
-
-			if destClient, ok := h.userClients[memberID]; ok {
-				select {
-				case destClient.send <- messageBytes:
-				default:
-					close(destClient.send)
-					delete(h.clients, destClient)
-					delete(h.userClients, destClient.userID)
-				}
-			}
-		}
-	} else if msg.ReceiverID != "" {
-		// 1-on-1
+	// 2. Send to Receiver
+	if msg.ReceiverID != "" {
 		if destClient, ok := h.userClients[msg.ReceiverID]; ok {
 			select {
 			case destClient.send <- messageBytes:
@@ -803,6 +872,62 @@ func (h *Hub) SendTypingToRoom(senderID, roomID, event string) {
 			}
 			bytes, _ := json.Marshal(resp)
 			client.send <- bytes
+		}
+	}
+}
+
+// deliverPendingReEncryptRequests fetches and delivers all pending re-encrypt requests
+// for a reconnected user. This ensures that requests sent while the user was offline
+// are delivered when they come back online.
+func (h *Hub) deliverPendingReEncryptRequests(ctx context.Context, userID string, client *Client) {
+	// Query all pending re-encrypt requests for this sender (sorted by createdAt)
+	pendingRequests, err := h.pendingReEncryptRepo.GetBySenderID(ctx, userID)
+	if err != nil {
+		log.Printf("Error fetching pending re-encrypt requests for user %s: %v", userID, err)
+		return
+	}
+
+	if len(pendingRequests) == 0 {
+		log.Printf("No pending re-encrypt requests for user %s", userID)
+		return
+	}
+
+	log.Printf("Delivering %d pending re-encrypt request(s) to user %s", len(pendingRequests), userID)
+
+	// Deliver each request via WebSocket
+	for _, req := range pendingRequests {
+		// Construct the re_encrypt_request event
+		resp := map[string]interface{}{
+			"event": "re_encrypt_request",
+			"data": map[string]interface{}{
+				"message_id":  req.MessageID,
+				"receiver_id": req.ReceiverID,
+				"room_id":     req.RoomID,
+			},
+		}
+
+		bytes, err := json.Marshal(resp)
+		if err != nil {
+			log.Printf("Error marshaling re-encrypt request for message %s: %v", req.MessageID, err)
+			continue
+		}
+
+		// Attempt to send to the client with retry mechanism
+		select {
+		case client.send <- bytes:
+			// Successfully sent, delete from database
+			deleteCtx, deleteCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			if err := h.pendingReEncryptRepo.Delete(deleteCtx, req.ID); err != nil {
+				log.Printf("Error deleting pending re-encrypt request %s: %v", req.ID, err)
+			} else {
+				log.Printf("Successfully delivered and deleted pending re-encrypt request %s for message %s", req.ID, req.MessageID)
+			}
+			deleteCancel()
+		default:
+			// Client send channel is full or closed, user might have disconnected
+			log.Printf("Failed to deliver pending re-encrypt request %s to user %s (send channel blocked)", req.ID, userID)
+			// Don't delete from database - will retry on next connection
+			break
 		}
 	}
 }

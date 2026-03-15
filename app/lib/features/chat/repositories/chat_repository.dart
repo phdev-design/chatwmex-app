@@ -414,7 +414,8 @@ class ChatRepository {
   /// 1. Generates random file key
   /// 2. Encrypts audio file
   /// 3. Uploads encrypted file
-  /// 4. Sends message via WebSocket with URL and key
+  /// 4. For group chats: Encrypts fileKey for each member (fanout)
+  /// 5. Sends message via WebSocket with URL and encrypted keys
   Future<Message> sendAudioMessage({
     required String audioFilePath,
     required String roomId,
@@ -440,7 +441,52 @@ class ChatRepository {
       // 4. Upload encrypted audio
       final audioUrl = await _uploadEncryptedAudio(encryptedBytes);
 
-      // 5. Create message object for local optimistic update
+      // 5. 🔐 群組訊息：為每個成員加密 fileKey (fanout)
+      Map<String, dynamic>? fileKeysFanout;
+      final isGroupMessage = roomId.isNotEmpty;
+      
+      if (isGroupMessage) {
+        try {
+          // 取得群組所有成員
+          final members = await getRoomMemberProfiles(roomId);
+          final memberIds = members.map((m) => m.id).toList();
+          
+          debugPrint('[sendAudioMessage] 🔐 Encrypting fileKey for ${memberIds.length} members');
+          
+          // 為每個成員用其公鑰加密 fileKey
+          final encryptedKeys = <String, String>{};
+          for (final memberId in memberIds) {
+            try {
+              final memberPublicKey = await getUserPublicKey(memberId);
+              if (memberPublicKey != null && memberPublicKey.isNotEmpty) {
+                final encryptedKey = await _cryptoService.encryptMessage(
+                  fileKey,
+                  memberPublicKey,
+                );
+                encryptedKeys[memberId] = encryptedKey;
+                debugPrint('[sendAudioMessage] ✅ Encrypted fileKey for member: $memberId');
+              } else {
+                debugPrint('[sendAudioMessage] ⚠️ No public key found for member: $memberId');
+              }
+            } catch (e) {
+              debugPrint('[sendAudioMessage] ❌ Failed to encrypt fileKey for member $memberId: $e');
+            }
+          }
+          
+          if (encryptedKeys.isNotEmpty) {
+            fileKeysFanout = {
+              'is_fanout': true,
+              'keys': encryptedKeys,
+            };
+            debugPrint('[sendAudioMessage] 🔐 Created fileKeysFanout with ${encryptedKeys.length} keys');
+          }
+        } catch (e) {
+          debugPrint('[sendAudioMessage] ⚠️ Failed to create fileKeysFanout: $e');
+          // 繼續執行，但不使用 fanout（向後兼容）
+        }
+      }
+
+      // 6. Create message object for local optimistic update
       final clientMsgId = const Uuid().v4();
       final now = DateTime.now();
       
@@ -454,25 +500,37 @@ class ChatRepository {
         type: MessageType.voice,
         createdAt: now,
         status: MessageStatus.sending,
-        fileKey: fileKey,
+        fileKey: isGroupMessage ? null : fileKey, // 🔐 群組訊息不使用明文 fileKey
+        fileKeysFanout: fileKeysFanout,
       );
 
-      // 6. Store optimistic message in local DB
+      // 7. Store optimistic message in local DB
       try {
         await _localDb.insertMessages([message]);
       } catch (e) {
         debugPrint('⚠️ Failed to store optimistic message: $e');
       }
 
-      // 7. Send message via WebSocket
-      await _webSocketService.send('chat_message', {
+      // 8. Send message via WebSocket
+      final payload = <String, dynamic>{
         'client_msg_id': clientMsgId,
         'type': 'voice',
         'content': audioUrl,
-        'file_key': fileKey,
         'room_id': roomId,
         'receiver_id': receiverId,
-      });
+      };
+      
+      // 🔐 群組訊息：使用 file_keys_fanout，不傳明文 file_key
+      if (fileKeysFanout != null) {
+        payload['file_keys_fanout'] = fileKeysFanout;
+        debugPrint('[sendAudioMessage] 🔐 Sending with file_keys_fanout (no plaintext file_key)');
+      } else {
+        // DM 或 fanout 失敗時，使用明文 fileKey（向後兼容）
+        payload['file_key'] = fileKey;
+        debugPrint('[sendAudioMessage] 📤 Sending with plaintext file_key (DM or fallback)');
+      }
+      
+      await _webSocketService.send('chat_message', payload);
 
       debugPrint('✅ Encrypted audio message sent: $audioUrl');
       return message;

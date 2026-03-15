@@ -72,6 +72,7 @@ func main() {
 	authRepo := redis_repo.NewAuthRepository(redisClient) // 👉 新增 AuthRepo
 	chatSettingRepo := mongo_repo.NewChatSettingRepository(db) // 👉 新增
 	roomLabelRepo := mongo_repo.NewRoomLabelRepository(db)
+	pendingReEncryptRepo := mongo_repo.NewPendingReEncryptRepository(db) // 👉 新增 PendingReEncryptRepo
 
 	// 4. Initialize Usecases
 	// Set a default timeout for usecase operations
@@ -182,10 +183,10 @@ func main() {
 	}
 
 	// Hub needs NotificationService to send push when user offline
-	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService)
+	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo)
 
 	// Create SocketController
-	socketController := websocket.NewSocketController(hub, messageUsecase, friendRepo)
+	socketController := websocket.NewSocketController(hub, messageUsecase, friendRepo, pendingReEncryptRepo)
 
 	go hub.Run()
 
