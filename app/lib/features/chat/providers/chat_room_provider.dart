@@ -1230,64 +1230,61 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
     if (!isE2EEEnabled) return m;
 
-    if (arg.isRoom) {
+if (arg.isRoom) {
       try {
-        String decrypted;
-        
-        // 🔐 判斷順序：
-        // 1. 若 encryptedContentsFanout != null（新格式）→ 從 fanout map 取出密文並解密
-        // 2. 若 content 是 JSON 且包含 'is_fanout': true（舊格式）→ 沿用現有邏輯
-        // 3. 其他 → 視為明文或錯誤
-        
-        if (m.encryptedContentsFanout != null) {
-          // 新格式：從 encryptedContentsFanout[currentUserId] 取出密文
-          final myCiphertext = m.encryptedContentsFanout![arg.currentUserId];
-          if (myCiphertext == null) {
-            debugPrint('[E2EE] No ciphertext for current user in encryptedContentsFanout');
-            throw DecryptionFailureException(
-              messageId: m.id,
-              senderId: m.senderId,
-              originalCiphertext: '',
-              reason: 'Missing ciphertext for current user in fanout',
-            );
-          }
-          
-          // 直接解密該密文
-          final senderPublicKey = await _getPublicKey(m.senderId);
-          if (senderPublicKey == null) {
-            debugPrint('[E2EE] Sender public key unavailable');
-            throw DecryptionFailureException(
-              messageId: m.id,
-              senderId: m.senderId,
-              originalCiphertext: myCiphertext,
-              reason: 'Sender public key unavailable',
-            );
-          }
-          
-          try {
-            decrypted = await _cryptoService.decryptMessage(
+        // 🛑 1. 新增防禦：如果 senderId 變成 roomId (系統訊息或後端給錯)，直接跳過避免 404
+        if (m.senderId == arg.roomId) {
+          debugPrint('[E2EE] ⚠️ 跳過解密: senderId 等於 roomId (${m.senderId})');
+          return m;
+        }
+
+        Message updatedMessage = m;
+        final isMedia = (m.type == MessageType.image || 
+                         m.type == MessageType.video || 
+                         m.type == MessageType.file || 
+                         m.type == MessageType.voice);
+        bool contentDecrypted = false;
+
+        // 🔐 2. 專屬「文字訊息」的解密 (排除媒體，避免重複解密)
+        if (!isMedia) {
+          String decryptedText;
+          if (m.encryptedContentsFanout != null) {
+            final myCiphertext = m.encryptedContentsFanout![arg.currentUserId];
+            if (myCiphertext == null) {
+              throw DecryptionFailureException(
+                messageId: m.id,
+                senderId: m.senderId,
+                originalCiphertext: '',
+                reason: 'Missing ciphertext for current user in fanout',
+              );
+            }
+            final senderPublicKey = await _getPublicKey(m.senderId);
+            if (senderPublicKey == null) {
+              throw DecryptionFailureException(
+                messageId: m.id,
+                senderId: m.senderId,
+                originalCiphertext: myCiphertext,
+                reason: 'Sender public key unavailable',
+              );
+            }
+            decryptedText = await _cryptoService.decryptMessage(
               myCiphertext,
               senderPublicKey,
               messageId: m.id,
               senderId: m.senderId,
             );
-          } on DecryptionFailureException {
-            rethrow;
-          } catch (decryptError) {
-            throw DecryptionFailureException(
-              messageId: m.id,
-              senderId: m.senderId,
-              originalCiphertext: myCiphertext,
-              reason: 'Decryption operation failed: ${decryptError.runtimeType}',
-            );
+          } else {
+            // 舊格式
+            decryptedText = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
           }
-        } else {
-          // 舊格式：沿用現有的 _decryptGroupMessage 邏輯
-          decrypted = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
+
+          if (decryptedText != m.content) {
+            updatedMessage = updatedMessage.copyWith(content: decryptedText);
+            contentDecrypted = true;
+          }
         }
-        
-        // 🔐 群組媒體：從 fileKeysFanout 中提取並解密 fileKey
-        Message updatedMessage = m;
+
+        // 🔐 3. 群組媒體：提取 fileKey
         if (m.fileKeysFanout != null && m.fileKey == null) {
           try {
             final senderPublicKey = await _getPublicKey(m.senderId);
@@ -1298,21 +1295,17 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                 senderPublicKey,
               );
               if (decryptedFileKey != null) {
-                updatedMessage = m.copyWith(fileKey: decryptedFileKey);
-                debugPrint('[_tryDecryptMessage] ✅ Extracted fileKey from fanout for message: ${m.id}');
-              } else {
-                debugPrint('[_tryDecryptMessage] ⚠️ Failed to extract fileKey from fanout for message: ${m.id}');
+                updatedMessage = updatedMessage.copyWith(fileKey: decryptedFileKey);
+                debugPrint('[_tryDecryptMessage] ✅ Extracted fileKey from fanout');
               }
             }
           } catch (e) {
-            debugPrint('[_tryDecryptMessage] ❌ Error extracting fileKey from fanout: $e');
+            debugPrint('[_tryDecryptMessage] ❌ Error extracting fileKey: $e');
           }
         }
         
-        // 🔐 群組媒體訊息：從 encryptedContentsFanout 解密圖片/影片 URL
-        if ((m.type == MessageType.image || m.type == MessageType.video) &&
-            m.encryptedContentsFanout != null &&
-            (m.content.isEmpty || _looksLikeE2EECiphertext(m.content))) {
+        // 🔐 4. 群組媒體：解密 URL
+        if (isMedia && m.encryptedContentsFanout != null && (m.content.isEmpty || _looksLikeE2EECiphertext(m.content))) {
           final myEncryptedUrl = m.encryptedContentsFanout![arg.currentUserId];
           if (myEncryptedUrl != null && myEncryptedUrl.isNotEmpty) {
             try {
@@ -1325,23 +1318,35 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                   senderId: m.senderId,
                 );
                 updatedMessage = updatedMessage.copyWith(content: decryptedUrl);
+                contentDecrypted = true;
                 debugPrint('[E2EE] ✅ Decrypted media URL for message ${m.id}');
-              } else {
-                debugPrint('[E2EE] ⚠️ Sender public key unavailable for media URL decryption: ${m.senderId}');
               }
             } catch (e) {
               debugPrint('[E2EE] ❌ Failed to decrypt media URL: $e');
             }
           }
+        } else if (isMedia && m.encryptedContentsFanout == null) {
+          // 相容舊格式的媒體訊息
+          try {
+            final decryptedUrl = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
+            if (decryptedUrl != m.content) {
+              updatedMessage = updatedMessage.copyWith(content: decryptedUrl);
+              contentDecrypted = true;
+            }
+          } catch (e) {
+            debugPrint('[E2EE] ❌ Failed to decrypt old format media: $e');
+          }
         }
         
-        if (decrypted != m.content) {
-          // Update LocalDB status to sync with memory state after successful decryption
+        // 🏁 5. 收尾與更新狀態
+        if (contentDecrypted) {
           await LocalDbService().updateMessageStatus(m.clientMsgId ?? m.id, MessageStatus.delivered);
-          // 🔐 標記訊息為已解密
           await LocalDbService().markMessageAsDecrypted(m.id);
-          return updatedMessage.copyWith(content: decrypted, isDecrypted: true);
+          return updatedMessage.copyWith(isDecrypted: true);
+        } else if (updatedMessage.fileKey != m.fileKey) {
+          return updatedMessage; // 只有 fileKey 解密成功但 content 沒變的情況
         }
+        
         return updatedMessage;
       } on DecryptionFailureException catch (e) {
         await _handleDecryptionFailure(m, e);
