@@ -30,6 +30,16 @@ class WebSocketService {
   final List<Map<String, dynamic>> _messageQueue = [];
   final Map<String, Completer<void>> _pendingAcks = {};
 
+  // ACK timeout 設定（秒）
+  static const int _ackTimeoutSeconds = 15;
+
+  // 最大重連延遲（秒）
+  static const int _maxReconnectDelaySec = 30;
+
+  // 連續 ACK timeout 計數器（用於偵測連線品質問題）
+  int _consecutiveAckTimeouts = 0;
+  static const int _maxConsecutiveAckTimeouts = 3;
+
   WebSocketService(this._storageService, this._ref);
 
   Future<void> connect() async {
@@ -185,14 +195,18 @@ class WebSocketService {
     _isConnected = false;
     _channel = null;
 
+    // 重置 ACK timeout 計數器（連線已斷，重新開始計算）
+    _consecutiveAckTimeouts = 0;
+
     // Emit disconnect event
     _streamController.add({'event': 'ws_disconnected'});
 
-    // Exponential backoff
-    final delay = Duration(seconds: (1 << _retryAttempts).clamp(1, 30));
+    // Exponential backoff: 先遞增再計算，避免第一次永遠是 1 秒
     _retryAttempts++;
+    final delaySec = (_retryAttempts * _retryAttempts).clamp(1, _maxReconnectDelaySec);
+    final delay = Duration(seconds: delaySec);
 
-    debugPrint('Reconnecting in ${delay.inSeconds} seconds...');
+    debugPrint('Reconnecting in ${delay.inSeconds} seconds... (attempt $_retryAttempts)');
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, connect);
   }
@@ -225,18 +239,33 @@ class WebSocketService {
 
         // Timeout for ACK
         await completer.future.timeout(
-          const Duration(seconds: 5),
+          Duration(seconds: _ackTimeoutSeconds),
           onTimeout: () {
             _pendingAcks.remove(clientMsgId);
             throw TimeoutException('Message ACK timeout');
           },
         );
+
+        // ACK 成功，重置連續 timeout 計數
+        _consecutiveAckTimeouts = 0;
       }
     } catch (e) {
       debugPrint('Send failed, queuing message: $e');
       _messageQueue.add(payload);
-      // Trigger reconnect if needed?
-      if (_isConnected) _handleDisconnect();
+
+      // 只有在連續多次 ACK timeout 時才判定連線有問題並觸發重連
+      // 單次 timeout 可能只是後端暫時繁忙，不應斷線
+      if (e is TimeoutException) {
+        _consecutiveAckTimeouts++;
+        debugPrint('Consecutive ACK timeouts: $_consecutiveAckTimeouts / $_maxConsecutiveAckTimeouts');
+        if (_consecutiveAckTimeouts >= _maxConsecutiveAckTimeouts && _isConnected) {
+          debugPrint('Too many consecutive ACK timeouts, reconnecting...');
+          _handleDisconnect();
+        }
+      } else if (_isConnected) {
+        // 非 timeout 的錯誤（例如 sink 已關閉），直接重連
+        _handleDisconnect();
+      }
     }
   }
 

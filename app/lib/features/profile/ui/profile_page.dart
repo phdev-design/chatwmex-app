@@ -13,6 +13,7 @@ import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/auth/providers/auth_provider.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
 import 'package:app/features/auth/repositories/auth_repository.dart';
+import 'package:app/features/profile/ui/my_qr_code_page.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -87,6 +88,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_rounded, size: 24),
+            tooltip: '我的 QR Code',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MyQrCodePage()),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

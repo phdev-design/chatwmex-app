@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:app/features/friend/providers/friend_provider.dart';
 
 class FriendRequestsPage extends ConsumerWidget {
@@ -36,10 +37,21 @@ class FriendRequestsPage extends ConsumerWidget {
               size: 20, color: textColor),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.person_add_alt_1_rounded, size: 22, color: textColor),
+            tooltip: '加好友',
+            onPressed: () => context.push('/add-friend'),
+          ),
+        ],
       ),
       body: SafeArea(
-        child: state.requests.isEmpty
-            ? _buildEmptyState(isDark, textColor, subTextColor)
+        child: state.isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : state.error != null
+                ? _buildErrorState(ref, state.error!, isDark, textColor, subTextColor)
+                : state.requests.isEmpty
+                    ? _buildEmptyState(context, isDark, textColor, subTextColor)
             : ListView(
                 padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                 children: [
@@ -206,7 +218,7 @@ class FriendRequestsPage extends ConsumerWidget {
   }
 
   // ─── 空狀態畫面 (Empty State) ───
-  Widget _buildEmptyState(bool isDark, Color textColor, Color subTextColor) {
+  Widget _buildEmptyState(BuildContext context, bool isDark, Color textColor, Color subTextColor) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -242,6 +254,83 @@ class FriendRequestsPage extends ConsumerWidget {
                 fontSize: 14,
                 color: subTextColor,
                 height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () => context.push('/add-friend'),
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
+                label: const Text('加好友', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF007AFF),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── 錯誤狀態畫面 (Error State) ───
+  Widget _buildErrorState(WidgetRef ref, String error, bool isDark, Color textColor, Color subTextColor) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: Colors.redAccent,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '發生錯誤',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: subTextColor,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => ref.read(friendViewModelProvider.notifier).loadAll(),
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('重試'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDark ? Colors.white12 : Colors.grey.shade200,
+                foregroundColor: textColor,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ],

@@ -608,6 +608,67 @@ class CryptoService {
     return base64Encode(keyBytes);
   }
 
+  /// 🔑 Linked Devices: 產生 Session Key（AES-256 對稱金鑰）
+  /// 回傳 base64 編碼的 32-byte 隨機金鑰
+  Future<String> generateSessionKey() => generateRandomKey();
+
+  /// 🔑 Linked Devices: 使用裝置公鑰加密 Session Key
+  ///
+  /// 使用 X25519 ECDH 推導共享密鑰，再以 AES-GCM 加密 Session Key。
+  /// [sessionKeyBase64] — base64 編碼的 Session Key
+  /// [devicePublicKeyBase64] — 目標裝置的 X25519 公鑰（base64）
+  /// 回傳加密後的 Session Key（base64，格式：nonce + mac + ciphertext）
+  Future<String> encryptSessionKeyForDevice(
+    String sessionKeyBase64,
+    String devicePublicKeyBase64,
+  ) async {
+    final sharedSecret = await _deriveSharedSecret(devicePublicKeyBase64);
+    final sessionKeyBytes = base64Decode(sessionKeyBase64);
+
+    final secretBox = await _aesGcm.encrypt(
+      sessionKeyBytes,
+      secretKey: sharedSecret,
+    );
+
+    final combinedBytes = [
+      ...secretBox.nonce,
+      ...secretBox.mac.bytes,
+      ...secretBox.cipherText,
+    ];
+
+    return base64Encode(combinedBytes);
+  }
+
+  /// 🔑 Linked Devices: 使用本機私鑰解密 Session Key
+  ///
+  /// 使用 X25519 ECDH 推導共享密鑰，再以 AES-GCM 解密 Session Key。
+  /// [encryptedSessionKeyBase64] — 加密後的 Session Key（base64）
+  /// [senderPublicKeyBase64] — 發送方的 X25519 公鑰（base64）
+  /// 回傳解密後的 Session Key（base64）
+  Future<String> decryptSessionKeyFromDevice(
+    String encryptedSessionKeyBase64,
+    String senderPublicKeyBase64,
+  ) async {
+    final sharedSecret = await _deriveSharedSecret(senderPublicKeyBase64);
+    final decodedBytes = base64Decode(encryptedSessionKeyBase64);
+
+    if (decodedBytes.length < 28) {
+      throw Exception('Invalid encrypted session key: too short');
+    }
+
+    final nonce = decodedBytes.sublist(0, 12);
+    final macBytes = decodedBytes.sublist(12, 28);
+    final cipherText = decodedBytes.sublist(28);
+
+    final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes));
+    final plainBytes = await _aesGcm.decrypt(
+      secretBox,
+      secretKey: sharedSecret,
+    );
+
+    return base64Encode(plainBytes);
+  }
+
   /// Encrypts bytes using AES-GCM with the provided key
   /// Returns: nonce (12 bytes) + MAC (16 bytes) + ciphertext
   Future<Uint8List> encryptBytes(Uint8List plainBytes, String keyBase64) async {

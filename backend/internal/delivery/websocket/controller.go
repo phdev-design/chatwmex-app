@@ -161,6 +161,9 @@ func (c *SocketController) OnChatMessage(client *Client, data []byte) {
 		c.hub.broadcast <- &msg
 	}
 
+	// Update LastActiveAt if sender is a linked device (async, no-op for regular users)
+	c.hub.updateLinkedDeviceActivity(client.userID)
+
 	// Send ACK to sender
 	c.respondSuccess(client, "message_ack", map[string]string{
 		"message_id":    msg.ID,
@@ -214,15 +217,19 @@ func (c *SocketController) OnMarkRead(client *Client, data []byte) {
 		return
 	}
 
+	readAt := time.Now()
 	c.respondSuccess(client, "read_receipt", map[string]interface{}{
 		"conversation_id": payload.ConversationID,
 		"is_room":         payload.IsRoom,
 		"reader_id":       client.userID,
-		"read_at":         time.Now().Format(time.RFC3339),
+		"read_at":         readAt.Format(time.RFC3339),
 	})
 	if !payload.IsRoom && payload.ConversationID != "" {
 		c.hub.SendReadReceiptToUser(payload.ConversationID, client.userID)
 	}
+
+	// Sync read status to all linked devices of the reader
+	c.hub.BroadcastReadStatusSync(client.userID, payload.ConversationID, readAt)
 }
 
 // OnTypingStart handles typing indicators.

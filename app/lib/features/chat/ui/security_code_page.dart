@@ -5,6 +5,10 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/features/chat/services/public_key_cache_service.dart';
+import 'package:app/features/chat/repositories/chat_repository.dart';
+import 'package:app/features/chat/models/room.dart';
+import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
+import 'package:app/core/storage/storage_service.dart';
 
 final contactPublicKeyProvider = FutureProvider.family<String?, String>((
   ref,
@@ -14,14 +18,29 @@ final contactPublicKeyProvider = FutureProvider.family<String?, String>((
   return await cacheService.getPublicKey(contactId);
 });
 
+final roomMembersProvider = FutureProvider.family<List<User>, String>((
+  ref,
+  roomId,
+) async {
+  final repository = ref.watch(chatRepositoryProvider);
+  return await repository.getRoomMemberProfiles(roomId);
+});
+
+final _currentUserIdProvider = FutureProvider<String?>((ref) async {
+  final storage = ref.watch(storageServiceProvider);
+  return await storage.read('user_id');
+});
+
 class SecurityCodePage extends ConsumerWidget {
   final String contactId;
   final String contactName;
+  final bool isRoom;
 
   const SecurityCodePage({
     super.key,
     required this.contactId,
     required this.contactName,
+    this.isRoom = false,
   });
 
   int _compareBytes(List<int> a, List<int> b) {
@@ -71,14 +90,148 @@ class SecurityCodePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryTextColor = colorScheme.onSurface;
-    final secondaryTextColor = colorScheme.onSurfaceVariant;
     final Color bgColor = isDark
         ? const Color(0xFF0B141A)
         : colorScheme.surface;
 
+    if (isRoom) {
+      return _buildGroupSecurityCodePage(context, ref, bgColor);
+    }
+    return _buildDirectSecurityCodePage(context, ref, bgColor);
+  }
+
+  /// 群組聊天：顯示成員列表，點選成員後查看安全碼
+  Widget _buildGroupSecurityCodePage(
+    BuildContext context,
+    WidgetRef ref,
+    Color bgColor,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final secondaryTextColor = colorScheme.onSurfaceVariant;
+    final membersAsync = ref.watch(roomMembersProvider(contactId));
+    final currentUserIdAsync = ref.watch(_currentUserIdProvider);
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        title: const Text('安全碼'),
+        backgroundColor: bgColor,
+        scrolledUnderElevation: 0,
+      ),
+      body: currentUserIdAsync.when(
+        data: (currentUserId) => membersAsync.when(
+          data: (members) {
+            // 過濾掉自己
+            final others = members
+                .where((m) => m.id != currentUserId)
+                .toList();
+
+          if (others.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Text(
+                  '群組中沒有其他成員。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: secondaryTextColor,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  '選擇一位成員來查看你與該成員之間的安全碼',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: secondaryTextColor,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: others.length,
+                  itemBuilder: (context, index) {
+                    final member = others[index];
+                    final name = member.username.isNotEmpty
+                        ? member.username
+                        : 'Unknown';
+                    return ListTile(
+                      leading: ChatAvatar(
+                        avatarUrl: member.avatarUrl,
+                        radius: 20,
+                        fallbackText: name.isNotEmpty
+                            ? name[0].toUpperCase()
+                            : '?',
+                        logTag: 'security_${member.id}',
+                      ),
+                      title: Text(name),
+                      trailing: Icon(
+                        Icons.chevron_right,
+                        color: secondaryTextColor,
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SecurityCodePage(
+                              contactId: member.id,
+                              contactName: name,
+                              isRoom: false,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, stack) => Center(
+          child: Text(
+            '取得群組成員失敗: $err',
+            style: TextStyle(color: colorScheme.error),
+          ),
+        ),
+        ),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, stack) => Center(
+          child: Text(
+            '取得使用者資訊失敗: $err',
+            style: TextStyle(color: colorScheme.error),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 一對一聊天：直接顯示安全碼（原本的邏輯）
+  Widget _buildDirectSecurityCodePage(
+    BuildContext context,
+    WidgetRef ref,
+    Color bgColor,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor = colorScheme.onSurface;
+    final secondaryTextColor = colorScheme.onSurfaceVariant;
+
     final myPublicKeyAsync = ref.watch(cryptoServiceProvider).publicKeyBase64;
-    final theirPublicKeyAsync = ref.watch(contactPublicKeyProvider(contactId));
+    final theirPublicKeyAsync = ref.watch(
+      contactPublicKeyProvider(contactId),
+    );
 
     return Scaffold(
       backgroundColor: bgColor,

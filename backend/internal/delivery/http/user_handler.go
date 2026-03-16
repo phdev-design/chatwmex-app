@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,9 +21,10 @@ import (
 )
 
 type UserHandler struct {
-	UserUsecase        domain.UserUsecase
-	JWTSecret          string
-	ProfileBroadcaster UserProfileEventBroadcaster
+	UserUsecase            domain.UserUsecase
+	LinkedDeviceUsecase    domain.LinkedDeviceUsecase
+	JWTSecret              string
+	ProfileBroadcaster     UserProfileEventBroadcaster
 }
 
 type UserProfileEventBroadcaster interface {
@@ -31,11 +33,12 @@ type UserProfileEventBroadcaster interface {
 }
 
 // NewUserHandler initializes the user handler and registers routes.
-func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string, profileBroadcaster UserProfileEventBroadcaster) {
+func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string, profileBroadcaster UserProfileEventBroadcaster, ldUsecase domain.LinkedDeviceUsecase) {
 	handler := &UserHandler{
-		UserUsecase:        us,
-		JWTSecret:          jwtSecret,
-		ProfileBroadcaster: profileBroadcaster,
+		UserUsecase:         us,
+		LinkedDeviceUsecase: ldUsecase,
+		JWTSecret:           jwtSecret,
+		ProfileBroadcaster:  profileBroadcaster,
 	}
 
 	api := r.Group("/api/v1/users")
@@ -63,6 +66,9 @@ func NewUserHandler(r *gin.Engine, us domain.UserUsecase, jwtSecret string, prof
 		// E2EE Passphrase Cloud Backup endpoints
 		protected.POST("/key-backup", handler.BackupE2EEKey)
 		protected.GET("/key-backup", handler.GetE2EEKeyBackup)
+
+		// Logout endpoint
+		protected.POST("/logout", handler.Logout)
 	}
 }
 
@@ -78,6 +84,28 @@ type LoginRequest struct {
 	Username string `json:"username" binding:"required"` // Can be username or email
 	Password string `json:"password" binding:"required"`
 }
+
+// Logout handles user logout and cascades unlinking of all linked devices.
+func (h *UserHandler) Logout(c *gin.Context) {
+	userID := c.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Cascade unlink all linked devices for this user
+	if h.LinkedDeviceUsecase != nil {
+		if err := h.LinkedDeviceUsecase.UnlinkAllDevices(ctx, userID); err != nil {
+			log.Printf("Error unlinking all devices for user %s during logout: %v", userID, err)
+			// Don't fail the logout if unlinking fails — log and continue
+		}
+	}
+
+	response.Success(c, gin.H{"message": "Logged out successfully"})
+}
+
 
 // LoginResponse defines the response body for user login.
 type LoginResponse struct {

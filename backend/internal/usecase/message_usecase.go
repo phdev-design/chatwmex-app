@@ -133,6 +133,11 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 			if memberID == msg.SenderID {
 				continue
 			}
+			// 🔐 Bug #2 防呆：跳過 roomID
+			if memberID == msg.RoomID {
+				log.Printf("[WARN] memberID == roomID in offline storage, skipping: %s", memberID)
+				continue
+			}
 			if !onlineMap[memberID] {
 				if err := u.messageRepo.StoreOfflineMessage(ctx, memberID, msg); err != nil {
 					return err

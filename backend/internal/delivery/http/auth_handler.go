@@ -40,7 +40,11 @@ func NewAuthHandler(r *gin.Engine, au domain.AuthUsecase, jwtSecret string, hub 
 
 func (h *AuthHandler) GenerateQRToken(c *gin.Context) {
 	ctx := c.Request.Context()
-	qrToken, err := h.AuthUsecase.GenerateQRToken(ctx)
+
+	// Accept optional public_key query param from the web client
+	webPublicKey := c.Query("public_key")
+
+	qrToken, err := h.AuthUsecase.GenerateQRToken(ctx, webPublicKey)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "Failed to generate QR token")
 		return
@@ -69,9 +73,22 @@ func (h *AuthHandler) ConfirmQRToken(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	err := h.AuthUsecase.ConfirmQRToken(ctx, req.QRToken, userID)
+	result, err := h.AuthUsecase.ConfirmQRToken(ctx, req.QRToken, userID)
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error())
+		switch err.Error() {
+		case "rate_limited":
+			response.Error(c, http.StatusTooManyRequests, "rate_limited")
+		case "qr_token_already_used":
+			response.Error(c, http.StatusBadRequest, "qr_token_already_used")
+		case "qr_token_expired":
+			response.Error(c, http.StatusBadRequest, "qr_token_expired")
+		case "qr_token_invalid":
+			response.Error(c, http.StatusBadRequest, "qr_token_invalid")
+		case "max_devices_reached":
+			response.Error(c, http.StatusBadRequest, "max_devices_reached")
+		default:
+			response.Error(c, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -94,5 +111,14 @@ func (h *AuthHandler) ConfirmQRToken(c *gin.Context) {
 	// We use req.QRToken as the Target User ID since the web client connects using it.
 	h.Hub.SendNotification(req.QRToken, "qr_login_success", responseMap)
 
-	response.Success(c, "QR Login Confirmed")
+	// Return device_id and public_key to the primary device
+	confirmResponse := gin.H{
+		"message": "QR Login Confirmed",
+	}
+	if result != nil {
+		confirmResponse["device_id"] = result.DeviceID
+		confirmResponse["public_key"] = result.PublicKey
+	}
+
+	response.Success(c, confirmResponse)
 }

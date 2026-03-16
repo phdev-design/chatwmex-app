@@ -452,7 +452,8 @@ class ChatRepository {
         try {
           // 取得群組所有成員
           final members = await getRoomMemberProfiles(roomId);
-          final memberIds = members.map((m) => m.id).toList();
+          // 🔐 Bug #2 防呆：過濾掉 roomId
+          final memberIds = members.map((m) => m.id).where((id) => id != roomId).toList();
           
           debugPrint('[sendAudioMessage] 🔐 Encrypting fileKey for ${memberIds.length} members');
           
@@ -614,7 +615,8 @@ class ChatRepository {
         try {
           // 取得群組所有成員
           final members = await getRoomMemberProfiles(roomId);
-          final memberIds = members.map((m) => m.id).toList();
+          // 🔐 Bug #2 防呆：過濾掉 roomId
+          final memberIds = members.map((m) => m.id).where((id) => id != roomId).toList();
           
           debugPrint('[sendImageMessage] 🔐 Encrypting for ${memberIds.length} members');
           
@@ -809,7 +811,8 @@ class ChatRepository {
       if (isGroupMessage) {
         try {
           final members = await getRoomMemberProfiles(roomId);
-          final memberIds = members.map((m) => m.id).toList();
+          // 🔐 Bug #2 防呆：過濾掉 roomId
+          final memberIds = members.map((m) => m.id).where((id) => id != roomId).toList();
           
           debugPrint('[sendVideoMessage] 🔐 Encrypting for ${memberIds.length} members');
           

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/models/message.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,7 +52,6 @@ class RoomMediaNotifier
   @override
   RoomMediaState build(({String roomId, String type}) arg) {
     _repository = ref.watch(chatRepositoryProvider);
-    // 獲取當前用戶 ID
     _initCurrentUserId();
     return const RoomMediaState();
   }
@@ -66,31 +66,25 @@ class RoomMediaNotifier
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final groups = <String, List<Message>>{};
     for (final message in sorted) {
-      final key = DateFormat('MMMM yyyy').format(message.createdAt);
+      final key = DateFormat('yyyy年M月').format(message.createdAt);
       groups.putIfAbsent(key, () => []);
       groups[key]!.add(message);
     }
     return groups;
   }
 
-  /// 🔐 正確的 ECDH 解密邏輯：解密媒體訊息內容
-  /// 
-  /// 明文內容（不解密）：
-  /// 1. 完整 URL (http://, https://)
-  /// 2. 相對路徑 (/uploads/)
-  /// 3. MongoDB ObjectID (24 個十六進制字符)
-  /// 4. 長度 < 40 的任何字串
-  /// 5. 純十六進制字串（不含 Base64 特殊字符）
-  /// 
-  /// 加密內容（需解密）：
-  /// 1. 長度 >= 40
-  /// 2. 包含 Base64 特殊字符 (+, /, =)
-  /// 3. 使用 ECDH 公私鑰解密（不是對稱金鑰！）
+  /// 判斷字串是否看起來像 E2EE 密文
+  bool _looksLikeE2EECiphertext(String content) {
+    if (content.length < 40) return false;
+    final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
+    return base64Regex.hasMatch(content.trim());
+  }
+
+  /// 🔐 解密媒體訊息內容（支援群組 fanout + 一對一 ECDH）
   Future<List<Message>> _decryptMediaContent(List<Message> messages) async {
     final cryptoService = ref.read(cryptoServiceProvider);
     final cacheService = ref.read(publicKeyCacheServiceProvider);
 
-    // 確保有當前用戶 ID
     if (_currentUserId == null) {
       await _initCurrentUserId();
     }
@@ -98,133 +92,172 @@ class RoomMediaNotifier
     final result = <Message>[];
     for (final msg in messages) {
       final content = msg.content;
-      
-      // ========== 第一步：絕對不解密的明文內容 ==========
-      
-      // 1. 完整 URL
+      final isMedia = msg.type == MessageType.image || msg.type == MessageType.video;
+
+      // ========== 明文內容直接通過 ==========
       if (content.startsWith('http://') || content.startsWith('https://')) {
         result.add(msg);
         continue;
       }
-      
-      // 2. 相對路徑
       if (content.startsWith('/uploads/')) {
         result.add(msg);
         continue;
       }
-      
-      // 3. 🚫 長度小於 40 的字串（絕對不解密）
-      if (content.length < 40) {
-        result.add(msg);
-        continue;
-      }
-      
-      // 4. 🚫 MongoDB ObjectID（24 個十六進制字符，絕對不解密）
+      // MongoDB ObjectID
       if (content.length == 24 && RegExp(r'^[a-f0-9]{24}$', caseSensitive: false).hasMatch(content)) {
         result.add(msg);
         continue;
       }
-      
-      // 5. 🚫 純十六進制字串（不含 Base64 特殊字符，絕對不解密）
+
+      // ========== 群組媒體解密（fanout） ==========
+      final isGroupMsg = msg.roomId != null && msg.roomId!.isNotEmpty;
+
+      if (isGroupMsg) {
+        var updated = msg;
+        bool decrypted = false;
+
+        // 1. 嘗試從 encryptedContentsFanout 解密 URL
+        if (isMedia && msg.encryptedContentsFanout != null &&
+            _currentUserId != null &&
+            (content.isEmpty || _looksLikeE2EECiphertext(content))) {
+          final myEncryptedUrl = msg.encryptedContentsFanout![_currentUserId!];
+          if (myEncryptedUrl != null && myEncryptedUrl.isNotEmpty) {
+            try {
+              final senderPubKey = await cacheService.getPublicKey(msg.senderId);
+              if (senderPubKey != null) {
+                final decryptedUrl = await cryptoService.decryptMessage(
+                  myEncryptedUrl,
+                  senderPubKey,
+                );
+                updated = updated.copyWith(content: decryptedUrl);
+                decrypted = true;
+              }
+            } catch (e) {
+              print('⚠️ [RoomMedia] 群組 fanout URL 解密失敗: ${msg.id}');
+            }
+          }
+        }
+
+        // 2. content 是密文（Go routeMessage 裁切後的 raw ciphertext）
+        if (!decrypted && isMedia && msg.encryptedContentsFanout == null &&
+            _looksLikeE2EECiphertext(content)) {
+          final senderPubKey = await cacheService.getPublicKey(msg.senderId);
+          if (senderPubKey != null) {
+            try {
+              final decryptedUrl = await cryptoService.decryptMessage(
+                content,
+                senderPubKey,
+              );
+              if (decryptedUrl != content) {
+                updated = updated.copyWith(content: decryptedUrl);
+                decrypted = true;
+              }
+            } catch (e) {
+              // fallback: 嘗試舊格式 JSON fanout
+              try {
+                final payload = jsonDecode(content);
+                if (payload is Map && payload['is_fanout'] == true) {
+                  final ciphertexts = payload['ciphertexts'] as Map<String, dynamic>?;
+                  final myCiphertext = ciphertexts?[_currentUserId];
+                  if (myCiphertext != null) {
+                    final plaintext = await cryptoService.decryptMessage(
+                      myCiphertext.toString(),
+                      senderPubKey,
+                    );
+                    updated = updated.copyWith(content: plaintext);
+                    decrypted = true;
+                  }
+                }
+              } catch (_) {
+                print('⚠️ [RoomMedia] 群組舊格式解密也失敗: ${msg.id}');
+              }
+            }
+          }
+        }
+
+        // 3. 提取 fileKey from fanout
+        if (msg.fileKeysFanout != null && msg.fileKey == null && _currentUserId != null) {
+          try {
+            final senderPubKey = await cacheService.getPublicKey(msg.senderId);
+            if (senderPubKey != null) {
+              final decryptedFileKey = await cryptoService.extractFileKeyFromFanout(
+                msg.fileKeysFanout!,
+                _currentUserId!,
+                senderPubKey,
+              );
+              if (decryptedFileKey != null) {
+                updated = updated.copyWith(fileKey: decryptedFileKey);
+              }
+            }
+          } catch (e) {
+            print('⚠️ [RoomMedia] fileKey fanout 提取失敗: ${msg.id}');
+          }
+        }
+
+        result.add(updated);
+        continue;
+      }
+
+      // ========== 一對一聊天解密 ==========
+
+      if (content.length < 40) {
+        result.add(msg);
+        continue;
+      }
+
       final isHexOnly = RegExp(r'^[a-f0-9]+$', caseSensitive: false).hasMatch(content);
       if (isHexOnly) {
         result.add(msg);
         continue;
       }
-      
-      // ========== 第二步：判斷是否為加密內容 ==========
-      
-      // 加密內容必須同時滿足：
-      // 1. 長度 >= 40
-      // 2. 包含 Base64 特殊字符 (+, /, =)
-      final hasBase64Chars = content.contains('+') || 
-                             content.contains('/') || 
+
+      final hasBase64Chars = content.contains('+') ||
+                             content.contains('/') ||
                              content.contains('=');
-      
       if (!hasBase64Chars) {
-        // 不含 Base64 特殊字符，不是加密內容
         result.add(msg);
         continue;
       }
-      
-      // ========== 第三步：使用 ECDH 公私鑰解密 ==========
-      
+
       try {
-        // 🔑 關鍵：判斷 targetPubKey（用於 ECDH 解密的對方公鑰）
-        // 
-        // ECDH 加密原理：
-        // - 發送方用「接收方的公鑰」+ 自己的私鑰 → 生成共享密鑰 → 加密
-        // - 接收方用「發送方的公鑰」+ 自己的私鑰 → 生成相同共享密鑰 → 解密
-        // 
-        // 因此解密時：
-        // 🔐 修復：群組聊天使用 fanout，不需要單獨解密
-        // - 群組聊天：訊息已經在 _tryDecryptMessage 中通過 fanout 解密
-        // - 一對一聊天：需要用對方的公鑰解密
         String? targetPubKey;
-        
-        // 🔐 群組聊天跳過（已在 _tryDecryptMessage 中處理）
-        if (msg.roomId != null && msg.roomId!.isNotEmpty) {
-          // 群組訊息應該已經解密，直接使用
-          result.add(msg);
-          continue;
-        }
-        
-        // 🔐 一對一聊天：獲取對方的公鑰
         if (msg.senderId == _currentUserId) {
-          // 情況 1：這是我發送的訊息，用接收方的公鑰加密
           if (msg.receiverId != null && msg.receiverId!.isNotEmpty) {
             targetPubKey = await cacheService.getPublicKey(msg.receiverId!);
           }
         } else {
-          // 情況 2：這是別人發送的訊息，用發送方的公鑰解密
           targetPubKey = await cacheService.getPublicKey(msg.senderId);
         }
-        
+
         if (targetPubKey == null || targetPubKey.isEmpty) {
           result.add(msg);
           continue;
         }
-        
-        // 使用正確的 ECDH 解密方法
-        final decrypted = await cryptoService.decryptMessage(content, targetPubKey);
-        
-        // ========== 第四步：驗證解密結果 ==========
-        
-        if (decrypted.isEmpty || decrypted == content) {
+
+        final decryptedContent = await cryptoService.decryptMessage(content, targetPubKey);
+
+        if (decryptedContent.isEmpty || decryptedContent == content) {
           result.add(msg);
           continue;
         }
-        
-        // 檢查解密結果是否為有效的 URL 或路徑
-        final isValidUrl = decrypted.startsWith('http://') || 
-                          decrypted.startsWith('https://') ||
-                          decrypted.startsWith('/uploads/');
-        
+
+        final isValidUrl = decryptedContent.startsWith('http://') ||
+                          decryptedContent.startsWith('https://') ||
+                          decryptedContent.startsWith('/uploads/');
         if (isValidUrl) {
-          result.add(msg.copyWith(content: decrypted));
+          result.add(msg.copyWith(content: decryptedContent));
         } else {
           result.add(msg);
         }
-        
       } catch (e) {
         print('⚠️ [RoomMedia] Message ${msg.id} 解密失敗');
         result.add(msg);
       }
     }
-    
+
     return result;
   }
 
-  /// 🔍 過濾有效媒體訊息：移除無法解析為有效 URL 的訊息
-  /// 
-  /// 此方法用於過濾掉解密失敗或無效的媒體訊息。
-  /// 使用 resolveFullUrl 檢查每個訊息的內容是否能解析為有效的 URL。
-  /// 
-  /// 過濾條件：
-  /// - 保留：resolveFullUrl(message.content) 返回非空字串
-  /// - 移除：resolveFullUrl(message.content) 返回空字串
-  /// 
-  /// 這確保了狀態中的訊息數量與實際渲染的項目數量一致。
   List<Message> _filterValidMedia(List<Message> messages) {
     return messages.where((msg) {
       final resolvedUrl = resolveFullUrl(msg.content);

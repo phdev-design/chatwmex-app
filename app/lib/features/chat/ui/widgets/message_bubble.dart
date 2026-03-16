@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 // 加入 emoji_picker_flutter 匯入
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/foundation.dart' as foundation;
+import 'package:app/features/chat/ui/widgets/message_read_info_sheet.dart';
 
 class MessageBubble extends ConsumerStatefulWidget {
   final Message msg;
@@ -45,6 +46,8 @@ class MessageBubble extends ConsumerStatefulWidget {
 class _MessageBubbleState extends ConsumerState<MessageBubble> {
   bool _isDeleting = false;
   bool _isCollapsing = false;
+  // 滑動已讀資訊
+  double _swipeOffset = 0.0;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +71,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     final isDecryptingRetry = msg.status == MessageStatus.decryptingRetry;
 
     // 增強型密文偵測：如果長度大於 40 且符合 base64 特徵（無空白），視為未解密的密文
-    final looksLikeCiphertext = msg.content.length > 40 && 
+    // 已成功解密的訊息不做密文判斷
+    final looksLikeCiphertext = !msg.isDecrypted &&
+                                msg.content.length > 40 && 
                                 !msg.content.contains(' ') && 
                                 RegExp(r'^[A-Za-z0-9+/]+=*$').hasMatch(msg.content.trim());
 
@@ -570,7 +575,49 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
           right: isMe ? 12 : 60,
           bottom: paddingBottom,
         ),
-        child: AnimatedSize(
+        child: GestureDetector(
+          onHorizontalDragUpdate: isMe && !msg.isUnsent
+              ? (details) {
+                  // 只允許向左滑（負方向）
+                  if (details.delta.dx < 0 || _swipeOffset < 0) {
+                    setState(() {
+                      _swipeOffset = (_swipeOffset + details.delta.dx).clamp(-80.0, 0.0);
+                    });
+                  }
+                }
+              : null,
+          onHorizontalDragEnd: isMe && !msg.isUnsent
+              ? (details) {
+                  if (_swipeOffset < -40) {
+                    // 觸發已讀資訊彈窗
+                    _showReadInfoSheet(context, msg);
+                  }
+                  setState(() => _swipeOffset = 0.0);
+                }
+              : null,
+          child: AnimatedContainer(
+            duration: _swipeOffset == 0
+                ? const Duration(milliseconds: 200)
+                : Duration.zero,
+            transform: Matrix4.translationValues(_swipeOffset, 0, 0),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // 滑動時顯示的箭頭提示
+                if (isMe && _swipeOffset < -10)
+                  Positioned(
+                    right: -24,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: Icon(
+                        Icons.info_outline,
+                        size: 18,
+                        color: Colors.grey.withValues(alpha: (-_swipeOffset / 80).clamp(0.0, 1.0)),
+                      ),
+                    ),
+                  ),
+                AnimatedSize(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
@@ -695,6 +742,25 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                   ),
                 ),
         ),
+              ],  // Stack children for swipe wrapper
+            ),  // AnimatedContainer
+          ),  // GestureDetector for swipe
+        ),  // Padding
+      ),  // Align
+    );
+  }
+
+  void _showReadInfoSheet(BuildContext context, Message msg) {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => MessageReadInfoSheet(
+        msg: msg,
+        isRoom: widget.isRoom,
+        roomId: widget.params.roomId,
+        userAvatarUrls: widget.state.userAvatarUrls,
       ),
     );
   }

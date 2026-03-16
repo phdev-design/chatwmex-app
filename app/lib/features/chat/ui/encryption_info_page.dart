@@ -5,12 +5,14 @@ class EncryptionInfoPage extends StatelessWidget {
   final String contactId;
   final String contactName;
   final String currentUserId;
+  final bool isRoom;
 
   const EncryptionInfoPage({
     super.key,
     required this.contactId,
     required this.contactName,
     required this.currentUserId,
+    this.isRoom = false,
   });
 
   @override
@@ -56,6 +58,7 @@ class EncryptionInfoPage extends StatelessWidget {
                     builder: (_) => SecurityCodePage(
                       contactId: contactId,
                       contactName: contactName,
+                      isRoom: isRoom,
                     ),
                   ),
                 );

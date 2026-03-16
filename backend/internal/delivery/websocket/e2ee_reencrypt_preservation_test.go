@@ -56,7 +56,7 @@ func TestPreservation_OnlineReEncryptRequestDirectForwarding(t *testing.T) {
 	mockPendingReEncryptRepo := &mockPendingReEncryptRepository{requests: []*domain.PendingReEncryptRequest{}}
 
 	// Create hub and controller
-	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo)
+	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil)
 	controller := NewSocketController(hub, mockUsecase, mockFriendRepo, mockPendingReEncryptRepo)
 	
 	// Start hub in background
@@ -177,7 +177,7 @@ func TestPreservation_ReEncryptResponseFlow(t *testing.T) {
 	mockPendingReEncryptRepo := &mockPendingReEncryptRepository{requests: []*domain.PendingReEncryptRequest{}}
 
 	// Create hub and controller
-	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo)
+	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil)
 	controller := NewSocketController(hub, mockUsecase, mockFriendRepo, mockPendingReEncryptRepo)
 	
 	// Start hub in background
@@ -297,7 +297,7 @@ func TestPreservation_NormalMessageFlow(t *testing.T) {
 	mockPendingReEncryptRepo := &mockPendingReEncryptRepository{requests: []*domain.PendingReEncryptRequest{}}
 
 	// Create hub and controller
-	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo)
+	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil)
 	controller := NewSocketController(hub, mockUsecase, mockFriendRepo, mockPendingReEncryptRepo)
 	
 	// Start hub in background
@@ -404,7 +404,7 @@ func TestPreservation_OtherWebSocketEvents(t *testing.T) {
 	mockPendingReEncryptRepo := &mockPendingReEncryptRepository{requests: []*domain.PendingReEncryptRequest{}}
 
 	// Create hub and controller
-	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo)
+	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil)
 	controller := NewSocketController(hub, mockUsecase, mockFriendRepo, mockPendingReEncryptRepo)
 	
 	// Start hub in background
@@ -514,7 +514,7 @@ func TestPreservation_PropertyBased_OnlineReEncryptForwarding(t *testing.T) {
 		mockNotificationService := &mockNotificationService{}
 	mockPendingReEncryptRepo := &mockPendingReEncryptRepository{requests: []*domain.PendingReEncryptRequest{}}
 
-		hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo)
+		hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil)
 		controller := NewSocketController(hub, mockUsecase, mockFriendRepo, mockPendingReEncryptRepo)
 		
 		go hub.Run()

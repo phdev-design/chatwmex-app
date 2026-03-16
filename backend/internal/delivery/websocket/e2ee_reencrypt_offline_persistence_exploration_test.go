@@ -376,7 +376,7 @@ func TestBugCondition_OfflineReEncryptRequestPersistence(t *testing.T) {
 	mockPendingReEncryptRepo := &mockPendingReEncryptRepository{requests: []*domain.PendingReEncryptRequest{}}
 
 	// Create hub and controller
-	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo)
+	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil)
 	controller := NewSocketController(hub, mockUsecase, mockFriendRepo, mockPendingReEncryptRepo)
 	
 	// Start hub in background

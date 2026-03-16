@@ -8,6 +8,8 @@ import (
 
 	"chatwmex_backend/internal/domain"
 	"chatwmex_backend/internal/infrastructure/rabbitmq"
+
+	"github.com/google/uuid"
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the
@@ -39,6 +41,12 @@ type Hub struct {
 	// Pending ReEncrypt Repository for offline re-encrypt request persistence
 	pendingReEncryptRepo domain.PendingReEncryptRepository
 
+	// LinkedDevice Repository for looking up user's linked devices
+	linkedDeviceRepo domain.LinkedDeviceRepository
+
+	// OfflineLinkedMessage Repository for buffering messages for offline linked devices
+	offlineLinkedMsgRepo domain.OfflineLinkedMessageRepository
+
 	// RabbitMQ Client for cross-server broadcast
 	rabbitMQ *rabbitmq.RabbitMQClient
 
@@ -62,7 +70,7 @@ func (h *Hub) IsUserOnline(userID string) bool {
 }
 
 // NewHub creates a new Hub instance.
-func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService, pr domain.PendingReEncryptRepository) *Hub {
+func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService, pr domain.PendingReEncryptRepository, ldr domain.LinkedDeviceRepository, olmr domain.OfflineLinkedMessageRepository) *Hub {
 	return &Hub{
 		broadcast:            make(chan *domain.Message),
 		register:             make(chan *Client),
@@ -77,6 +85,8 @@ func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRep
 		rabbitEventIngress:   rabbitEventIngress,
 		notificationService:  ns,
 		pendingReEncryptRepo: pr,
+		linkedDeviceRepo:     ldr,
+		offlineLinkedMsgRepo: olmr,
 	}
 }
 
@@ -129,6 +139,31 @@ func (h *Hub) Run() {
 						}
 						bytes, _ := json.Marshal(resp)
 						client.send <- bytes
+					}
+				}
+
+				// Deliver offline messages for linked devices
+				if h.offlineLinkedMsgRepo != nil && h.linkedDeviceRepo != nil {
+					device, err := h.linkedDeviceRepo.GetByID(ctx, uid)
+					if err != nil {
+						log.Printf("Error checking linked device status for %s: %v", uid, err)
+					} else if device != nil {
+						offlineMsgs, err := h.offlineLinkedMsgRepo.GetByDeviceID(ctx, uid)
+						if err != nil {
+							log.Printf("Error fetching offline linked messages for device %s: %v", uid, err)
+						} else if len(offlineMsgs) > 0 {
+							for _, offlineMsg := range offlineMsgs {
+								resp := map[string]interface{}{
+									"event": "chat_message",
+									"data":  offlineMsg.Message,
+								}
+								bytes, _ := json.Marshal(resp)
+								client.send <- bytes
+							}
+							if err := h.offlineLinkedMsgRepo.DeleteByDeviceID(ctx, uid); err != nil {
+								log.Printf("Error deleting offline linked messages for device %s: %v", uid, err)
+							}
+						}
 					}
 				}
 
@@ -213,6 +248,9 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 					delete(h.clients, sourceClient)
 					delete(h.userClients, sourceClient.userID)
 				}
+
+				// 📱 Linked Devices: 扇出給發送者的所有已連結裝置（排除發送者本身）
+				h.fanoutToLinkedDevices(msg.SenderID, fullMessageBytes, map[string]bool{msg.SenderID: true}, msg)
 			}
 		}
 
@@ -223,6 +261,12 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 				continue
 			}
 
+			// 🔐 Bug #2 防呆：跳過 roomID（不應出現在成員列表中，但作為安全防護）
+			if memberID == msg.RoomID {
+				log.Printf("[WARN] memberID == roomID, skipping: %s", memberID)
+				continue
+			}
+
 			destClient, ok := h.userClients[memberID]
 			if !ok {
 				continue
@@ -230,9 +274,9 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 
 			// 為每個接收方建立個人化訊息
 			personalMsg := *msg // 複製訊息結構
-			
+
 			// 🔍 DEBUG: 檢查複製後的 SenderID
-			log.Printf("[DEBUG] routeMessage: original msg.SenderID=%s, personalMsg.SenderID=%s, memberID=%s, roomID=%s", 
+			log.Printf("[DEBUG] routeMessage: original msg.SenderID=%s, personalMsg.SenderID=%s, memberID=%s, roomID=%s",
 				msg.SenderID, personalMsg.SenderID, memberID, msg.RoomID)
 
 			if hasFanout {
@@ -253,11 +297,11 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 				"event": "chat_message",
 				"data":  personalMsg,
 			}
-			
+
 			// 🔍 DEBUG: 檢查序列化前的 personalMsg
-			log.Printf("[DEBUG] Before marshal: personalMsg.SenderID=%s, personalMsg.RoomID=%s, personalMsg.Type=%s", 
+			log.Printf("[DEBUG] Before marshal: personalMsg.SenderID=%s, personalMsg.RoomID=%s, personalMsg.Type=%s",
 				personalMsg.SenderID, personalMsg.RoomID, personalMsg.Type)
-			
+
 			personalMessageBytes, err := json.Marshal(personalPayload)
 			if err != nil {
 				log.Printf("Error encoding personal message for member %s: %v", memberID, err)
@@ -272,6 +316,9 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 				delete(h.clients, destClient)
 				delete(h.userClients, destClient.userID)
 			}
+
+			// 📱 Linked Devices: 扇出給該成員的所有已連結裝置
+			h.fanoutToLinkedDevices(memberID, personalMessageBytes, map[string]bool{memberID: true}, &personalMsg)
 		}
 
 		return
@@ -299,6 +346,9 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 		}
 	}
 
+	// 📱 Linked Devices: 扇出給發送者的所有已連結裝置（排除發送者本身）
+	h.fanoutToLinkedDevices(msg.SenderID, messageBytes, map[string]bool{msg.SenderID: true}, msg)
+
 	// 2. Send to Receiver
 	if msg.ReceiverID != "" {
 		if destClient, ok := h.userClients[msg.ReceiverID]; ok {
@@ -321,8 +371,77 @@ func (h *Hub) routeMessage(msg *domain.Message) {
 				sourceClient.send <- bytes
 			}
 		}
+
+		// 📱 Linked Devices: 扇出給接收者的所有已連結裝置
+		h.fanoutToLinkedDevices(msg.ReceiverID, messageBytes, map[string]bool{msg.ReceiverID: true}, msg)
 	}
 }
+// fanoutToLinkedDevices sends a message payload to all linked devices of a user,
+// excluding the specified originID (to avoid sending back to the originating device).
+// originID can be either a userID (primary device) or a deviceID (linked device).
+func (h *Hub) fanoutToLinkedDevices(userID string, messageBytes []byte, excludeIDs map[string]bool, msg *domain.Message) {
+	if h.linkedDeviceRepo == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	devices, err := h.linkedDeviceRepo.GetByUserID(ctx, userID)
+	cancel()
+
+	if err != nil {
+		log.Printf("Error fetching linked devices for message fanout (user %s): %v", userID, err)
+		return
+	}
+
+	for _, device := range devices {
+		if excludeIDs[device.ID] {
+			continue
+		}
+		if client, ok := h.userClients[device.ID]; ok {
+			select {
+			case client.send <- messageBytes:
+				// Update LastActiveAt when linked device receives a message
+				h.updateLinkedDeviceActivity(device.ID)
+			default:
+				close(client.send)
+				delete(h.clients, client)
+				delete(h.userClients, client.userID)
+			}
+		} else if h.offlineLinkedMsgRepo != nil && msg != nil {
+			// Device is offline — buffer the message for later delivery
+			now := time.Now()
+			offlineMsg := &domain.OfflineLinkedMessage{
+				ID:        uuid.New().String(),
+				DeviceID:  device.ID,
+				Message:   msg,
+				CreatedAt: now,
+				ExpiresAt: now.Add(7 * 24 * time.Hour),
+			}
+			storeCtx, storeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			if err := h.offlineLinkedMsgRepo.Store(storeCtx, offlineMsg); err != nil {
+				log.Printf("Error storing offline message for linked device %s: %v", device.ID, err)
+			}
+			storeCancel()
+		}
+	}
+}
+
+// updateLinkedDeviceActivity asynchronously updates the LastActiveAt timestamp
+// for a linked device. This is called when a linked device sends or receives
+// a message via WebSocket, fulfilling Requirement 4.2.
+func (h *Hub) updateLinkedDeviceActivity(deviceID string) {
+	if h.linkedDeviceRepo == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := h.linkedDeviceRepo.UpdateLastActive(ctx, deviceID); err != nil {
+			log.Printf("Error updating last active for linked device %s: %v", deviceID, err)
+		}
+	}()
+}
+
 
 // SendNotification sends a system notification to a user.
 func (h *Hub) SendNotification(userID, event string, data interface{}) {
@@ -345,19 +464,138 @@ func (h *Hub) SendNotification(userID, event string, data interface{}) {
 	}
 }
 
-func (h *Hub) SendReadReceiptToUser(senderID, readerID string) {
-	if client, ok := h.userClients[senderID]; ok {
+// SendSessionKey sends an encrypted session key to a specific linked device via WebSocket.
+// The deviceID is used as the lookup key in userClients since linked devices register
+// with their device ID as the connection identifier.
+func (h *Hub) SendSessionKey(deviceID, encryptedKey, senderPublicKey string) {
+	if client, ok := h.userClients[deviceID]; ok {
 		resp := map[string]interface{}{
-			"event": "read_receipt",
+			"event": "session_key_delivery",
 			"data": map[string]interface{}{
-				"conversation_id": senderID,
-				"reader_id":       readerID,
-				"is_room":         false,
-				"read_at":         time.Now().Format(time.RFC3339),
+				"device_id":         deviceID,
+				"encrypted_key":     encryptedKey,
+				"sender_public_key": senderPublicKey,
 			},
 		}
 		bytes, _ := json.Marshal(resp)
 		client.send <- bytes
+	}
+}
+
+// SendDeviceUnlinked notifies a linked device that it has been unlinked.
+// The device should clear its local session data and navigate to the login page.
+func (h *Hub) SendDeviceUnlinked(deviceID string) {
+	if client, ok := h.userClients[deviceID]; ok {
+		resp := map[string]interface{}{
+			"event": "device_unlinked",
+			"data": map[string]interface{}{
+				"device_id": deviceID,
+			},
+		}
+		bytes, _ := json.Marshal(resp)
+		client.send <- bytes
+	}
+}
+
+// BroadcastReadStatusSync broadcasts read status to all of a user's linked devices.
+// This ensures read status is synced across the primary device and all linked devices.
+func (h *Hub) BroadcastReadStatusSync(userID, roomID string, lastReadAt time.Time) {
+	data := map[string]interface{}{
+		"room_id":      roomID,
+		"user_id":      userID,
+		"last_read_at": lastReadAt.Format(time.RFC3339),
+	}
+	resp := map[string]interface{}{
+		"event": "read_status_sync",
+		"data":  data,
+	}
+	bytes, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("Error encoding read_status_sync event: %v", err)
+		return
+	}
+
+	// Send to the user's primary device
+	if client, ok := h.userClients[userID]; ok {
+		select {
+		case client.send <- bytes:
+		default:
+			close(client.send)
+			delete(h.clients, client)
+			delete(h.userClients, client.userID)
+		}
+	}
+
+	// Send to all linked devices
+	if h.linkedDeviceRepo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		devices, err := h.linkedDeviceRepo.GetByUserID(ctx, userID)
+		cancel()
+		if err != nil {
+			log.Printf("Error fetching linked devices for read_status_sync: %v", err)
+			return
+		}
+		for _, device := range devices {
+			if client, ok := h.userClients[device.ID]; ok {
+				select {
+				case client.send <- bytes:
+				default:
+					close(client.send)
+					delete(h.clients, client)
+					delete(h.userClients, client.userID)
+				}
+			}
+		}
+	}
+}
+
+func (h *Hub) SendReadReceiptToUser(senderID, readerID string) {
+	resp := map[string]interface{}{
+		"event": "read_receipt",
+		"data": map[string]interface{}{
+			"conversation_id": senderID,
+			"reader_id":       readerID,
+			"is_room":         false,
+			"read_at":         time.Now().Format(time.RFC3339),
+		},
+	}
+	bytes, _ := json.Marshal(resp)
+
+	if client, ok := h.userClients[senderID]; ok {
+		client.send <- bytes
+	}
+
+	// Fan out read receipt to linked devices of the sender
+	h.fanoutReadReceiptToLinkedDevices(senderID, bytes)
+}
+
+// fanoutReadReceiptToLinkedDevices sends a read receipt payload to all linked devices of a user.
+func (h *Hub) fanoutReadReceiptToLinkedDevices(userID string, messageBytes []byte) {
+	if h.linkedDeviceRepo == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	devices, err := h.linkedDeviceRepo.GetByUserID(ctx, userID)
+	cancel()
+
+	if err != nil {
+		log.Printf("Error fetching linked devices for read receipt fanout (user %s): %v", userID, err)
+		return
+	}
+
+	for _, device := range devices {
+		if client, ok := h.userClients[device.ID]; ok {
+			select {
+			case client.send <- messageBytes:
+				// Update LastActiveAt when linked device receives a read receipt
+				h.updateLinkedDeviceActivity(device.ID)
+			default:
+				close(client.send)
+				delete(h.clients, client)
+				delete(h.userClients, client.userID)
+			}
+		}
 	}
 }
 
@@ -544,6 +782,9 @@ func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
 		return
 	}
 
+	// Sync read status to all linked devices of the reader
+	h.BroadcastReadStatusSync(event.ReadByUserID, event.RoomID, time.Now())
+
 	if isPrivateMsg {
 		// 發送給發送者(B)
 		if destClient, ok := h.userClients[event.RoomID]; ok {
@@ -555,6 +796,9 @@ func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
 				delete(h.userClients, destClient.userID)
 			}
 		}
+
+		// Fan out read receipt to linked devices of the sender(B)
+		h.fanoutReadReceiptToLinkedDevices(event.RoomID, messageBytes)
 		return
 	}
 
@@ -571,6 +815,9 @@ func (h *Hub) broadcastRoomReadReceiptLocal(event chatEvent) {
 				delete(h.userClients, destClient.userID)
 			}
 		}
+
+		// Fan out read receipt to linked devices of each member
+		h.fanoutReadReceiptToLinkedDevices(memberID, messageBytes)
 	}
 }
 

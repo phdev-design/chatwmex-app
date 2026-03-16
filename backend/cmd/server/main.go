@@ -73,12 +73,13 @@ func main() {
 	chatSettingRepo := mongo_repo.NewChatSettingRepository(db) // 👉 新增
 	roomLabelRepo := mongo_repo.NewRoomLabelRepository(db)
 	pendingReEncryptRepo := mongo_repo.NewPendingReEncryptRepository(db) // 👉 新增 PendingReEncryptRepo
+	linkedDeviceRepo := mongo_repo.NewLinkedDeviceRepository(db)                 // 👉 已連結裝置 Repository
+	offlineLinkedMsgRepo := mongo_repo.NewOfflineLinkedMessageRepository(db)     // 👉 離線訊息暫存 Repository
 
 	// 4. Initialize Usecases
 	// Set a default timeout for usecase operations
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
-	authUsecase := usecase.NewAuthUsecase(authRepo, timeout) // 👉 新增 AuthUsecase
 	chatSettingUsecase := usecase.NewChatSettingUsecase(chatSettingRepo) // 👉 新增
 	roomLabelUsecase := usecase.NewRoomLabelUsecase(roomLabelRepo, timeout)
 	// Initialize Notification Service
@@ -182,8 +183,13 @@ func main() {
 		}
 	}
 
-	// Hub needs NotificationService to send push when user offline
-	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo)
+	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo, linkedDeviceRepo, offlineLinkedMsgRepo)
+
+	// Initialize LinkedDevice Usecase (needs hub as WebSocketNotifier)
+	linkedDeviceUsecase := usecase.NewLinkedDeviceUsecase(linkedDeviceRepo, hub, timeout)
+
+	// Initialize AuthUsecase (needs linkedDeviceUsecase for QR confirm flow)
+	authUsecase := usecase.NewAuthUsecase(authRepo, linkedDeviceUsecase, timeout)
 
 	// Create SocketController
 	socketController := websocket.NewSocketController(hub, messageUsecase, friendRepo, pendingReEncryptRepo)
@@ -237,7 +243,7 @@ func main() {
 
 	// Register Handlers
 	delivery.NewAuthHandler(r, authUsecase, cfg.JWTSecret, hub) // 👉 新增 Auth
-	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret, hub)
+	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret, hub, linkedDeviceUsecase)
 	delivery.NewMessageHandler(r, messageUsecase, hub, authMiddleware)
 	delivery.NewRoomHandler(r, roomUsecase, userUsecase, authMiddleware)
 	delivery.NewMediaHandler(r, authMiddleware)
@@ -246,6 +252,7 @@ func main() {
 	delivery.NewDeviceHandler(r, deviceUsecase, authMiddleware)
 	delivery.NewChatSettingHandler(r, chatSettingUsecase, authMiddleware) // 👉 新增設定的 Handler
 	delivery.NewRoomLabelHandler(r, roomLabelUsecase, authMiddleware)
+	delivery.NewLinkedDeviceHandler(r, linkedDeviceUsecase, authMiddleware)
 
 	// Register WebSocket Route
 	r.GET("/ws", func(c *gin.Context) {

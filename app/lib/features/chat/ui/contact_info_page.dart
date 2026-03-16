@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/chat/ui/room_media_page.dart';
@@ -16,6 +19,8 @@ import 'package:app/features/friend/repositories/friend_repository.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
+import 'package:app/core/storage/local_db_service.dart';
+import 'package:app/core/backup/backup_manager.dart';
 
 class ContactInfoPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -369,6 +374,86 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
     }
   }
 
+  Future<void> _exportRoomBackup(
+    Color primaryTextColor,
+    Color secondaryTextColor,
+    Color accentColor,
+    Color cardColor,
+    bool isDark,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text(widget.isRoom ? '備份群組對話' : '備份對話'),
+        content: Text(
+          widget.isRoom
+              ? '將匯出「${widget.title}」群組的所有聊天記錄為 JSON 檔案，您可以儲存或分享此檔案。'
+              : '將匯出與「${widget.title}」的所有聊天記錄為 JSON 檔案，您可以儲存或分享此檔案。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('匯出', style: TextStyle(color: accentColor)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final localDb = LocalDbService();
+      final messages = await localDb.getMessagesByRoom(
+        widget.roomId,
+        limit: 999999,
+        offset: 0,
+      );
+
+      final payload = {
+        'backup_date': DateTime.now().toIso8601String(),
+        'backup_type': widget.isRoom ? 'group' : 'direct',
+        'room_id': widget.roomId,
+        'room_name': widget.title,
+        'message_count': messages.length,
+        'conversations': messages.map((m) => m.toMap()).toList(),
+      };
+
+      final jsonString = jsonEncode(payload);
+      final dir = await getTemporaryDirectory();
+      final safeName = widget.title.replaceAll(RegExp(r'[^\w\u4e00-\u9fff]'), '_');
+      final fileName = 'backup_${safeName}_${DateTime.now().millisecondsSinceEpoch}.json';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(jsonString);
+
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: widget.isRoom
+            ? '${widget.title} 群組對話備份（${messages.length} 則訊息）'
+            : '與 ${widget.title} 的對話備份（${messages.length} 則訊息）',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('備份失敗：$e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String? displayAvatarUrl = _localAvatarUrl;
@@ -448,14 +533,43 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         child: _buildAvatar(displayAvatarUrl, isDark),
                       ),
                       const SizedBox(height: 14),
-                      Text(
-                        widget.title,
-                        style: TextStyle(
-                          color: primaryTextColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 22,
-                          letterSpacing: -0.3,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.title,
+                              style: TextStyle(
+                                color: primaryTextColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 22,
+                                letterSpacing: -0.3,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (widget.isRoom) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: accentColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '群組',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: accentColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 4),
                       if (!widget.isRoom &&
@@ -511,6 +625,34 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         builder: (context) =>
                             RoomMediaPage(roomId: widget.roomId),
                       ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // ── SECTION: 備份 ───────────────────────────────────────
+              _SectionHeader(
+                label: widget.isRoom ? '群組備份' : '對話備份',
+                isDark: isDark,
+              ),
+              _InfoCard(
+                isDark: isDark,
+                cardColor: cardColor,
+                dividerColor: dividerColor,
+                children: [
+                  _InfoTile(
+                    icon: Icons.backup_rounded,
+                    iconColor: const Color(0xFF34C759),
+                    label: widget.isRoom ? '備份此群組對話' : '備份此對話',
+                    subtitle: '匯出聊天記錄為 JSON 檔案',
+                    isDark: isDark,
+                    onTap: () => _exportRoomBackup(
+                      primaryTextColor,
+                      secondaryTextColor,
+                      accentColor,
+                      cardColor,
+                      isDark,
                     ),
                   ),
                 ],
@@ -660,6 +802,7 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                               contactId: widget.roomId,
                               contactName: widget.title,
                               currentUserId: '',
+                              isRoom: widget.isRoom,
                             ),
                           ),
                         ),

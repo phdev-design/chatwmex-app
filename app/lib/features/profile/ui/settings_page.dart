@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/features/chat/ui/conversations_settings_page.dart';
 import 'package:app/features/chat/ui/room_labels_settings_page.dart';
+import 'package:app/features/settings/linked_devices_page.dart';
+import 'package:app/features/settings/providers/linked_devices_provider.dart';
 import 'package:app/core/backup/backup_manager.dart';
-import 'package:app/models/backup_mode.dart';
 import 'package:app/features/settings/providers/crypto_health_provider.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -128,13 +129,7 @@ class SettingsPage extends ConsumerWidget {
                     ),
                   ),
                 ),
-                _buildBackupModeTile(
-                  context: context,
-                  ref: ref,
-                  currentMode: backupState.backupMode,
-                  isDark: isDark,
-                  showDivider: false, // 最後一個選項不顯示底線
-                ),
+                _buildLinkedDevicesTile(context, ref, isDark),
               ],
             ),
             
@@ -272,6 +267,90 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
+  /// 建立「已連結裝置」設定項目，含數量徽章
+  Widget _buildLinkedDevicesTile(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    // 使用 linkedDeviceCountProvider 取得已連結裝置數量
+    final int deviceCount = ref.watch(linkedDeviceCountProvider);
+
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final chevronColor = isDark ? Colors.white24 : Colors.black26;
+
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const LinkedDevicesPage(),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF5856D6), // 紫色 Icon 底色
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child:
+                        const Icon(Icons.devices, size: 16, color: Colors.white),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      '已連結裝置 (Linked Devices)',
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w500,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+                  if (deviceCount > 0) _buildCountBadge(deviceCount),
+                  if (deviceCount > 0) const SizedBox(width: 8),
+                  Icon(Icons.chevron_right_rounded,
+                      size: 20, color: chevronColor),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // 最後一個選項不顯示底線
+      ],
+    );
+  }
+
+  /// 建立數量徽章
+  Widget _buildCountBadge(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFF5856D6),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
   /// 建立設定選項（帶有圓角 Icon 背景、文字及向右箭頭）
   Widget _buildSettingsTile({
     required IconData icon,
@@ -330,138 +409,6 @@ class SettingsPage extends ConsumerWidget {
                 : Colors.black.withValues(alpha: 0.07),
           ),
       ],
-    );
-  }
-
-  /// 建立備份模式選擇選項
-  Widget _buildBackupModeTile({
-    required BuildContext context,
-    required WidgetRef ref,
-    required BackupMode currentMode,
-    required bool isDark,
-    bool showDivider = true,
-  }) {
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subtitleColor = isDark ? Colors.white60 : Colors.black54;
-    final chevronColor = isDark ? Colors.white24 : Colors.black26;
-
-    return Column(
-      children: [
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => _showBackupModeDialog(context, ref, currentMode, isDark),
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF9500), // 橘色 Icon 底色
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.backup_rounded, size: 16, color: Colors.white),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '備份模式',
-                          style: TextStyle(
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w500,
-                            color: textColor,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          currentMode.displayName,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: subtitleColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded, size: 20, color: chevronColor),
-                ],
-              ),
-            ),
-          ),
-        ),
-        if (showDivider)
-          Divider(
-            height: 1,
-            indent: 60,
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.07)
-                : Colors.black.withValues(alpha: 0.07),
-          ),
-      ],
-    );
-  }
-
-  /// 顯示備份模式選擇對話框
-  void _showBackupModeDialog(
-    BuildContext context,
-    WidgetRef ref,
-    BackupMode currentMode,
-    bool isDark,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('選擇備份模式'),
-        children: BackupMode.values.map((mode) {
-          final isSelected = mode == currentMode;
-          return SimpleDialogOption(
-            onPressed: () {
-              ref.read(backupManagerProvider.notifier).setBackupMode(mode);
-              Navigator.of(context).pop();
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Row(
-                children: [
-                  Icon(
-                    isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                    color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          mode.displayName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          mode.description,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? Colors.white60 : Colors.black54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
     );
   }
 }

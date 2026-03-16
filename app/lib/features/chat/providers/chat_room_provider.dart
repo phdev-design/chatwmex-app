@@ -171,6 +171,23 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             debugPrint('[DEBUG] received chat_message: sender_id=${payload['sender_id']}, room_id=${payload['room_id']}, type=${payload['type']}');
             
             final rawMessage = Message.fromJson(payload);
+            
+            // 🔐 修復：群組中發送方自己的訊息已在 sendMessage() 中以明文加入 state，
+            // 後端回傳的 WebSocket 訊息 content 為空（fanout 模式），不應覆蓋本地明文。
+            // 只更新 message ID（從 clientMsgId 換成 server ID），不覆蓋 content。
+            if (arg.isRoom && rawMessage.senderId == arg.currentUserId) {
+              // 發送方自己的群組訊息：只需要更新 server-assigned ID
+              if (rawMessage.clientMsgId != null && rawMessage.clientMsgId!.isNotEmpty) {
+                final existingIndex = state.messages.indexWhere((m) =>
+                    m.clientMsgId == rawMessage.clientMsgId || m.id == rawMessage.clientMsgId);
+                if (existingIndex != -1) {
+                  // 已存在本地明文版本，跳過覆蓋
+                  debugPrint('[E2EE] ⏭️ 跳過自己的群組訊息回傳覆蓋: ${rawMessage.clientMsgId}');
+                  return;
+                }
+              }
+            }
+            
             _tryDecryptMessage(rawMessage).then((message) async {
               if ((arg.isRoom && message.roomId == arg.roomId) ||
                   (!arg.isRoom &&
@@ -544,14 +561,20 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   }
 
   Future<String> _encryptGroupMessage(String plaintext, List<String> memberIds) async {
+    // 🔐 Bug #2 防呆：過濾掉 roomId，避免將 roomId 當作 userId 查詢公鑰導致 404
+    final filteredMemberIds = memberIds.where((id) => id != arg.roomId).toList();
+    if (filteredMemberIds.length != memberIds.length) {
+      debugPrint('[E2EE] ⚠️ Filtered out roomId from member list: ${arg.roomId}');
+    }
+    
     final ciphertexts = <String, String>{};
     int keysUnavailableCount = 0;
     int encryptionFailureCount = 0;
     
     const batchSize = 10;
-    for (int i = 0; i < memberIds.length; i += batchSize) {
-      final batchEnd = (i + batchSize < memberIds.length) ? i + batchSize : memberIds.length;
-      final batch = memberIds.sublist(i, batchEnd);
+    for (int i = 0; i < filteredMemberIds.length; i += batchSize) {
+      final batchEnd = (i + batchSize < filteredMemberIds.length) ? i + batchSize : filteredMemberIds.length;
+      final batch = filteredMemberIds.sublist(i, batchEnd);
       
       final futures = batch.map((memberId) async {
         final publicKey = await _publicKeyCacheService.getPublicKey(memberId);
@@ -560,7 +583,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             final ciphertext = await _cryptoService.encryptMessage(plaintext, publicKey);
             return MapEntry(memberId, ciphertext);
           } catch (e) {
-            debugPrint('[E2EE] Encryption failed for member: roomId=${arg.roomId}, memberCount=${memberIds.length}, error=${e.runtimeType}');
+            debugPrint('[E2EE] Encryption failed for member: roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}, error=${e.runtimeType}');
             return MapEntry<String, String>('', '');
           }
         }
@@ -581,14 +604,14 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
     
     if (ciphertexts.isEmpty) {
-      if (keysUnavailableCount == memberIds.length) {
-        debugPrint('[E2EE] Complete key unavailability: roomId=${arg.roomId}, memberCount=${memberIds.length}');
+      if (keysUnavailableCount == filteredMemberIds.length) {
+        debugPrint('[E2EE] Complete key unavailability: roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}');
         throw Exception('無法取得任何成員的公鑰');
-      } else if (encryptionFailureCount == memberIds.length) {
-        debugPrint('[E2EE] Complete encryption failure: roomId=${arg.roomId}, memberCount=${memberIds.length}');
+      } else if (encryptionFailureCount == filteredMemberIds.length) {
+        debugPrint('[E2EE] Complete encryption failure: roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}');
         throw Exception('所有成員的加密操作均失敗');
       } else {
-        debugPrint('[E2EE] Complete encryption failure (mixed): roomId=${arg.roomId}, memberCount=${memberIds.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
+        debugPrint('[E2EE] Complete encryption failure (mixed): roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
         throw Exception('加密失敗，無法發送訊息');
       }
     }
@@ -608,14 +631,20 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   /// 🔐 E2EE Group Messages: 新版本 - 回傳 Map 而非 JSON 字串
   /// 用於新的 encrypted_contents_fanout 欄位
   Future<Map<String, String>> _encryptGroupMessageToMap(String plaintext, List<String> memberIds) async {
+    // 🔐 Bug #2 防呆：過濾掉 roomId，避免將 roomId 當作 userId 查詢公鑰導致 404
+    final filteredMemberIds = memberIds.where((id) => id != arg.roomId).toList();
+    if (filteredMemberIds.length != memberIds.length) {
+      debugPrint('[E2EE] ⚠️ Filtered out roomId from member list: ${arg.roomId}');
+    }
+    
     final ciphertexts = <String, String>{};
     int keysUnavailableCount = 0;
     int encryptionFailureCount = 0;
     
     const batchSize = 10;
-    for (int i = 0; i < memberIds.length; i += batchSize) {
-      final batchEnd = (i + batchSize < memberIds.length) ? i + batchSize : memberIds.length;
-      final batch = memberIds.sublist(i, batchEnd);
+    for (int i = 0; i < filteredMemberIds.length; i += batchSize) {
+      final batchEnd = (i + batchSize < filteredMemberIds.length) ? i + batchSize : filteredMemberIds.length;
+      final batch = filteredMemberIds.sublist(i, batchEnd);
       
       final futures = batch.map((memberId) async {
         final publicKey = await _publicKeyCacheService.getPublicKey(memberId);
@@ -624,7 +653,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
             final ciphertext = await _cryptoService.encryptMessage(plaintext, publicKey);
             return MapEntry(memberId, ciphertext);
           } catch (e) {
-            debugPrint('[E2EE] Encryption failed for member: roomId=${arg.roomId}, memberCount=${memberIds.length}, error=${e.runtimeType}');
+            debugPrint('[E2EE] Encryption failed for member: roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}, error=${e.runtimeType}');
             return MapEntry<String, String>('', '');
           }
         }
@@ -645,14 +674,14 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     }
     
     if (ciphertexts.isEmpty) {
-      if (keysUnavailableCount == memberIds.length) {
-        debugPrint('[E2EE] Complete key unavailability: roomId=${arg.roomId}, memberCount=${memberIds.length}');
+      if (keysUnavailableCount == filteredMemberIds.length) {
+        debugPrint('[E2EE] Complete key unavailability: roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}');
         throw Exception('無法取得任何成員的公鑰');
-      } else if (encryptionFailureCount == memberIds.length) {
-        debugPrint('[E2EE] Complete encryption failure: roomId=${arg.roomId}, memberCount=${memberIds.length}');
+      } else if (encryptionFailureCount == filteredMemberIds.length) {
+        debugPrint('[E2EE] Complete encryption failure: roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}');
         throw Exception('所有成員的加密操作均失敗');
       } else {
-        debugPrint('[E2EE] Complete encryption failure (mixed): roomId=${arg.roomId}, memberCount=${memberIds.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
+        debugPrint('[E2EE] Complete encryption failure (mixed): roomId=${arg.roomId}, memberCount=${filteredMemberIds.length}, keysUnavailable=$keysUnavailableCount, encryptionFailed=$encryptionFailureCount');
         throw Exception('加密失敗，無法發送訊息');
       }
     }
@@ -1224,7 +1253,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
   }
 
   Future<Message> _tryDecryptMessage(Message m) async {
-    if (m.isUnsent || m.content.isEmpty) return m;
+    // 🔐 修復：content 為空但有 encryptedContentsFanout 時，不能直接 return
+    // 群組訊息的 fanout 模式下，發送方收到的回傳訊息 content 為空，
+    // 但 encryptedContentsFanout 包含所有成員的密文，需要繼續解密流程
+    final hasFanout = m.encryptedContentsFanout != null && m.encryptedContentsFanout!.isNotEmpty;
+    if (m.isUnsent) return m;
+    if (m.content.isEmpty && !hasFanout) return m;
 
     final isE2EEEnabled =
         ref.read(e2eeEnabledProvider(arg.roomId)).value ?? true;
@@ -1273,8 +1307,29 @@ if (arg.isRoom) {
               messageId: m.id,
               senderId: m.senderId,
             );
+          } else if (_looksLikeE2EECiphertext(m.content)) {
+            // 新格式（Go routeMessage 裁切後）：
+            // content = 接收方的專屬密文，encryptedContentsFanout 已被 Go 清空
+            // 直接用 sender 的 public key 解密 content
+            final senderPublicKey = await _getPublicKey(m.senderId);
+            if (senderPublicKey != null) {
+              try {
+                decryptedText = await _cryptoService.decryptMessage(
+                  m.content,
+                  senderPublicKey,
+                  messageId: m.id,
+                  senderId: m.senderId,
+                );
+                debugPrint('[E2EE] ✅ Decrypted group text (stripped fanout format) for message ${m.id}');
+              } catch (e) {
+                debugPrint('[E2EE] ❌ Direct decryption failed, fallback to old format: $e');
+                decryptedText = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
+              }
+            } else {
+              decryptedText = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
+            }
           } else {
-            // 舊格式
+            // 真正的舊格式（JSON fanout wrapper）或明文
             decryptedText = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
           }
 
@@ -1326,20 +1381,54 @@ if (arg.isRoom) {
             }
           }
         } else if (isMedia && m.encryptedContentsFanout == null) {
-          // 相容舊格式的媒體訊息
-          try {
-            final decryptedUrl = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
-            if (decryptedUrl != m.content) {
-              updatedMessage = updatedMessage.copyWith(content: decryptedUrl);
-              contentDecrypted = true;
+          // 先判斷是否為新格式（Go routeMessage 裁切後的 raw ciphertext）
+          if (_looksLikeE2EECiphertext(m.content)) {
+            // 新格式：直接用 sender public key 解密
+            final senderPubKey = await _getPublicKey(m.senderId);
+            if (senderPubKey != null) {
+              try {
+                final decryptedUrl = await _cryptoService.decryptMessage(
+                  m.content,
+                  senderPubKey,
+                  messageId: m.id,
+                  senderId: m.senderId,
+                );
+                if (decryptedUrl != m.content) {
+                  updatedMessage = updatedMessage.copyWith(content: decryptedUrl);
+                  contentDecrypted = true;
+                  debugPrint('[E2EE] ✅ Decrypted group media URL (stripped fanout format) for message ${m.id}');
+                }
+              } catch (e) {
+                debugPrint('[E2EE] ❌ Direct media URL decryption failed, fallback: $e');
+                // fallback 到舊格式
+                try {
+                  final decryptedUrl = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
+                  if (decryptedUrl != m.content) {
+                    updatedMessage = updatedMessage.copyWith(content: decryptedUrl);
+                    contentDecrypted = true;
+                  }
+                } catch (e2) {
+                  debugPrint('[E2EE] ❌ Old format media decryption also failed: $e2');
+                }
+              }
             }
-          } catch (e) {
-            debugPrint('[E2EE] ❌ Failed to decrypt old format media: $e');
+          } else {
+            // 真正的舊格式（JSON fanout wrapper）
+            try {
+              final decryptedUrl = await _decryptGroupMessage(m.content, m.senderId, messageId: m.id);
+              if (decryptedUrl != m.content) {
+                updatedMessage = updatedMessage.copyWith(content: decryptedUrl);
+                contentDecrypted = true;
+              }
+            } catch (e) {
+              debugPrint('[E2EE] ❌ Failed to decrypt old format media: $e');
+            }
           }
         }
         
         // 🏁 5. 收尾與更新狀態
         if (contentDecrypted) {
+          debugPrint('[E2EE] ✅ contentDecrypted=true, returning with isDecrypted=true for ${m.id}, content preview: ${updatedMessage.content.substring(0, updatedMessage.content.length > 30 ? 30 : updatedMessage.content.length)}');
           await LocalDbService().updateMessageStatus(m.clientMsgId ?? m.id, MessageStatus.delivered);
           await LocalDbService().markMessageAsDecrypted(m.id);
           return updatedMessage.copyWith(isDecrypted: true);

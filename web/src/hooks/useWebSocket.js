@@ -1,11 +1,32 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { decryptSessionKey } from '../crypto/webCryptoService.js';
+import { saveSessionKey, clearSessionKey } from '../crypto/sessionKeyStore.js';
 
-const useWebSocket = (token, isQrToken = false) => {
+/**
+ * @typedef {Object} UseWebSocketOptions
+ * @property {(data: Object) => void} [onSessionKeyDelivery] — 自訂 session_key_delivery 事件處理
+ * @property {(data: Object) => void} [onDeviceUnlinked] — 自訂 device_unlinked 事件處理
+ */
+
+/**
+ * useWebSocket hook — 管理 WebSocket 連線與事件處理。
+ *
+ * 內建處理：
+ *   - `session_key_delivery`：解密 Session Key 並儲存至 IndexedDB
+ *   - `device_unlinked`：清除本地會話資料並導航至登入頁面
+ *
+ * @param {string} token — JWT token 或 QR token
+ * @param {boolean} [isQrToken=false]
+ * @param {UseWebSocketOptions} [options={}]
+ */
+const useWebSocket = (token, isQrToken = false, options = {}) => {
   const ws = useRef(null);
   const [messages, setMessages] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const messageQueue = useRef([]);
   const pendingAcks = useRef(new Map());
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const getWsUrl = () => {
     if (import.meta.env && import.meta.env.VITE_WS_URL) {
@@ -50,6 +71,24 @@ const useWebSocket = (token, isQrToken = false) => {
             // Handle ACK
             if (message.event === 'message_ack' && message.data && message.data.client_msg_id) {
               pendingAcks.current.delete(message.data.client_msg_id);
+            }
+
+            // Handle session_key_delivery event
+            if (message.event === 'session_key_delivery') {
+              if (optionsRef.current.onSessionKeyDelivery) {
+                optionsRef.current.onSessionKeyDelivery(message.data);
+              } else {
+                handleSessionKeyDelivery(message.data);
+              }
+            }
+
+            // Handle device_unlinked event
+            if (message.event === 'device_unlinked') {
+              if (optionsRef.current.onDeviceUnlinked) {
+                optionsRef.current.onDeviceUnlinked(message.data);
+              } else {
+                handleDeviceUnlinked();
+              }
             }
 
             setMessages((prev) => [...prev, message]);
@@ -123,4 +162,74 @@ const useWebSocket = (token, isQrToken = false) => {
   return { messages, sendMessage, isConnected };
 };
 
+/**
+ * 預設 session_key_delivery 處理：使用私鑰解密 Session Key 並儲存至 IndexedDB。
+ *
+ * 注意：此預設處理需要 localStorage 中存有 `device_private_key`（base64 編碼）
+ * 與事件 payload 中的 `sender_public_key`。若私鑰不可用（例如 QR 登入流程中
+ * 私鑰僅存於記憶體），消費者應透過 options.onSessionKeyDelivery 提供自訂處理。
+ *
+ * @param {Object} data — session_key_delivery 事件的 data payload
+ */
+async function handleSessionKeyDelivery(data) {
+  const { encrypted_key, sender_public_key } = data || {};
+  if (!encrypted_key || !sender_public_key) {
+    console.error('session_key_delivery: missing encrypted_key or sender_public_key');
+    return;
+  }
+
+  // Retrieve the device private key from localStorage (stored as base64 by the QR login flow)
+  const privateKeyBase64 = localStorage.getItem('device_private_key');
+  if (!privateKeyBase64) {
+    console.error('session_key_delivery: device private key not found in localStorage');
+    return;
+  }
+
+  try {
+    // Convert base64 private key back to Uint8Array
+    const binary = atob(privateKeyBase64);
+    const privateKey = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      privateKey[i] = binary.charCodeAt(i);
+    }
+
+    const sessionKeyBase64 = await decryptSessionKey(encrypted_key, sender_public_key, privateKey);
+    await saveSessionKey(sessionKeyBase64);
+    console.log('Session key decrypted and stored successfully');
+  } catch (err) {
+    console.error('Failed to decrypt/store session key:', err);
+  }
+}
+
+/**
+ * 預設 device_unlinked 處理：清除本地會話資料（IndexedDB + localStorage）並導航至登入頁面。
+ *
+ * 對應 Requirements 4.5：
+ *   WHEN Web_Client 收到連結撤銷通知，THE Web_Client SHALL 清除本地會話資料並導航至登入頁面
+ */
+async function handleDeviceUnlinked() {
+  console.log('Device unlinked — clearing local session data');
+
+  try {
+    // Clear session key from IndexedDB (and sessionStorage fallback)
+    await clearSessionKey();
+  } catch (err) {
+    console.error('Failed to clear session key from IndexedDB:', err);
+  }
+
+  // Clear authentication and device data from localStorage
+  localStorage.removeItem('token');
+  localStorage.removeItem('user_id');
+  localStorage.removeItem('device_private_key');
+
+  // Clear any remaining sessionStorage data
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem('session_key');
+  }
+
+  // Navigate to login page
+  window.location.href = '/qr-login';
+}
+
 export default useWebSocket;
+export { handleSessionKeyDelivery, handleDeviceUnlinked };

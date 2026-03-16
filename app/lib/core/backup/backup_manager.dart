@@ -1,14 +1,18 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/widgets.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:app/core/backup/google_drive_service.dart';
 import 'package:app/core/crypto/crypto_service.dart';
 import 'package:app/core/storage/local_db_service.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/models/message.dart';
 import 'package:app/models/backup_mode.dart';
+import 'package:app/models/backup_frequency.dart';
 import 'package:app/models/key_backup_file.dart';
 
 class RestoreResult {
@@ -30,6 +34,7 @@ class BackupState {
   final String? lastBackupDate;
   final bool autoBackupEnabled;
   final String? autoBackupTime;
+  final BackupFrequency autoBackupFrequency;
   final String? error;
   final String? linkedGoogleEmail;
   final BackupMode backupMode;
@@ -39,6 +44,7 @@ class BackupState {
     this.lastBackupDate,
     this.autoBackupEnabled = false,
     this.autoBackupTime,
+    this.autoBackupFrequency = BackupFrequency.daily,
     this.error,
     this.linkedGoogleEmail,
     this.backupMode = BackupMode.full,
@@ -49,6 +55,7 @@ class BackupState {
     String? lastBackupDate,
     bool? autoBackupEnabled,
     String? autoBackupTime,
+    BackupFrequency? autoBackupFrequency,
     String? error,
     bool clearError = false,
     String? linkedGoogleEmail,
@@ -59,6 +66,7 @@ class BackupState {
       lastBackupDate: lastBackupDate ?? this.lastBackupDate,
       autoBackupEnabled: autoBackupEnabled ?? this.autoBackupEnabled,
       autoBackupTime: autoBackupTime ?? this.autoBackupTime,
+      autoBackupFrequency: autoBackupFrequency ?? this.autoBackupFrequency,
       error: clearError ? null : (error ?? this.error),
       linkedGoogleEmail: linkedGoogleEmail ?? this.linkedGoogleEmail,
       backupMode: backupMode ?? this.backupMode,
@@ -104,21 +112,31 @@ class BackupManager extends StateNotifier<BackupState>
     return regex.hasMatch(time);
   }
 
-  /// Determines if a backup has already occurred on the current calendar date.
-  /// Compares lastBackupDate with current date in local timezone.
-  bool _hasBackupHappenedToday() {
+  /// Determines if a backup has already occurred within the current frequency period.
+  /// Compares lastBackupDate with current date based on the configured frequency.
+  bool _hasBackupHappenedInCurrentPeriod() {
     if (state.lastBackupDate == null) return false;
 
     try {
-      final lastBackup = DateTime.parse(state.lastBackupDate!);
+      final lastBackup = DateTime.parse(state.lastBackupDate!).toLocal();
       final now = DateTime.now();
 
-      return lastBackup.year == now.year &&
-             lastBackup.month == now.month &&
-             lastBackup.day == now.day;
+      switch (state.autoBackupFrequency) {
+        case BackupFrequency.daily:
+          return lastBackup.year == now.year &&
+                 lastBackup.month == now.month &&
+                 lastBackup.day == now.day;
+        case BackupFrequency.weekly:
+          // 計算本週一 00:00
+          final weekStart = DateTime(now.year, now.month, now.day)
+              .subtract(Duration(days: now.weekday - 1));
+          return lastBackup.isAfter(weekStart) || lastBackup.isAtSameMomentAs(weekStart);
+        case BackupFrequency.monthly:
+          return lastBackup.year == now.year && lastBackup.month == now.month;
+      }
     } catch (e) {
       debugPrint('[BackupManager] Error parsing lastBackupDate: $e');
-      return false; // Treat parse errors as "no backup today"
+      return false;
     }
   }
 
@@ -158,12 +176,17 @@ class BackupManager extends StateNotifier<BackupState>
     if (_isAuthenticating) return;
     if (!state.autoBackupEnabled) return;
 
-    // Backward compatibility: 24-hour interval when no scheduled time
+    // Backward compatibility: interval-based when no scheduled time
     if (state.autoBackupTime == null) {
       if (state.lastBackupDate != null) {
         try {
           final last = DateTime.parse(state.lastBackupDate!);
-          if (DateTime.now().difference(last).inHours < 24) {
+          final hours = switch (state.autoBackupFrequency) {
+            BackupFrequency.daily => 24,
+            BackupFrequency.weekly => 24 * 7,
+            BackupFrequency.monthly => 24 * 30,
+          };
+          if (DateTime.now().difference(last).inHours < hours) {
             return; // backup was too recent
           }
         } catch (e) {
@@ -178,8 +201,8 @@ class BackupManager extends StateNotifier<BackupState>
     }
 
     // Scheduled time logic
-    if (_hasBackupHappenedToday()) {
-      return; // Already backed up today
+    if (_hasBackupHappenedInCurrentPeriod()) {
+      return; // Already backed up in this period
     }
 
     if (!_isScheduledTimePassed()) {
@@ -198,6 +221,12 @@ class BackupManager extends StateNotifier<BackupState>
     final autoBackup = prefs.getBool('autoBackupEnabled') ?? false;
     final autoBackupTime = prefs.getString('autoBackupTime');
 
+    // Load backup frequency
+    final freqStr = prefs.getString('autoBackupFrequency');
+    final autoBackupFrequency = freqStr != null
+        ? BackupFrequency.fromString(freqStr)
+        : BackupFrequency.daily;
+
     // Load backup mode from SharedPreferences
     final backupModeStr = prefs.getString('backupMode');
     final backupMode = backupModeStr != null 
@@ -215,6 +244,7 @@ class BackupManager extends StateNotifier<BackupState>
       lastBackupDate: lastBackup,
       autoBackupEnabled: autoBackup,
       autoBackupTime: autoBackupTime,
+      autoBackupFrequency: autoBackupFrequency,
       linkedGoogleEmail: linkedEmail,
       backupMode: backupMode,
     );
@@ -428,6 +458,13 @@ class BackupManager extends StateNotifier<BackupState>
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('autoBackupEnabled', enabled);
     state = state.copyWith(autoBackupEnabled: enabled);
+  }
+
+  /// 設定自動備份頻率
+  Future<void> setAutoBackupFrequency(BackupFrequency frequency) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('autoBackupFrequency', frequency.name);
+    state = state.copyWith(autoBackupFrequency: frequency);
   }
 
   /// Sets the scheduled backup time in "HH:mm" format (24-hour).
@@ -714,6 +751,44 @@ class BackupManager extends StateNotifier<BackupState>
         error: '備份發生未知錯誤：$e',
         clearError: false,
       );
+    }
+  }
+
+  /// 匯出備份檔案至本機（透過系統分享面板）
+  ///
+  /// 產生 JSON 備份檔案後，使用 share_plus 開啟系統分享面板，
+  /// 讓使用者自行選擇儲存位置或分享方式。
+  ///
+  /// [backupPassword] 可選的備份密碼，用於加密私鑰
+  ///
+  /// 回傳 true 表示檔案已成功產生並開啟分享面板
+  Future<bool> exportToFile({String? backupPassword}) async {
+    state = state.copyWith(isBackingUp: true, clearError: true);
+
+    try {
+      final jsonString = await exportAllConversationsToJSON(
+        backupPassword: backupPassword,
+      );
+
+      // 寫入暫存檔案
+      final tempDir = await getTemporaryDirectory();
+      final formatter = DateFormat('yyyy-MM-dd_HH-mm-ss');
+      final fileName = 'backup_${formatter.format(DateTime.now())}.json';
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsString(jsonString);
+
+      // 透過系統分享面板匯出
+      await Share.shareXFiles([XFile(file.path)]);
+
+      state = state.copyWith(isBackingUp: false);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isBackingUp: false,
+        error: '匯出檔案失敗：$e',
+        clearError: false,
+      );
+      return false;
     }
   }
 }
