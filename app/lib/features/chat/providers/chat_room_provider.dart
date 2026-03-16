@@ -33,6 +33,8 @@ class ChatRoomState {
   final bool isRecording;
   final Map<String, String> userAvatarUrls;
   final String roomAvatarUrl;
+  /// 群組房間的總成員數（含自己），用於判斷是否全員已讀
+  final int roomMemberCount;
 
   const ChatRoomState({
     this.messages = const [],
@@ -48,6 +50,7 @@ class ChatRoomState {
     this.isRecording = false,
     this.userAvatarUrls = const {},
     this.roomAvatarUrl = '',
+    this.roomMemberCount = 0,
   });
 
   ChatRoomState copyWith({
@@ -64,6 +67,7 @@ class ChatRoomState {
     bool? isRecording,
     Map<String, String>? userAvatarUrls,
     String? roomAvatarUrl,
+    int? roomMemberCount,
     bool clearReplyingTo = false,
     bool clearError = false,
   }) {
@@ -83,6 +87,7 @@ class ChatRoomState {
       isRecording: isRecording ?? this.isRecording,
       userAvatarUrls: userAvatarUrls ?? this.userAvatarUrls,
       roomAvatarUrl: roomAvatarUrl ?? this.roomAvatarUrl,
+      roomMemberCount: roomMemberCount ?? this.roomMemberCount,
     );
   }
 }
@@ -188,11 +193,14 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
               }
             }
             
+            // 🚀 先檢查訊息是否屬於此聊天室，避免不相關的 ChatRoomViewModel 浪費解密資源
+            final belongsToThisRoom = (arg.isRoom && rawMessage.roomId == arg.roomId) ||
+                (!arg.isRoom &&
+                    (rawMessage.senderId == arg.roomId ||
+                        rawMessage.receiverId == arg.roomId));
+            if (!belongsToThisRoom) return;
+            
             _tryDecryptMessage(rawMessage).then((message) async {
-              if ((arg.isRoom && message.roomId == arg.roomId) ||
-                  (!arg.isRoom &&
-                      (message.senderId == arg.roomId ||
-                          message.receiverId == arg.roomId))) {
                 _addMessage(message);
                 
                 // 🔐 修復：儲存解密後的訊息（明文），而不是原始密文
@@ -211,7 +219,6 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
                     markConversationAsRead();
                   }
                 }
-              }
             });
           } catch (e) {
             debugPrint('Error parsing message: $e');
@@ -1459,9 +1466,7 @@ if (arg.isRoom) {
         );
 
         if (decrypted != m.content) {
-          // Update LocalDB status to sync with memory state after successful decryption
           await LocalDbService().updateMessageStatus(m.clientMsgId ?? m.id, MessageStatus.delivered);
-          // 🔐 標記訊息為已解密
           await LocalDbService().markMessageAsDecrypted(m.id);
           return m.copyWith(content: decrypted, isDecrypted: true);
         }
@@ -1471,9 +1476,39 @@ if (arg.isRoom) {
           return m.copyWith(content: '🔒 此訊息無法解密（金鑰已更新）');
         }
         return m;
-      } on DecryptionFailureException catch (e) {
-        await _handleDecryptionFailure(m, e);
-        return m; 
+      } on DecryptionFailureException {
+        // 🔐 解密失敗：可能是對方已更換金鑰，嘗試從 API 重新取得公鑰後再試一次
+        debugPrint('[E2EE] DM decryption failed, refreshing public key for $opponentId...');
+        final refreshedKey = await _publicKeyCacheService.refreshPublicKey(opponentId);
+        if (refreshedKey != null && refreshedKey != pubKey) {
+          debugPrint('[E2EE] 🔑 Got new public key, retrying decryption...');
+          try {
+            final decrypted = await _cryptoService.decryptMessage(
+              m.content,
+              refreshedKey,
+              messageId: m.id,
+              senderId: m.senderId,
+            );
+            if (decrypted != m.content) {
+              await LocalDbService().updateMessageStatus(m.clientMsgId ?? m.id, MessageStatus.delivered);
+              await LocalDbService().markMessageAsDecrypted(m.id);
+              return m.copyWith(content: decrypted, isDecrypted: true);
+            }
+          } on DecryptionFailureException catch (e2) {
+            debugPrint('[E2EE] ❌ Retry with refreshed key also failed, triggering auto-resend');
+            await _handleDecryptionFailure(m, e2);
+            return m;
+          }
+        }
+        // 公鑰沒變或刷新失敗，走 auto-resend 流程
+        final fallbackException = DecryptionFailureException(
+          messageId: m.id,
+          senderId: m.senderId,
+          originalCiphertext: m.content,
+          reason: 'Decryption failed after key refresh',
+        );
+        await _handleDecryptionFailure(m, fallbackException);
+        return m;
       }
     }
   }
@@ -1546,7 +1581,10 @@ if (arg.isRoom) {
           avatars[user.id] = avatarUrl;
         }
       }
-      state = state.copyWith(userAvatarUrls: avatars);
+      state = state.copyWith(
+        userAvatarUrls: avatars,
+        roomMemberCount: members.length,
+      );
     } catch (e) {
       debugPrint('Error caught: $e');
     }
@@ -1729,6 +1767,9 @@ if (arg.isRoom) {
       },
     };
 
+    // 🚀 Optimistic UI: 立即更新聊天列表（不等伺服器回應）
+    _updateRoomListPreview(content, type, linkPreview);
+
     try {
       await _wsService.send('chat_message', payload);
       _updateMessageStatus(clientMsgId, MessageStatus.sent);
@@ -1738,6 +1779,40 @@ if (arg.isRoom) {
     } catch (e) {
       state = state.copyWith(isSending: false);
     }
+  }
+
+  /// 🚀 Optimistic UI: 發送訊息後立即更新聊天列表的最後訊息與排序
+  void _updateRoomListPreview(String content, MessageType type, dynamic linkPreview) {
+    String preview;
+    String? previewType = type.toString().split('.').last;
+    switch (type) {
+      case MessageType.image:
+        preview = '[圖片]';
+        break;
+      case MessageType.voice:
+        preview = '[語音訊息]';
+        break;
+      case MessageType.video:
+        preview = '[影片]';
+        break;
+      case MessageType.file:
+        preview = '[檔案]';
+        break;
+      default:
+        if (linkPreview != null) {
+          final title = linkPreview.title?.toString() ?? '';
+          preview = title.isNotEmpty ? title : content;
+          previewType = 'link';
+        } else {
+          preview = content;
+        }
+    }
+    ref.read(roomListViewModelProvider.notifier).updateRoomLastMessage(
+      arg.roomId,
+      preview,
+      lastMessageType: previewType,
+      lastMessageTime: DateTime.now(),
+    );
   }
 
   Future<void> retrySend(Message message) async {

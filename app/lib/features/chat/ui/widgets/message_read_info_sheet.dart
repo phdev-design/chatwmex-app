@@ -32,6 +32,7 @@ class MessageReadInfoSheet extends ConsumerStatefulWidget {
 class _MessageReadInfoSheetState extends ConsumerState<MessageReadInfoSheet> {
   Map<String, String> _memberNames = {};
   Map<String, String> _memberAvatars = {};
+  int _totalOtherMembers = 0;
   bool _isLoading = true;
 
   @override
@@ -62,6 +63,10 @@ class _MessageReadInfoSheetState extends ConsumerState<MessageReadInfoSheet> {
         setState(() {
           _memberNames = names;
           _memberAvatars = {...widget.userAvatarUrls, ...avatars};
+          // 總成員數扣除發送者自己
+          _totalOtherMembers = members
+              .where((m) => m.id != widget.msg.senderId)
+              .length;
           _isLoading = false;
         });
       }
@@ -127,7 +132,7 @@ class _MessageReadInfoSheetState extends ConsumerState<MessageReadInfoSheet> {
     );
   }
 
-  /// 群組聊天：顯示已讀成員列表
+  /// 群組聊天：顯示已讀 / 未讀成員列表（WhatsApp 風格）
   Widget _buildGroupReadInfo(
     BuildContext context,
     bool isDark,
@@ -135,9 +140,21 @@ class _MessageReadInfoSheetState extends ConsumerState<MessageReadInfoSheet> {
   ) {
     final readBy = widget.msg.readBy;
     // 過濾掉發送者自己
-    final readers = readBy.where((id) => id != widget.msg.senderId).toList();
+    final readers = readBy.where((id) => id != widget.msg.senderId).toSet();
 
-    if (readers.isEmpty) {
+    // 計算未讀成員（所有成員 - 發送者 - 已讀者）
+    final allOtherMemberIds = _memberNames.keys
+        .where((id) => id != widget.msg.senderId)
+        .toList();
+    final unreadMembers = allOtherMemberIds
+        .where((id) => !readers.contains(id))
+        .toList();
+
+    final allRead = _totalOtherMembers > 0 && readers.length >= _totalOtherMembers;
+    final readColor = allRead ? tokens.accent : (isDark ? Colors.white70 : Colors.grey[600]!);
+    final unreadColor = isDark ? Colors.white54 : Colors.grey[500]!;
+
+    if (readers.isEmpty && unreadMembers.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -162,59 +179,90 @@ class _MessageReadInfoSheetState extends ConsumerState<MessageReadInfoSheet> {
 
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.4,
+        maxHeight: MediaQuery.of(context).size.height * 0.5,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Row(
-              children: [
-                Icon(Icons.done_all, size: 16, color: tokens.accent),
-                const SizedBox(width: 6),
-                Text(
-                  '已讀 ${readers.length} 人',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: tokens.accent,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Flexible(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: readers.length,
-              itemBuilder: (context, index) {
-                final userId = readers[index];
-                final name = _memberNames[userId] ?? userId.substring(0, 8);
-                final avatarUrl = _memberAvatars[userId];
-                return ListTile(
-                  dense: true,
-                  leading: ChatAvatar(
-                    radius: 18,
-                    avatarUrl: avatarUrl,
-                    fallbackText: name.isNotEmpty
-                        ? name[0].toUpperCase()
-                        : '?',
-                    logTag: 'read_info',
-                  ),
-                  title: Text(
-                    name,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── 已讀區塊 ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.done_all, size: 16, color: readColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    '已讀 ${readers.length} 人',
                     style: TextStyle(
-                      fontSize: 15,
-                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: readColor,
                     ),
                   ),
-                );
-              },
+                ],
+              ),
             ),
-          ),
-        ],
+            if (readers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  '尚未有人已讀',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white38 : Colors.grey[500],
+                  ),
+                ),
+              )
+            else
+              ...readers.map((userId) => _buildMemberTile(userId, isDark)),
+
+            // ── 未讀區塊 ──
+            if (unreadMembers.isNotEmpty) ...[
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.done_all, size: 16, color: unreadColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      '未讀 ${unreadMembers.length} 人',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: unreadColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...unreadMembers.map((userId) => _buildMemberTile(userId, isDark)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemberTile(String userId, bool isDark) {
+    final name = _memberNames[userId] ?? userId.substring(0, 8);
+    final avatarUrl = _memberAvatars[userId];
+    return ListTile(
+      dense: true,
+      leading: ChatAvatar(
+        radius: 18,
+        avatarUrl: avatarUrl,
+        fallbackText: name.isNotEmpty ? name[0].toUpperCase() : '?',
+        logTag: 'read_info',
+      ),
+      title: Text(
+        name,
+        style: TextStyle(
+          fontSize: 15,
+          color: isDark ? Colors.white : Colors.black87,
+        ),
       ),
     );
   }

@@ -82,6 +82,29 @@ class PublicKeyCacheService {
     _inFlightRequests.clear();
     await _localDbService.clearAllPublicKeys();
   }
+
+  /// 🔐 強制從 API 重新取得指定用戶的公鑰（繞過快取）
+  /// 用於解密失敗時，可能是對方已更換金鑰
+  Future<String?> refreshPublicKey(String userId) async {
+    // 清除該用戶的快取
+    _memoryCache.remove(userId);
+    _inFlightRequests.remove(userId);
+
+    try {
+      final key = await _chatRepository.getUserPublicKey(userId);
+      final finalKey = key ?? '';
+      _memoryCache[userId] = finalKey;
+
+      if (finalKey.isNotEmpty) {
+        await _localDbService.savePublicKey(userId, finalKey);
+      }
+
+      return finalKey.isNotEmpty ? finalKey : null;
+    } catch (e) {
+      debugPrint('Refresh public key failed for $userId: $e');
+      return null;
+    }
+  }
 }
 
 final publicKeyCacheServiceProvider = Provider<PublicKeyCacheService>((ref) {

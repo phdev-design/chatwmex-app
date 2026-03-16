@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'package:app/core/notification/notification_service.dart';
 import 'package:app/features/chat/models/room.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/core/websocket/websocket_service.dart';
@@ -103,10 +104,38 @@ class RoomListViewModel extends Notifier<RoomListState> {
               }
             }
             if (targetRoomId.isNotEmpty) {
-              final isCipher = _looksLikeCiphertext(messageContent);
-              if (previewTitle == null && isCipher) {
-                // Async decrypt
-                _getDecryptedPreview(messageContent, targetRoomId).then((
+              // 🔐 判斷訊息內容：優先使用 encrypted_contents_fanout 中自己的密文
+              String effectiveContent = messageContent;
+              final fanoutRaw = message['encrypted_contents_fanout'];
+              if (effectiveContent.isEmpty && fanoutRaw is Map && _currentUserId != null) {
+                final myCipher = fanoutRaw[_currentUserId]?.toString();
+                if (myCipher != null && myCipher.isNotEmpty) {
+                  effectiveContent = myCipher;
+                }
+              }
+              
+              final isCipher = _looksLikeCiphertext(effectiveContent);
+              
+              // 🚀 即使內容為空或加密，也要立即更新時間戳和排序
+              // 確保聊天室立刻跳到最上方
+              if (effectiveContent.isEmpty && !isCipher) {
+                // 內容為空且不是密文（可能是 fanout 模式但沒有自己的密文）
+                updateRoomLastMessage(
+                  targetRoomId,
+                  _buildLastMessagePreview(messageType, '', previewTitle: previewTitle),
+                  lastMessageType: messageType,
+                  lastMessageTime: createdAt ?? DateTime.now(),
+                );
+              } else if (previewTitle == null && isCipher) {
+                // 🔐 先立即顯示「加密訊息」佔位，再異步解密更新
+                updateRoomLastMessage(
+                  targetRoomId,
+                  '🔒 加密訊息',
+                  lastMessageType: messageType,
+                  lastMessageTime: createdAt ?? DateTime.now(),
+                );
+                // Async decrypt to replace placeholder
+                _getDecryptedPreview(effectiveContent, targetRoomId).then((
                   decrypted,
                 ) {
                   updateRoomLastMessage(
@@ -125,7 +154,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
                   targetRoomId,
                   _buildLastMessagePreview(
                     messageType,
-                    messageContent,
+                    effectiveContent,
                     previewTitle: previewTitle,
                   ),
                   lastMessageType: previewTitle != null ? 'link' : messageType,
@@ -135,7 +164,7 @@ class RoomListViewModel extends Notifier<RoomListState> {
             }
           }
 
-          // 如果訊息不是自己發送的，自動回傳 delivered 回執
+          // 如果訊息不是自己發送的，自動回傳 delivered 回執 + 遞增未讀數
           if (payload is Map) {
             final senderId = payload['sender_id']?.toString() ?? '';
             final msgId = payload['id']?.toString() ?? '';
@@ -149,6 +178,13 @@ class RoomListViewModel extends Notifier<RoomListState> {
                 'room_id': roomIdRaw.isEmpty ? null : roomIdRaw,
                 'sender_id': senderId,
               });
+
+              // 🚀 本地即時遞增未讀數（不等 API）
+              // 如果用戶正在查看該聊天室，不遞增未讀數
+              final unreadRoomId = roomIdRaw.isNotEmpty ? roomIdRaw : senderId;
+              if (NotificationService.currentActiveRoomId != unreadRoomId) {
+                incrementUnreadCount(unreadRoomId);
+              }
             }
           }
 
@@ -353,11 +389,31 @@ class RoomListViewModel extends Notifier<RoomListState> {
       }
       return room;
     }).toList();
-    final index = updated.indexWhere((r) => r.id == roomId);
-    if (index > 0) {
-      final room = updated.removeAt(index);
-      updated.insert(0, room);
-    }
+    // 🚀 按 lastMessageTime 倒序排列，確保最新訊息的房間在最上方
+    updated.sort((a, b) {
+      final aTime = a.lastMessageTime ?? a.createdAt;
+      final bTime = b.lastMessageTime ?? b.createdAt;
+      return bTime.compareTo(aTime);
+    });
+    state = state.copyWith(rooms: updated);
+  }
+
+  /// 🚀 收到新訊息時遞增未讀數（本地即時更新，不等 API）
+  void incrementUnreadCount(String roomId) {
+    final current = _unreadOverrides[roomId];
+    final existingRoom = state.rooms.firstWhere(
+      (r) => r.id == roomId,
+      orElse: () => Room(id: '', name: '', createdAt: DateTime.now()),
+    );
+    final baseCount = current ?? existingRoom.unreadCount;
+    _unreadOverrides[roomId] = baseCount + 1;
+
+    final updated = state.rooms.map((room) {
+      if (room.id == roomId) {
+        return room.copyWith(unreadCount: baseCount + 1);
+      }
+      return room;
+    }).toList();
     state = state.copyWith(rooms: updated);
   }
 
@@ -430,12 +486,18 @@ class RoomListViewModel extends Notifier<RoomListState> {
         return '[圖片]';
       case 'audio':
         return '[語音訊息]';
+      case 'video':
+        return '[影片]';
       case 'file':
       case 'document':
         return '[檔案]';
       default:
         // 判斷是否為 E2EE 密文（base64 且長度夠長）
         if (_looksLikeCiphertext(content)) {
+          return '🔒 加密訊息';
+        }
+        // 🚀 空內容時顯示加密訊息佔位（避免顯示「尚無訊息」）
+        if (content.isEmpty) {
           return '🔒 加密訊息';
         }
         return content;
@@ -458,15 +520,28 @@ class RoomListViewModel extends Notifier<RoomListState> {
       }
 
       final cryptoService = ref.read(cryptoServiceProvider);
-      final decrypted = await cryptoService.decryptMessage(
-        content,
-        opponentPublicKey,
-      );
+      try {
+        final decrypted = await cryptoService.decryptMessage(
+          content,
+          opponentPublicKey,
+        );
+        if (decrypted != content) return decrypted;
+      } catch (_) {
+        // 🔐 解密失敗，嘗試刷新公鑰後重試
+        final refreshedKey = await cacheService.refreshPublicKey(opponentId);
+        if (refreshedKey != null && refreshedKey != opponentPublicKey) {
+          try {
+            final decrypted = await cryptoService.decryptMessage(
+              content,
+              refreshedKey,
+            );
+            if (decrypted != content) return decrypted;
+          } catch (_) {
+            // 刷新後仍失敗
+          }
+        }
+      }
 
-      // 解密成功且內容改變
-      if (decrypted != content) return decrypted;
-
-      // 看起來是密文但解密失敗
       final looksLikeCiphertext = _looksLikeCiphertext(content);
       return looksLikeCiphertext ? '🔒 加密訊息' : content;
     } catch (_) {

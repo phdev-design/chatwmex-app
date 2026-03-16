@@ -521,10 +521,23 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
 
     final timeText = DateFormat('a h:mm').format(msg.createdAt);
 
-    // 訊息狀態顏色：已閱讀為主顏色，其餘為次要文字色
-    final statusColor = msg.status == MessageStatus.read
-        ? tokens.accent
-        : subtleTextColor;
+    // 群組聊天：只有全部成員已讀才顯示藍色雙剔
+    // 一對一聊天：維持原本 status 判斷
+    final bool isGroupAllRead;
+    if (widget.isRoom && widget.state.roomMemberCount > 0) {
+      final otherMemberCount = widget.state.roomMemberCount - 1; // 扣除發送者
+      final readersCount = msg.readBy.where((id) => id != msg.senderId).length;
+      isGroupAllRead = otherMemberCount > 0 && readersCount >= otherMemberCount;
+    } else {
+      isGroupAllRead = false;
+    }
+
+    final bool showAccent = widget.isRoom
+        ? isGroupAllRead
+        : msg.status == MessageStatus.read;
+
+    // 訊息狀態顏色：全員已讀為主顏色，其餘為次要文字色
+    final statusColor = showAccent ? tokens.accent : subtleTextColor;
 
     // 訊息狀態圖示
     IconData statusIcon;
