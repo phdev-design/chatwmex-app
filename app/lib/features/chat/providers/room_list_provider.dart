@@ -252,15 +252,40 @@ class RoomListViewModel extends Notifier<RoomListState> {
         Room r = room;
         final lm = room.lastMessage;
         final lmType = room.lastMessageType;
+
+        // 先取出 state 中已有的房間資料，用於 fallback
+        final existingRoom = state.rooms.firstWhere(
+          (existing) => existing.id == room.id,
+          orElse: () => room,
+        );
+
         if (lm != null &&
             lmType != 'image' &&
             lmType != 'audio' &&
             lmType != 'file' &&
             lmType != 'document') {
           if (_looksLikeCiphertext(lm)) {
-            // For group rooms, getPublicKey will likely fail and fallback to "🔒 加密訊息"
             final decryptedLM = await _getDecryptedPreview(lm, room.id);
-            r = r.copyWith(lastMessage: decryptedLM);
+
+            // ✅ 修復：解密失敗時，優先保留 state 中已有的明文，避免覆蓋
+            if (decryptedLM == '🔒 加密訊息') {
+              final existingLM = existingRoom.lastMessage;
+              if (existingLM != null &&
+                  existingLM.isNotEmpty &&
+                  !_looksLikeCiphertext(existingLM) &&
+                  existingLM != '🔒 加密訊息') {
+                // state 裡有可用的明文，保留它
+                r = r.copyWith(
+                  lastMessage: existingLM,
+                  lastMessageType: existingRoom.lastMessageType ?? lmType,
+                  lastMessageTime: existingRoom.lastMessageTime ?? room.lastMessageTime,
+                );
+              } else {
+                r = r.copyWith(lastMessage: decryptedLM);
+              }
+            } else {
+              r = r.copyWith(lastMessage: decryptedLM);
+            }
           }
         }
 
@@ -270,17 +295,13 @@ class RoomListViewModel extends Notifier<RoomListState> {
         }
 
         // 修復3：如果 API 回來的 lastMessage 是空的，但 state 裡已有值，保留 state 的值
-        final existingRoom = state.rooms.firstWhere(
-          (existing) => existing.id == room.id,
-          orElse: () => room,
-        );
         if ((r.lastMessage == null || r.lastMessage!.isEmpty) &&
             existingRoom.lastMessage != null &&
             existingRoom.lastMessage!.isNotEmpty) {
           r = r.copyWith(
             lastMessage: existingRoom.lastMessage,
-            lastMessageType: existingRoom.lastMessageType,
-            lastMessageTime: existingRoom.lastMessageTime,
+            lastMessageType: existingRoom.lastMessageType ?? r.lastMessageType,
+            lastMessageTime: existingRoom.lastMessageTime ?? r.lastMessageTime,
           );
         }
 
