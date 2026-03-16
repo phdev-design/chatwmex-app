@@ -137,6 +137,12 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string, keyword str
 		lastMsg, err := u.messageRepo.GetLastRoomMessage(ctx, room.ID)
 		if err == nil && lastMsg != nil {
 			content := lastMsg.Content
+			// 🔐 E2EE: 如果 content 為空但有 fanout，取出當前用戶的密文
+			if content == "" && len(lastMsg.EncryptedContentsFanout) > 0 {
+				if userCipher, ok := lastMsg.EncryptedContentsFanout[userID]; ok {
+					content = userCipher
+				}
+			}
 			if lastMsg.LinkPreview != nil && lastMsg.LinkPreview.Title != "" {
 				content = lastMsg.LinkPreview.Title
 			}
