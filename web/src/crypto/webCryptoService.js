@@ -103,6 +103,123 @@ export async function decryptSessionKey(encryptedKeyBase64, senderPublicKeyBase6
 }
 
 /**
+ * 使用 AES-256-GCM 加密訊息內容。
+ *
+ * 輸出格式（與 Flutter CryptoService 一致）：
+ *   base64( nonce[12] + mac[16] + ciphertext )
+ *
+ * 注意：Web Crypto API 的 AES-GCM 輸出格式為 `ciphertext || tag`，
+ * 需手動拆分 tag（最後 16 bytes）並重組為 `nonce + tag + ciphertext`。
+ *
+ * @param {string} plaintext — 明文訊息（UTF-8 字串）
+ * @param {string} sessionKeyBase64 — AES-256 Session Key（base64，32 bytes）
+ * @returns {Promise<string>} 加密後的訊息內容（base64）
+ * @throws {Error} 若 sessionKeyBase64 非合法 base64 或長度不符 AES-256（32 bytes）
+ */
+export async function encryptMessage(plaintext, sessionKeyBase64) {
+  // Validate and decode session key
+  let keyBytes;
+  try {
+    keyBytes = base64ToUint8Array(sessionKeyBase64);
+  } catch (e) {
+    throw new Error('Invalid session key: not valid base64');
+  }
+
+  if (keyBytes.length !== 32) {
+    throw new Error(`Invalid session key: expected 32 bytes, got ${keyBytes.length}`);
+  }
+
+  // Import session key as AES-GCM key
+  const aesKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt'],
+  );
+
+  // Generate random 12-byte nonce
+  const nonce = crypto.getRandomValues(new Uint8Array(AES_GCM_NONCE_LENGTH));
+
+  // Encode plaintext as UTF-8
+  const encoded = new TextEncoder().encode(plaintext);
+
+  // Encrypt — Web Crypto returns ciphertext || tag
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce, tagLength: AES_GCM_TAG_LENGTH * 8 },
+    aesKey,
+    encoded,
+  );
+
+  const encryptedBytes = new Uint8Array(encryptedBuffer);
+
+  // Split: ciphertext (all but last 16 bytes) + tag (last 16 bytes)
+  const ciphertext = encryptedBytes.slice(0, encryptedBytes.length - AES_GCM_TAG_LENGTH);
+  const tag = encryptedBytes.slice(encryptedBytes.length - AES_GCM_TAG_LENGTH);
+
+  // Reassemble as nonce + tag + ciphertext
+  const combined = new Uint8Array(AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH + ciphertext.length);
+  combined.set(nonce, 0);
+  combined.set(tag, AES_GCM_NONCE_LENGTH);
+  combined.set(ciphertext, AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH);
+
+  return uint8ArrayToBase64(combined);
+}
+
+/**
+ * 使用 X25519 ECDH 衍生共享金鑰後以 AES-256-GCM 加密訊息（Fanout 用途）。
+ *
+ * 輸出格式（與 Flutter CryptoService 一致）：
+ *   base64( nonce[12] + mac[16] + ciphertext )
+ *
+ * @param {string} plaintext — 明文訊息（UTF-8 字串）
+ * @param {string} recipientPublicKeyBase64 — 接收方的 X25519 公鑰（base64，32 bytes）
+ * @param {Uint8Array} senderPrivateKey — 發送方的 X25519 私鑰（32 bytes）
+ * @returns {Promise<string>} 加密後的訊息內容（base64）
+ */
+export async function encryptForRecipient(plaintext, recipientPublicKeyBase64, senderPrivateKey) {
+  // Derive shared secret via X25519 ECDH
+  const recipientPublicKeyBytes = base64ToUint8Array(recipientPublicKeyBase64);
+  const sharedSecret = x25519.getSharedSecret(senderPrivateKey, recipientPublicKeyBytes);
+
+  // Import shared secret as AES-GCM key
+  const aesKey = await crypto.subtle.importKey(
+    'raw',
+    sharedSecret,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt'],
+  );
+
+  // Generate random 12-byte nonce
+  const nonce = crypto.getRandomValues(new Uint8Array(AES_GCM_NONCE_LENGTH));
+
+  // Encode plaintext as UTF-8
+  const encoded = new TextEncoder().encode(plaintext);
+
+  // Encrypt — Web Crypto returns ciphertext || tag
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce, tagLength: AES_GCM_TAG_LENGTH * 8 },
+    aesKey,
+    encoded,
+  );
+
+  const encryptedBytes = new Uint8Array(encryptedBuffer);
+
+  // Split: ciphertext (all but last 16 bytes) + tag (last 16 bytes)
+  const ciphertext = encryptedBytes.slice(0, encryptedBytes.length - AES_GCM_TAG_LENGTH);
+  const tag = encryptedBytes.slice(encryptedBytes.length - AES_GCM_TAG_LENGTH);
+
+  // Reassemble as nonce + tag + ciphertext
+  const combined = new Uint8Array(AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH + ciphertext.length);
+  combined.set(nonce, 0);
+  combined.set(tag, AES_GCM_NONCE_LENGTH);
+  combined.set(ciphertext, AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH);
+
+  return uint8ArrayToBase64(combined);
+}
+
+/**
  * 使用 AES-256-GCM 解密訊息內容。
  *
  * 加密格式（與 Flutter CryptoService 一致）：

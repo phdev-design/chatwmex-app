@@ -3,9 +3,31 @@ import { decryptSessionKey } from '../crypto/webCryptoService.js';
 import { saveSessionKey, clearSessionKey } from '../crypto/sessionKeyStore.js';
 
 /**
+ * @typedef {Object} ReEncryptRequestData
+ * @property {string} message_id
+ * @property {string} encrypted_content
+ * @property {string} [new_session_key]
+ */
+
+/**
+ * @typedef {Object} ReEncryptResponseData
+ * @property {string} message_id
+ * @property {string} new_encrypted_content
+ */
+
+/**
+ * @typedef {Object} PresenceUpdateData
+ * @property {string} user_id
+ * @property {'online'|'offline'} status
+ */
+
+/**
  * @typedef {Object} UseWebSocketOptions
  * @property {(data: Object) => void} [onSessionKeyDelivery] — 自訂 session_key_delivery 事件處理
  * @property {(data: Object) => void} [onDeviceUnlinked] — 自訂 device_unlinked 事件處理
+ * @property {(data: ReEncryptRequestData) => void} [onReEncryptRequest]
+ * @property {(data: ReEncryptResponseData) => void} [onReEncryptResponse]
+ * @property {(data: PresenceUpdateData) => void} [onPresenceUpdate]
  */
 
 /**
@@ -91,6 +113,26 @@ const useWebSocket = (token, isQrToken = false, options = {}) => {
               }
             }
 
+            // Handle re_encrypt_request event
+            if (message.event === 're_encrypt_request') {
+              const { message_id, encrypted_content } = message.data || {};
+              if (!message_id || !encrypted_content) {
+                console.error('re_encrypt_request: missing message_id or encrypted_content');
+              } else {
+                optionsRef.current.onReEncryptRequest?.(message.data);
+              }
+            }
+
+            // Handle re_encrypt_response event
+            if (message.event === 're_encrypt_response') {
+              optionsRef.current.onReEncryptResponse?.(message.data);
+            }
+
+            // Handle presence_update event
+            if (message.event === 'presence_update') {
+              optionsRef.current.onPresenceUpdate?.(message.data);
+            }
+
             setMessages((prev) => [...prev, message]);
           }
         } catch (err) {
@@ -159,7 +201,14 @@ const useWebSocket = (token, isQrToken = false, options = {}) => {
     }
   }, []);
 
-  return { messages, sendMessage, isConnected };
+  const sendRawEvent = useCallback((event, data) => {
+    const payload = { event, data };
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify(payload));
+    }
+  }, []);
+
+  return { messages, sendMessage, sendRawEvent, isConnected };
 };
 
 /**
