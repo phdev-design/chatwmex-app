@@ -187,6 +187,12 @@ func main() {
 
 	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo, linkedDeviceRepo, offlineLinkedMsgRepo, friendRepo, privacySettingUsecase)
 
+	// Wire up notification retry dependencies so the hub can retry failed push
+	// notifications when a user comes back online.
+	if notificationProducer != nil && redisClient != nil {
+		hub.SetNotificationRetryDeps(notificationProducer, redisClient)
+	}
+
 	// Initialize LinkedDevice Usecase (needs hub as WebSocketNotifier)
 	linkedDeviceUsecase := usecase.NewLinkedDeviceUsecase(linkedDeviceRepo, hub, timeout)
 

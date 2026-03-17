@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -175,10 +176,14 @@ func (u *messageUsecase) SendMessage(c context.Context, msg *domain.Message) err
 	if u.notificationProducer != nil && len(pushTargets) > 0 {
 		pushMsg := u.buildPushNotificationMessage(ctx, pushTargets, msg)
 		if pushMsg != nil {
-			// Publish asynchronously - don't block on errors
 			if err := u.notificationProducer.Publish(ctx, pushMsg); err != nil {
 				log.Printf("Failed to publish notification to queue: %v", err)
-				// Continue - message was already stored successfully
+				// Store in Redis for retry when the target user(s) come back online.
+				// One retry entry per target user so the hub can scan by userID.
+				if u.redisClient != nil {
+					u.storeNotificationRetry(ctx, pushTargets, pushMsg, msg.ID)
+				}
+				// Continue — message was already stored successfully
 			}
 		}
 	}
@@ -499,4 +504,26 @@ func (u *messageUsecase) FetchAndClearDeliveredReceiptNotifications(c context.Co
 	ctx, cancel := context.WithTimeout(c, u.contextTimeout)
 	defer cancel()
 	return u.messageRepo.FetchAndClearDeliveredReceiptNotifications(ctx, userID)
+}
+
+// storeNotificationRetry persists a failed PushNotificationMessage into Redis
+// so the hub can retry it when the target user(s) come back online.
+// Key format: "notify_retry:{userID}:{msgID}" — one entry per target user.
+func (u *messageUsecase) storeNotificationRetry(
+	ctx context.Context,
+	targetUserIDs []string,
+	pushMsg *domain.PushNotificationMessage,
+	msgID string,
+) {
+	payload, err := json.Marshal(pushMsg)
+	if err != nil {
+		log.Printf("[NotifyRetry] Failed to marshal retry payload: %v", err)
+		return
+	}
+	for _, uid := range targetUserIDs {
+		key := fmt.Sprintf("notify_retry:%s:%s", uid, msgID)
+		if err := u.redisClient.Set(ctx, key, payload, 24*time.Hour).Err(); err != nil {
+			log.Printf("[NotifyRetry] Failed to store retry entry for user %s: %v", uid, err)
+		}
+	}
 }

@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"chatwmex_backend/internal/infrastructure/rabbitmq"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the
@@ -62,6 +64,12 @@ type Hub struct {
 
 	// Notification Service for Push Notifications
 	notificationService domain.NotificationService
+
+	// NotificationProducer for retrying failed push notifications
+	notificationProducer domain.NotificationProducer
+
+	// Redis client for notify_retry queue
+	redisClient *redis.Client
 }
 
 // GetActiveConnectionCount returns the number of active clients.
@@ -96,6 +104,13 @@ func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRep
 		friendRepo:            fr,
 		privacySettingUsecase: psu,
 	}
+}
+
+// SetNotificationRetryDeps injects the dependencies needed for the push notification
+// retry worker. Call this after NewHub, before hub.Run().
+func (h *Hub) SetNotificationRetryDeps(producer domain.NotificationProducer, rc *redis.Client) {
+	h.notificationProducer = producer
+	h.redisClient = rc
 }
 
 // Run starts the hub loop.
@@ -191,6 +206,11 @@ func (h *Hub) Run() {
 				// Deliver pending re-encrypt requests
 				if h.pendingReEncryptRepo != nil {
 					h.deliverPendingReEncryptRequests(ctx, uid, client)
+				}
+
+				// Retry any failed push notifications for this user
+				if h.notificationProducer != nil && h.redisClient != nil {
+					h.retryPendingNotifications(uid)
 				}
 			}(client.userID)
 			log.Printf("Client connected: %s", client.userID)
@@ -1274,4 +1294,42 @@ func (h *Hub) broadcastPresenceToFriends(userID string, isOnline bool, lastSeen 
 		}
 	}
 	log.Printf("[Presence] presence_update sent to %d/%d online friends of user %s", delivered, len(friends), userID)
+}
+
+// retryPendingNotifications scans Redis for failed push notifications targeting
+// the given userID and retries publishing them to RabbitMQ.
+// Keys are stored as "notify_retry:{userID}:{msgID}" with a 24h TTL.
+func (h *Hub) retryPendingNotifications(userID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pattern := fmt.Sprintf("notify_retry:%s:*", userID)
+	keys, err := h.redisClient.Keys(ctx, pattern).Result()
+	if err != nil || len(keys) == 0 {
+		return
+	}
+
+	log.Printf("[NotifyRetry] Found %d pending notification(s) for user %s", len(keys), userID)
+
+	for _, key := range keys {
+		val, err := h.redisClient.Get(ctx, key).Bytes()
+		if err != nil {
+			continue
+		}
+
+		var msg domain.PushNotificationMessage
+		if err := json.Unmarshal(val, &msg); err != nil {
+			log.Printf("[NotifyRetry] Failed to unmarshal retry payload for key %s: %v", key, err)
+			h.redisClient.Del(ctx, key) // remove corrupt entry
+			continue
+		}
+
+		if err := h.notificationProducer.Publish(ctx, &msg); err != nil {
+			log.Printf("[NotifyRetry] Retry publish failed for key %s: %v", key, err)
+			continue
+		}
+
+		h.redisClient.Del(ctx, key)
+		log.Printf("[NotifyRetry] Successfully retried notification for key %s", key)
+	}
 }

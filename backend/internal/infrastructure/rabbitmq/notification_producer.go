@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 
 	"chatwmex_backend/internal/config"
 	"chatwmex_backend/internal/domain"
@@ -23,118 +24,110 @@ type NotificationProducerImpl struct {
 	conn      *amqp.Connection
 	channel   *amqp.Channel
 	queueName string
+	cfg       *config.Config
+	mu        sync.Mutex
 }
 
 // NewNotificationProducer creates a new notification producer
 func NewNotificationProducer(cfg *config.Config) (domain.NotificationProducer, error) {
-	conn, err := amqp.Dial(cfg.RabbitMQURL)
+	p := &NotificationProducerImpl{
+		queueName: NotificationQueueName,
+		cfg:       cfg,
+	}
+	if err := p.connect(); err != nil {
+		return nil, err
+	}
+	log.Printf("NotificationProducer initialized: queue=%s", NotificationQueueName)
+	return p, nil
+}
+
+// connect establishes a new AMQP connection, channel, and declares all queues/exchanges.
+// Must be called with mu held OR before the struct is shared across goroutines.
+func (p *NotificationProducerImpl) connect() error {
+	conn, err := amqp.Dial(p.cfg.RabbitMQURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+		return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to open a channel: %w", err)
+		return fmt.Errorf("failed to open channel: %w", err)
 	}
 
-	// Declare Dead Letter Exchange
-	err = ch.ExchangeDeclare(
-		NotificationDLX, // name
-		"direct",        // type
-		true,            // durable
-		false,           // auto-deleted
-		false,           // internal
-		false,           // no-wait
-		nil,             // arguments
-	)
-	if err != nil {
+	if err := declareNotificationTopology(ch); err != nil {
 		ch.Close()
 		conn.Close()
-		return nil, fmt.Errorf("failed to declare DLX: %w", err)
+		return err
 	}
 
-	// Declare Dead Letter Queue
-	_, err = ch.QueueDeclare(
-		NotificationDLQ, // name
-		true,            // durable
-		false,           // delete when unused
-		false,           // exclusive
-		false,           // no-wait
-		nil,             // arguments
-	)
-	if err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("failed to declare DLQ: %w", err)
-	}
-
-	// Bind DLQ to DLX
-	err = ch.QueueBind(
-		NotificationDLQ, // queue name
-		NotificationDLQ, // routing key
-		NotificationDLX, // exchange
-		false,
-		nil,
-	)
-	if err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("failed to bind DLQ: %w", err)
-	}
-
-	// Declare main notification queue with DLX configuration
-	_, err = ch.QueueDeclare(
-		NotificationQueueName, // name
-		true,                  // durable
-		false,                 // delete when unused
-		false,                 // exclusive
-		false,                 // no-wait
-		amqp.Table{
-			"x-dead-letter-exchange":    NotificationDLX,
-			"x-dead-letter-routing-key": NotificationDLQ,
-			"x-message-ttl":             300000, // 5 minutes
-		},
-	)
-	if err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("failed to declare notification queue: %w", err)
-	}
-
-	log.Printf("NotificationProducer initialized: queue=%s", NotificationQueueName)
-
-	return &NotificationProducerImpl{
-		conn:      conn,
-		channel:   ch,
-		queueName: NotificationQueueName,
-	}, nil
+	p.conn = conn
+	p.channel = ch
+	return nil
 }
 
-// Publish sends a notification message to the queue
+// reconnect closes stale resources and re-establishes the connection.
+// Must be called with mu held.
+func (p *NotificationProducerImpl) reconnect() error {
+	// Clean up stale resources (ignore errors — they may already be closed)
+	if p.channel != nil {
+		p.channel.Close()
+		p.channel = nil
+	}
+	if p.conn != nil {
+		p.conn.Close()
+		p.conn = nil
+	}
+
+	log.Println("[NotificationProducer] Reconnecting to RabbitMQ...")
+	if err := p.connect(); err != nil {
+		return fmt.Errorf("reconnect failed: %w", err)
+	}
+	log.Println("[NotificationProducer] Reconnected successfully")
+	return nil
+}
+
+// isHealthy reports whether the current connection and channel are usable.
+// Must be called with mu held.
+func (p *NotificationProducerImpl) isHealthy() bool {
+	return p.conn != nil && !p.conn.IsClosed() && p.channel != nil
+}
+
+// Publish sends a notification message to the queue.
+// It automatically reconnects once on failure before giving up.
 func (p *NotificationProducerImpl) Publish(ctx context.Context, msg *domain.PushNotificationMessage) error {
 	body, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("[NotificationProducer] Failed to serialize notification message: %v", err)
 		return fmt.Errorf("serialization error: %w", err)
 	}
 
-	err = p.channel.PublishWithContext(
-		ctx,
-		"",           // exchange
-		p.queueName,  // routing key
-		false,        // mandatory
-		false,        // immediate
-		amqp.Publishing{
-			ContentType:  "application/json",
-			Body:         body,
-			DeliveryMode: amqp.Persistent, // Survive broker restarts
-		},
-	)
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
+	// Ensure connection is healthy before attempting publish
+	if !p.isHealthy() {
+		if err := p.reconnect(); err != nil {
+			return err
+		}
+	}
+
+	publishing := amqp.Publishing{
+		ContentType:  "application/json",
+		Body:         body,
+		DeliveryMode: amqp.Persistent,
+	}
+
+	err = p.channel.PublishWithContext(ctx, "", p.queueName, false, false, publishing)
 	if err != nil {
-		log.Printf("[NotificationProducer] Failed to publish notification to queue: %v", err)
-		return fmt.Errorf("publish error: %w", err)
+		log.Printf("[NotificationProducer] Publish failed (%v), attempting reconnect + retry", err)
+		if reconnErr := p.reconnect(); reconnErr != nil {
+			return fmt.Errorf("publish failed and reconnect failed: %w", err)
+		}
+		if retryErr := p.channel.PublishWithContext(ctx, "", p.queueName, false, false, publishing); retryErr != nil {
+			log.Printf("[NotificationProducer] Retry also failed: %v", retryErr)
+			return fmt.Errorf("publish error after retry: %w", retryErr)
+		}
+		log.Println("[NotificationProducer] Publish succeeded after reconnect")
 	}
 
 	return nil
@@ -142,6 +135,9 @@ func (p *NotificationProducerImpl) Publish(ctx context.Context, msg *domain.Push
 
 // Close gracefully shuts down the producer
 func (p *NotificationProducerImpl) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.channel != nil {
 		if err := p.channel.Close(); err != nil {
 			log.Printf("[NotificationProducer] Error closing channel: %v", err)
@@ -154,5 +150,39 @@ func (p *NotificationProducerImpl) Close() error {
 		}
 	}
 	log.Println("[NotificationProducer] Closed gracefully")
+	return nil
+}
+
+// declareNotificationTopology declares the DLX, DLQ, and main notification queue.
+func declareNotificationTopology(ch *amqp.Channel) error {
+	if err := ch.ExchangeDeclare(
+		NotificationDLX, "direct", true, false, false, false, nil,
+	); err != nil {
+		return fmt.Errorf("failed to declare DLX: %w", err)
+	}
+
+	if _, err := ch.QueueDeclare(
+		NotificationDLQ, true, false, false, false, nil,
+	); err != nil {
+		return fmt.Errorf("failed to declare DLQ: %w", err)
+	}
+
+	if err := ch.QueueBind(
+		NotificationDLQ, NotificationDLQ, NotificationDLX, false, nil,
+	); err != nil {
+		return fmt.Errorf("failed to bind DLQ: %w", err)
+	}
+
+	if _, err := ch.QueueDeclare(
+		NotificationQueueName, true, false, false, false,
+		amqp.Table{
+			"x-dead-letter-exchange":    NotificationDLX,
+			"x-dead-letter-routing-key": NotificationDLQ,
+			"x-message-ttl":             int32(300000), // 5 minutes
+		},
+	); err != nil {
+		return fmt.Errorf("failed to declare notification queue: %w", err)
+	}
+
 	return nil
 }
