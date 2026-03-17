@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/core/storage/storage_service.dart';
 import 'package:app/features/friend/providers/friend_provider.dart';
+import 'package:app/features/friend/widgets/presence_dot.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 
 class FriendListPage extends ConsumerStatefulWidget {
@@ -155,14 +156,28 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
                               horizontal: 16,
                               vertical: 8,
                             ),
-                            leading: ChatAvatar(
-                              avatarUrl: null,
-                              radius: 22,
-                              fallbackText: friend.username.isNotEmpty
-                                  ? friend.username[0].toUpperCase()
-                                  : '?',
-                              fallbackIcon: Icons.person,
-                              logTag: 'friend_list',
+                            leading: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                ChatAvatar(
+                                  avatarUrl: null,
+                                  radius: 22,
+                                  fallbackText: friend.username.isNotEmpty
+                                      ? friend.username[0].toUpperCase()
+                                      : '?',
+                                  fallbackIcon: Icons.person,
+                                  logTag: 'friend_list',
+                                ),
+                                Positioned(
+                                  right: -2,
+                                  bottom: -2,
+                                  child: PresenceDot(
+                                    isOnline: friend.isOnline,
+                                    size: 13,
+                                    borderColor: cardColor,
+                                  ),
+                                ),
+                              ],
                             ),
                             title: Text(
                               friend.username,
@@ -175,9 +190,15 @@ class _FriendListPageState extends ConsumerState<FriendListPage> {
                             subtitle: Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
-                                friend.email,
+                                friend.isOnline
+                                    ? '在線上'
+                                    : (friend.lastSeen != null
+                                        ? formatLastSeen(friend.lastSeen)
+                                        : friend.email),
                                 style: TextStyle(
-                                  color: subTextColor,
+                                  color: friend.isOnline
+                                      ? const Color(0xFF4CD964)
+                                      : subTextColor,
                                   fontSize: 13,
                                 ),
                               ),

@@ -46,12 +46,13 @@ class LocalDbService {
         }
         if (oldVersion < 7) {
           // 🔐 Add file_keys_fanout column for group media encryption
-          await db.execute('ALTER TABLE messages ADD COLUMN file_keys_fanout TEXT');
+          // Guard against duplicate column if _ensureMessagesColumns already added it
+          await _addColumnIfMissing(db, 'file_keys_fanout', 'ALTER TABLE messages ADD COLUMN file_keys_fanout TEXT');
           await _logDbEvent('db_upgrade', {'action': 'add_file_keys_fanout_column'});
         }
         if (oldVersion < 8) {
           // 🔐 Add encrypted_contents_fanout column for group text message encryption
-          await db.execute('ALTER TABLE messages ADD COLUMN encrypted_contents_fanout TEXT');
+          await _addColumnIfMissing(db, 'encrypted_contents_fanout', 'ALTER TABLE messages ADD COLUMN encrypted_contents_fanout TEXT');
           await _logDbEvent('db_upgrade', {'action': 'add_encrypted_contents_fanout_column'});
         }
         await _logDbEvent('db_upgrade', {'from': oldVersion, 'to': newVersion});
@@ -168,6 +169,14 @@ class LocalDbService {
           rethrow;
         }
       }
+    }
+  }
+
+  Future<void> _addColumnIfMissing(Database db, String column, String alterSql) async {
+    final columns = await db.rawQuery('PRAGMA table_info(messages)');
+    final existing = columns.map((r) => r['name'] as String).toSet();
+    if (!existing.contains(column)) {
+      await db.execute(alterSql);
     }
   }
 

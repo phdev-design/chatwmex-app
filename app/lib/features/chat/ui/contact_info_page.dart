@@ -16,6 +16,7 @@ import 'package:app/features/chat/ui/encryption_info_page.dart';
 import 'package:app/features/chat/ui/media_visibility_settings_page.dart';
 import 'package:app/features/friend/providers/friend_provider.dart';
 import 'package:app/features/friend/repositories/friend_repository.dart';
+import 'package:app/features/friend/widgets/presence_dot.dart';
 import 'package:app/features/chat/repositories/chat_repository.dart';
 import 'package:app/features/chat/providers/room_list_provider.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
@@ -52,12 +53,31 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
   bool _isBlocked = false;
   String? _localAvatarUrl;
   bool _isUploadingAvatar = false;
+  bool _isOnline = false;
+  DateTime? _lastSeen;
 
   @override
   void initState() {
     super.initState();
     _localAvatarUrl = widget.avatarUrl;
     _checkBlockStatus();
+    if (!widget.isRoom) _loadPresence();
+  }
+
+  Future<void> _loadPresence() async {
+    try {
+      final presenceMap = await ref
+          .read(friendRepositoryProvider)
+          .getPresence([widget.roomId]);
+      final p = presenceMap[widget.roomId];
+      if (p != null && mounted) {
+        setState(() {
+          _isOnline = p['is_online'] as bool? ?? false;
+          final raw = p['last_seen'];
+          if (raw is String) _lastSeen = DateTime.tryParse(raw);
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _checkBlockStatus() async {
@@ -572,15 +592,40 @@ class _ContactInfoPageState extends ConsumerState<ContactInfoPage> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      if (!widget.isRoom &&
-                          widget.email != null &&
-                          widget.email!.isNotEmpty)
-                        Text(
-                          widget.email!,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: secondaryTextColor,
-                          ),
+                      if (!widget.isRoom)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isOnline) ...[
+                              PresenceDot(isOnline: true, size: 10),
+                              const SizedBox(width: 5),
+                              Text(
+                                '在線上',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: const Color(0xFF4CD964),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ] else if (_lastSeen != null) ...[
+                              Text(
+                                formatLastSeen(_lastSeen),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: secondaryTextColor,
+                                ),
+                              ),
+                            ] else if (widget.email != null &&
+                                widget.email!.isNotEmpty) ...[
+                              Text(
+                                widget.email!,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: secondaryTextColor,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                     ],
                   ),

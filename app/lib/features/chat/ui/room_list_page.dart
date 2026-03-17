@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +11,8 @@ import 'package:app/core/storage/storage_service.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
 import 'package:app/features/chat/models/room_label.dart';
 import 'package:app/features/chat/providers/room_label_provider.dart';
+import 'package:app/features/friend/providers/friend_provider.dart';
+import 'package:app/features/friend/widgets/presence_dot.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -412,11 +415,24 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
       ),
       itemBuilder: (context, index) {
         final room = rooms[index];
+        // 查詢 DM 對象的在線狀態
+        final friendState = ref.watch(friendViewModelProvider);
+        bool isOnline = false;
+        if (room.type != 'group') {
+          final matched = friendState.friends
+              .where((f) => f.id == room.id)
+              .firstOrNull;
+          isOnline = matched?.isOnline ?? false;
+          debugPrint('[Presence] room=${room.name}(${room.id}) type=${room.type} '
+              'matched_friend=${matched?.username} isOnline=$isOnline '
+              'total_friends=${friendState.friends.length}');
+        }
         return _RoomListItem(
           room: room,
           tokens: tokens,
           isDark: isDark,
           isFavorite: _favoriteRoomIds.contains(room.id),
+          isOnline: isOnline,
           onTap: () => _openChat(
             context,
             room.id,
@@ -439,6 +455,7 @@ class _RoomListItem extends StatelessWidget {
   final ChatSurfaceTokens tokens;
   final bool isDark;
   final bool isFavorite;
+  final bool isOnline;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -447,6 +464,7 @@ class _RoomListItem extends StatelessWidget {
     required this.tokens,
     required this.isDark,
     required this.isFavorite,
+    this.isOnline = false,
     required this.onTap,
     required this.onLongPress,
   });
@@ -525,6 +543,18 @@ class _RoomListItem extends StatelessWidget {
                         size: 12,
                         color: Color(0xFFFFC107),
                       ),
+                    ),
+                  ),
+                // DM 在線綠點（群組不顯示）
+                if (room.type != 'group' && isOnline && !isFavorite)
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: PresenceDot(
+                      isOnline: true,
+                      size: 13,
+                      borderColor:
+                          isDark ? const Color(0xFF1C1C1E) : Colors.white,
                     ),
                   ),
               ],

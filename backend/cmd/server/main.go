@@ -183,7 +183,7 @@ func main() {
 		}
 	}
 
-	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo, linkedDeviceRepo, offlineLinkedMsgRepo)
+	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo, linkedDeviceRepo, offlineLinkedMsgRepo, friendRepo)
 
 	// Initialize LinkedDevice Usecase (needs hub as WebSocketNotifier)
 	linkedDeviceUsecase := usecase.NewLinkedDeviceUsecase(linkedDeviceRepo, hub, timeout)

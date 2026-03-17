@@ -8,6 +8,8 @@ class Friend extends Equatable {
   final String? firstName;
   final String? lastName;
   final String? bio;
+  final bool isOnline;
+  final DateTime? lastSeen;
 
   const Friend({
     required this.id,
@@ -17,6 +19,8 @@ class Friend extends Equatable {
     this.firstName,
     this.lastName,
     this.bio,
+    this.isOnline = false,
+    this.lastSeen,
   });
 
   factory Friend.fromJson(Map<String, dynamic> json) {
@@ -39,6 +43,9 @@ class Friend extends Equatable {
     String? firstName,
     String? lastName,
     String? bio,
+    bool? isOnline,
+    DateTime? lastSeen,
+    bool clearLastSeen = false,
   }) {
     return Friend(
       id: id ?? this.id,
@@ -48,6 +55,8 @@ class Friend extends Equatable {
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
       bio: bio ?? this.bio,
+      isOnline: isOnline ?? this.isOnline,
+      lastSeen: clearLastSeen ? null : (lastSeen ?? this.lastSeen),
     );
   }
 
@@ -60,6 +69,8 @@ class Friend extends Equatable {
     firstName,
     lastName,
     bio,
+    isOnline,
+    lastSeen,
   ];
 }
 

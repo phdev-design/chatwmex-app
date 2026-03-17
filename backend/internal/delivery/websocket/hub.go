@@ -47,6 +47,9 @@ type Hub struct {
 	// OfflineLinkedMessage Repository for buffering messages for offline linked devices
 	offlineLinkedMsgRepo domain.OfflineLinkedMessageRepository
 
+	// Friend Repository for presence broadcast
+	friendRepo domain.FriendRepository
+
 	// RabbitMQ Client for cross-server broadcast
 	rabbitMQ *rabbitmq.RabbitMQClient
 
@@ -70,7 +73,7 @@ func (h *Hub) IsUserOnline(userID string) bool {
 }
 
 // NewHub creates a new Hub instance.
-func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService, pr domain.PendingReEncryptRepository, ldr domain.LinkedDeviceRepository, olmr domain.OfflineLinkedMessageRepository) *Hub {
+func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService, pr domain.PendingReEncryptRepository, ldr domain.LinkedDeviceRepository, olmr domain.OfflineLinkedMessageRepository, fr domain.FriendRepository) *Hub {
 	return &Hub{
 		broadcast:            make(chan *domain.Message),
 		register:             make(chan *Client),
@@ -87,23 +90,37 @@ func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRep
 		pendingReEncryptRepo: pr,
 		linkedDeviceRepo:     ldr,
 		offlineLinkedMsgRepo: olmr,
+		friendRepo:           fr,
 	}
 }
 
 // Run starts the hub loop.
 func (h *Hub) Run() {
+	// 🔧 啟動時清空 Redis 的 online_users set，避免伺服器重啟後殘留舊的在線狀態
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := h.onlineRepo.ClearAllOnline(ctx); err != nil {
+			log.Printf("[Presence] Warning: failed to clear online_users on startup: %v", err)
+		} else {
+			log.Printf("[Presence] Cleared stale online_users set on startup")
+		}
+	}()
+
 	for {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
 			h.userClients[client.userID] = client
-			// Mark user as online in Redis
+			// Mark user as online in Redis and broadcast presence
 			go func(uid string) {
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
 				if err := h.onlineRepo.SetUserOnline(ctx, uid); err != nil {
 					log.Printf("Error setting user %s online: %v", uid, err)
 				}
+				log.Printf("[Presence] user %s connected, broadcasting online presence", uid)
+				h.broadcastPresenceToFriends(uid, true, nil)
 
 				// Fetch and deliver offline messages
 				msgs, err := h.messageUsecase.FetchOfflineMessages(ctx, uid)
@@ -187,11 +204,16 @@ func (h *Hub) Run() {
 					go func(uid string) {
 						ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 						defer cancel()
+						now := time.Now()
 						if err := h.onlineRepo.SetUserOffline(ctx, uid); err != nil {
 							log.Printf("Error setting user %s offline: %v", uid, err)
 						}
-					}(client.userID)
-				}
+						if err := h.onlineRepo.SetUserLastSeen(ctx, uid, now); err != nil {
+							log.Printf("Error setting last seen for user %s: %v", uid, err)
+						}
+						log.Printf("[Presence] user %s disconnected, broadcasting offline presence", uid)
+						h.broadcastPresenceToFriends(uid, false, &now)
+					}(client.userID)				}
 				close(client.send)
 				log.Printf("Client disconnected: %s", client.userID)
 			}
@@ -1186,4 +1208,52 @@ func (h *Hub) deliverPendingReEncryptRequests(ctx context.Context, userID string
 			break
 		}
 	}
+}
+
+// broadcastPresenceToFriends notifies all online friends of a user's presence change.
+func (h *Hub) broadcastPresenceToFriends(userID string, isOnline bool, lastSeen *time.Time) {
+	if h.friendRepo == nil {
+		log.Printf("[Presence] broadcastPresenceToFriends: friendRepo is nil, skipping for user %s", userID)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	friends, err := h.friendRepo.GetFriends(ctx, userID)
+	if err != nil {
+		log.Printf("[Presence] Error fetching friends for presence broadcast (user %s): %v", userID, err)
+		return
+	}
+
+	log.Printf("[Presence] user=%s isOnline=%v friends_count=%d", userID, isOnline, len(friends))
+
+	data := map[string]interface{}{
+		"user_id":   userID,
+		"is_online": isOnline,
+	}
+	if lastSeen != nil {
+		data["last_seen"] = lastSeen.UTC().Format(time.RFC3339)
+	}
+
+	payload := map[string]interface{}{
+		"event": "presence_update",
+		"data":  data,
+	}
+	bytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	delivered := 0
+	for _, friend := range friends {
+		if client, ok := h.userClients[friend.ID]; ok {
+			select {
+			case client.send <- bytes:
+				delivered++
+			default:
+				// Non-blocking: skip if channel full
+			}
+		}
+	}
+	log.Printf("[Presence] presence_update sent to %d/%d online friends of user %s", delivered, len(friends), userID)
 }

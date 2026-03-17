@@ -68,6 +68,21 @@ class FriendRepository {
         .map((e) => Friend.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
+
+  /// 批次查詢多位用戶的在線狀態與最後上線時間
+  Future<Map<String, Map<String, dynamic>>> getPresence(
+    List<String> userIds,
+  ) async {
+    if (userIds.isEmpty) return {};
+    final response = await _networkService.client.post(
+      '/online/presence',
+      data: {'user_ids': userIds},
+    );
+    final data = response.data['data'] as Map<String, dynamic>? ?? {};
+    return data.map(
+      (k, v) => MapEntry(k, Map<String, dynamic>.from(v as Map)),
+    );
+  }
 }
 
 final friendRepositoryProvider = Provider<FriendRepository>((ref) {
