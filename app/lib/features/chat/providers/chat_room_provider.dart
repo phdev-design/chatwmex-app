@@ -1933,15 +1933,15 @@ if (arg.isRoom) {
         audioFilePath: path,
         roomId: arg.isRoom ? arg.roomId : '',
         receiverId: arg.isRoom ? null : arg.roomId,
+        replyToId: replyToId,
       );
 
       if (replyToId != null) {
         final updatedMessage = message.copyWith(
-          replyToMessageId: replyToId,
           replyToMessage: state.replyingToMessage,
         );
         _addMessage(updatedMessage);
-        state = state.copyWith(replyingToMessage: null);
+        state = state.copyWith(clearReplyingTo: true);
       } else {
         _addMessage(message);
       }

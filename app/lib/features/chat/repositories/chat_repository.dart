@@ -423,6 +423,7 @@ class ChatRepository {
     required String audioFilePath,
     required String roomId,
     String? receiverId,
+    String? replyToId,
   }) async {
     try {
       // 1. Read audio file bytes
@@ -504,6 +505,7 @@ class ChatRepository {
         senderId: currentUserId,
         receiverId: receiverId,
         roomId: roomId,
+        replyToMessageId: replyToId,
         type: MessageType.voice,
         createdAt: now,
         status: MessageStatus.sending,
@@ -525,6 +527,7 @@ class ChatRepository {
         'content': audioUrl,
         'room_id': roomId,
         'receiver_id': receiverId,
+        if (replyToId != null) 'reply_to_id': replyToId,
       };
       
       // 🔐 群組訊息：使用 file_keys_fanout，不傳明文 file_key

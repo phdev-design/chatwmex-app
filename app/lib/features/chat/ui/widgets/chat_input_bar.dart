@@ -420,9 +420,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                         // Capture context before async operations
                         final messenger = ScaffoldMessenger.of(context);
                         
-                        // Check permissions first
+                        // Check permissions first (request if not yet granted)
                         final mediaService = ref.read(mediaServiceProvider);
-                        final hasPermission = await mediaService.checkMicrophonePermission();
+                        final hasPermission = await mediaService.hasMicrophonePermission();
                         
                         if (!hasPermission) {
                           HapticFeedback.heavyImpact();

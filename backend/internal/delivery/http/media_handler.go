@@ -48,15 +48,18 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 	buffer := make([]byte, 512)
 	n, _ := src.Read(buffer)
 	contentType := http.DetectContentType(buffer[:n])
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+
+	// For encrypted files, DetectContentType returns application/octet-stream.
+	// Fall back to extension-based detection so encrypted audio still passes.
 	isImage := isImageContentType(contentType)
-	isAudio := isAudioContentType(contentType)
-	isDocument := isDocumentContentType(contentType)
+	isAudio := isAudioContentType(contentType) || (contentType == "application/octet-stream" && isAudioExt(ext))
+	isDocument := isDocumentContentType(contentType) || (contentType == "application/octet-stream" && isDocumentExt(ext))
 	if !isImage && !isAudio && !isDocument {
 		response.Error(c, http.StatusBadRequest, "invalid media type")
 		return
 	}
 
-	ext := strings.ToLower(filepath.Ext(file.Filename))
 	if ext == "" {
 		ext = contentTypeToExt(contentType)
 	}
@@ -136,6 +139,24 @@ func isDocumentContentType(contentType string) bool {
 func isAllowedMediaExt(ext string) bool {
 	switch ext {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".m4a", ".mp3", ".aac", ".pdf":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAudioExt(ext string) bool {
+	switch ext {
+	case ".m4a", ".mp3", ".aac":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDocumentExt(ext string) bool {
+	switch ext {
+	case ".pdf":
 		return true
 	default:
 		return false
