@@ -308,6 +308,12 @@ func (r *MessageRepository) GetRoomResources(ctx context.Context, userID, roomID
 					"type":    "text",
 					"content": bson.M{"$regex": "https?://", "$options": "i"},
 				},
+				// 🔧 修正：E2EE 加密後 content 是密文，無法 regex 匹配 URL
+				// 改為也查 link_preview 不為空的 text 訊息
+				{
+					"type":         "text",
+					"link_preview": bson.M{"$ne": nil},
+				},
 			},
 		}
 	case "doc":
@@ -527,14 +533,15 @@ func (r *MessageRepository) GetConversations(ctx context.Context, userID string)
 		}
 
 		conversations = append(conversations, &domain.Conversation{
-			OtherUserID:        res.OtherUserID,
-			OtherUsername:      res.UserInfo.Username,
-			OtherUserAvatarURL: res.UserInfo.AvatarURL,
-			LastMessage:        content,
-			LastMessageType:    res.LastMessageDoc.Type, // 👉 從 Mongo Document 提取 Type
-			LastMessageTime:    res.LastMessageDoc.CreatedAt,
-			UnreadCount:        res.UnreadCount,
-			LastReadAt:         res.LastReadAt,
+			OtherUserID:         res.OtherUserID,
+			OtherUsername:       res.UserInfo.Username,
+			OtherUserAvatarURL:  res.UserInfo.AvatarURL,
+			LastMessage:         content,
+			LastMessageType:     res.LastMessageDoc.Type,
+			LastMessageSenderID: res.LastMessageDoc.SenderID,
+			LastMessageTime:     res.LastMessageDoc.CreatedAt,
+			UnreadCount:         res.UnreadCount,
+			LastReadAt:          res.LastReadAt,
 		})
 	}
 

@@ -5,12 +5,13 @@ class Room extends Equatable {
   final String name;
   final String? type; // 'group' or 'dm'
   final String? avatarUrl;
-  final String? ownerId; // 👉 新增這個欄位
+  final String? ownerId;
   final DateTime createdAt;
   final String? lastMessage;
   final DateTime? lastMessageTime;
   final int unreadCount;
-  final String? lastMessageType; // 👉 新增這個欄位
+  final String? lastMessageType;
+  final String? lastMessageSenderId;
   final DateTime? lastReadAt;
 
   const Room({
@@ -21,7 +22,8 @@ class Room extends Equatable {
     this.ownerId,
     required this.createdAt,
     this.lastMessage,
-    this.lastMessageType, // 👉 加入建構子
+    this.lastMessageType,
+    this.lastMessageSenderId,
     this.lastMessageTime,
     this.unreadCount = 0,
     this.lastReadAt,
@@ -36,7 +38,8 @@ class Room extends Equatable {
       ownerId: json['owner_id'],
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       lastMessage: json['last_message'],
-      lastMessageType: json['last_message_type'], // 👉 加入映射
+      lastMessageType: json['last_message_type'],
+      lastMessageSenderId: json['last_message_sender_id'],
       lastMessageTime: json['last_message_time'] != null
           ? DateTime.tryParse(json['last_message_time'])
           : null,
@@ -55,7 +58,8 @@ class Room extends Equatable {
     String? ownerId,
     DateTime? createdAt,
     String? lastMessage,
-    String? lastMessageType, // 👉 加入映射
+    String? lastMessageType,
+    String? lastMessageSenderId,
     DateTime? lastMessageTime,
     int? unreadCount,
     DateTime? lastReadAt,
@@ -68,7 +72,8 @@ class Room extends Equatable {
       ownerId: ownerId ?? this.ownerId,
       createdAt: createdAt ?? this.createdAt,
       lastMessage: lastMessage ?? this.lastMessage,
-      lastMessageType: lastMessageType ?? this.lastMessageType, // 👉 加入映射
+      lastMessageType: lastMessageType ?? this.lastMessageType,
+      lastMessageSenderId: lastMessageSenderId ?? this.lastMessageSenderId,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
       unreadCount: unreadCount ?? this.unreadCount,
       lastReadAt: lastReadAt ?? this.lastReadAt,
@@ -87,6 +92,7 @@ class Room extends Equatable {
     lastMessageTime,
     unreadCount,
     lastReadAt,
+    lastMessageSenderId,
   ];
 }
 

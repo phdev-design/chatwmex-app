@@ -113,7 +113,8 @@ type Conversation struct {
 	OtherUsername      string    `json:"other_username"`
 	OtherUserAvatarURL string    `json:"other_user_avatar_url,omitempty"`
 	LastMessage        string    `json:"last_message"`
-	LastMessageType    string    `json:"last_message_type"` // 👉 新增這個欄位
+	LastMessageType    string    `json:"last_message_type"`
+	LastMessageSenderID string   `json:"last_message_sender_id,omitempty"`
 	LastMessageTime    time.Time `json:"last_message_time"`
 	UnreadCount        int       `json:"unread_count"`
 	LastReadAt         time.Time `json:"last_read_at,omitempty"`

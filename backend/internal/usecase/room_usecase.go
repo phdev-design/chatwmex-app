@@ -148,6 +148,7 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string, keyword str
 			}
 			room.LastMessage = content
 			room.LastMessageType = string(lastMsg.Type)
+			room.LastMessageSenderID = lastMsg.SenderID
 			room.LastMessageTime = lastMsg.CreatedAt
 		}
 	}
@@ -160,16 +161,17 @@ func (u *roomUsecase) GetUserRooms(c context.Context, userID string, keyword str
 
 	for _, conv := range conversations {
 		rooms = append(rooms, &domain.Room{
-			ID:              conv.OtherUserID, // Use UserID as RoomID for DM
-			Name:            conv.OtherUsername,
-			AvatarURL:       conv.OtherUserAvatarURL,
-			Type:            "dm",
-			LastMessage:     conv.LastMessage,
-			LastMessageType: conv.LastMessageType, // 👉 映射新欄位
-			LastMessageTime: conv.LastMessageTime,
-			UnreadCount:     conv.UnreadCount,
-			LastReadAt:      conv.LastReadAt,
-			UpdatedAt:       conv.LastMessageTime,
+			ID:                  conv.OtherUserID, // Use UserID as RoomID for DM
+			Name:                conv.OtherUsername,
+			AvatarURL:           conv.OtherUserAvatarURL,
+			Type:                "dm",
+			LastMessage:         conv.LastMessage,
+			LastMessageType:     conv.LastMessageType,
+			LastMessageSenderID: conv.LastMessageSenderID,
+			LastMessageTime:     conv.LastMessageTime,
+			UnreadCount:         conv.UnreadCount,
+			LastReadAt:          conv.LastReadAt,
+			UpdatedAt:           conv.LastMessageTime,
 		})
 	}
 

@@ -253,6 +253,10 @@ class RoomListViewModel extends Notifier<RoomListState> {
         final lm = room.lastMessage;
         final lmType = room.lastMessageType;
 
+        debugPrint('[fetchRooms] room=${room.id} name=${room.name} type=${room.type} '
+            'lm=${lm == null ? "NULL" : (lm.length > 20 ? "${lm.substring(0, 20)}..." : lm)} '
+            'senderId=${room.lastMessageSenderId ?? "NULL"}');
+
         // 先取出 state 中已有的房間資料，用於 fallback
         final existingRoom = state.rooms.firstWhere(
           (existing) => existing.id == room.id,
@@ -265,16 +269,22 @@ class RoomListViewModel extends Notifier<RoomListState> {
             lmType != 'file' &&
             lmType != 'document') {
           if (_looksLikeCiphertext(lm)) {
-            final decryptedLM = await _getDecryptedPreview(lm, room.id);
+            // 🔐 群組：用發送者公鑰解密（fanout 密文）
+            // 🔐 DM：用對方公鑰解密（room.id 就是對方 user ID）
+            final decryptKeyId = room.type == 'group'
+                ? (room.lastMessageSenderId ?? room.id)
+                : room.id;
+            debugPrint('[fetchRooms] Decrypting for room=${room.name} type=${room.type} using keyId=$decryptKeyId');
+            final decryptedLM = await _getDecryptedPreview(lm, decryptKeyId);
+            debugPrint('[fetchRooms] Decrypt result for room=${room.name}: $decryptedLM');
 
-            // ✅ 修復：解密失敗時，優先保留 state 中已有的明文，避免覆蓋
+            // ✅ 解密失敗時，優先保留 state 中已有的明文，避免覆蓋
             if (decryptedLM == '🔒 加密訊息') {
               final existingLM = existingRoom.lastMessage;
               if (existingLM != null &&
                   existingLM.isNotEmpty &&
                   !_looksLikeCiphertext(existingLM) &&
                   existingLM != '🔒 加密訊息') {
-                // state 裡有可用的明文，保留它
                 r = r.copyWith(
                   lastMessage: existingLM,
                   lastMessageType: existingRoom.lastMessageType ?? lmType,

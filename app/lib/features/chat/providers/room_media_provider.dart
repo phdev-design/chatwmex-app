@@ -89,67 +89,90 @@ class RoomMediaNotifier
       await _initCurrentUserId();
     }
 
+    print('📦 [RoomMedia] _decryptMediaContent: 收到 ${messages.length} 筆訊息, currentUserId=$_currentUserId');
+
     final result = <Message>[];
     for (final msg in messages) {
       final content = msg.content;
+      // 🔧 修正：link 類型也需要解密，不只是 image/video
       final isMedia = msg.type == MessageType.image || msg.type == MessageType.video;
+      final isLink = msg.type == MessageType.link || msg.type == MessageType.text;
+      final needsDecrypt = isMedia || isLink;
+
+      print('📦 [RoomMedia] 處理訊息 id=${msg.id} type=${msg.type} contentLen=${content.length} content=${content.length > 60 ? '${content.substring(0, 60)}...' : content}');
 
       // ========== 明文內容直接通過 ==========
       if (content.startsWith('http://') || content.startsWith('https://')) {
+        print('📦 [RoomMedia] ✅ 明文 URL，直接通過: ${msg.id}');
         result.add(msg);
         continue;
       }
       if (content.startsWith('/uploads/')) {
+        print('📦 [RoomMedia] ✅ 相對路徑，直接通過: ${msg.id}');
         result.add(msg);
         continue;
       }
       // MongoDB ObjectID
       if (content.length == 24 && RegExp(r'^[a-f0-9]{24}$', caseSensitive: false).hasMatch(content)) {
+        print('📦 [RoomMedia] ✅ ObjectID，直接通過: ${msg.id}');
         result.add(msg);
         continue;
       }
 
-      // ========== 群組媒體解密（fanout） ==========
-      final isGroupMsg = msg.roomId != null && msg.roomId!.isNotEmpty;
+      // ========== 判斷是否為真正的群組訊息 ==========
+      // 🔧 修正：不能只靠 roomId 判斷，因為 getRoomResources 會把 DM 的 roomId 設成 contactId
+      // 真正的群組訊息：有 roomId 且沒有 receiverId
+      // DM 訊息：有 receiverId（即使 roomId 被強制設定）
+      final hasDedicatedRoom = msg.roomId != null && msg.roomId!.isNotEmpty;
+      final hasReceiver = msg.receiverId != null && msg.receiverId!.isNotEmpty;
+      final isGroupMsg = hasDedicatedRoom && !hasReceiver;
+
+      print('📦 [RoomMedia] 路由判斷: id=${msg.id} roomId=${msg.roomId} receiverId=${msg.receiverId} → isGroupMsg=$isGroupMsg');
 
       if (isGroupMsg) {
         var updated = msg;
         bool decrypted = false;
 
-        // 1. 嘗試從 encryptedContentsFanout 解密 URL
-        if (isMedia && msg.encryptedContentsFanout != null &&
+        // 1. 嘗試從 encryptedContentsFanout 解密
+        // 🔧 修正：不再限制只有 isMedia 才走 fanout，link/text 也需要
+        if (needsDecrypt && msg.encryptedContentsFanout != null &&
             _currentUserId != null &&
             (content.isEmpty || _looksLikeE2EECiphertext(content))) {
-          final myEncryptedUrl = msg.encryptedContentsFanout![_currentUserId!];
-          if (myEncryptedUrl != null && myEncryptedUrl.isNotEmpty) {
+          final myEncryptedContent = msg.encryptedContentsFanout![_currentUserId!];
+          print('📦 [RoomMedia] 群組 fanout 解密: id=${msg.id} hasMyContent=${myEncryptedContent != null}');
+          if (myEncryptedContent != null && myEncryptedContent.isNotEmpty) {
             try {
               final senderPubKey = await cacheService.getPublicKey(msg.senderId);
               if (senderPubKey != null) {
-                final decryptedUrl = await cryptoService.decryptMessage(
-                  myEncryptedUrl,
+                final decryptedContent = await cryptoService.decryptMessage(
+                  myEncryptedContent,
                   senderPubKey,
                 );
-                updated = updated.copyWith(content: decryptedUrl);
+                print('📦 [RoomMedia] ✅ 群組 fanout 解密成功: id=${msg.id} result=${decryptedContent.length > 60 ? '${decryptedContent.substring(0, 60)}...' : decryptedContent}');
+                updated = updated.copyWith(content: decryptedContent);
                 decrypted = true;
               }
             } catch (e) {
-              print('⚠️ [RoomMedia] 群組 fanout URL 解密失敗: ${msg.id}');
+              print('⚠️ [RoomMedia] 群組 fanout 解密失敗: ${msg.id} error=$e');
             }
           }
         }
 
         // 2. content 是密文（Go routeMessage 裁切後的 raw ciphertext）
-        if (!decrypted && isMedia && msg.encryptedContentsFanout == null &&
+        // 🔧 修正：不再限制只有 isMedia 才解密
+        if (!decrypted && needsDecrypt && msg.encryptedContentsFanout == null &&
             _looksLikeE2EECiphertext(content)) {
+          print('📦 [RoomMedia] 群組 raw ciphertext 解密: id=${msg.id}');
           final senderPubKey = await cacheService.getPublicKey(msg.senderId);
           if (senderPubKey != null) {
             try {
-              final decryptedUrl = await cryptoService.decryptMessage(
+              final decryptedContent = await cryptoService.decryptMessage(
                 content,
                 senderPubKey,
               );
-              if (decryptedUrl != content) {
-                updated = updated.copyWith(content: decryptedUrl);
+              if (decryptedContent != content) {
+                print('📦 [RoomMedia] ✅ 群組 raw 解密成功: id=${msg.id} result=${decryptedContent.length > 60 ? '${decryptedContent.substring(0, 60)}...' : decryptedContent}');
+                updated = updated.copyWith(content: decryptedContent);
                 decrypted = true;
               }
             } catch (e) {
@@ -194,6 +217,9 @@ class RoomMediaNotifier
           }
         }
 
+        if (!decrypted) {
+          print('📦 [RoomMedia] ⚠️ 群組訊息未能解密: id=${msg.id} type=${msg.type}');
+        }
         result.add(updated);
         continue;
       }
@@ -201,12 +227,14 @@ class RoomMediaNotifier
       // ========== 一對一聊天解密 ==========
 
       if (content.length < 40) {
+        print('📦 [RoomMedia] 短內容，跳過解密: ${msg.id}');
         result.add(msg);
         continue;
       }
 
       final isHexOnly = RegExp(r'^[a-f0-9]+$', caseSensitive: false).hasMatch(content);
       if (isHexOnly) {
+        print('📦 [RoomMedia] 純 hex，跳過解密: ${msg.id}');
         result.add(msg);
         continue;
       }
@@ -215,9 +243,12 @@ class RoomMediaNotifier
                              content.contains('/') ||
                              content.contains('=');
       if (!hasBase64Chars) {
+        print('📦 [RoomMedia] 無 Base64 特徵，跳過解密: ${msg.id}');
         result.add(msg);
         continue;
       }
+
+      print('📦 [RoomMedia] 一對一解密: id=${msg.id} type=${msg.type} senderId=${msg.senderId} receiverId=${msg.receiverId}');
 
       try {
         String? targetPubKey;
@@ -230,27 +261,42 @@ class RoomMediaNotifier
         }
 
         if (targetPubKey == null || targetPubKey.isEmpty) {
+          print('📦 [RoomMedia] ⚠️ 找不到公鑰: ${msg.id}');
           result.add(msg);
           continue;
         }
 
         final decryptedContent = await cryptoService.decryptMessage(content, targetPubKey);
 
+        print('📦 [RoomMedia] 一對一解密結果: id=${msg.id} decrypted=${decryptedContent.length > 80 ? '${decryptedContent.substring(0, 80)}...' : decryptedContent}');
+
         if (decryptedContent.isEmpty || decryptedContent == content) {
+          print('📦 [RoomMedia] ⚠️ 解密結果為空或未變: ${msg.id}');
           result.add(msg);
           continue;
         }
 
-        final isValidUrl = decryptedContent.startsWith('http://') ||
-                          decryptedContent.startsWith('https://') ||
-                          decryptedContent.startsWith('/uploads/');
-        if (isValidUrl) {
-          result.add(msg.copyWith(content: decryptedContent));
+        // 🔧 修正：不再只接受 URL 格式的解密結果
+        // 對於 link/text 類型，解密後的內容可能是含 URL 的文字，也應該接受
+        if (isMedia) {
+          // 媒體訊息：解密結果應該是 URL
+          final isValidUrl = decryptedContent.startsWith('http://') ||
+                            decryptedContent.startsWith('https://') ||
+                            decryptedContent.startsWith('/uploads/');
+          if (isValidUrl) {
+            print('📦 [RoomMedia] ✅ 媒體解密成功 (URL): ${msg.id}');
+            result.add(msg.copyWith(content: decryptedContent));
+          } else {
+            print('📦 [RoomMedia] ⚠️ 媒體解密結果非 URL: ${msg.id} → $decryptedContent');
+            result.add(msg);
+          }
         } else {
-          result.add(msg);
+          // link/text 訊息：解密後的內容就是原始文字（可能含 URL）
+          print('📦 [RoomMedia] ✅ 文字/連結解密成功: ${msg.id}');
+          result.add(msg.copyWith(content: decryptedContent));
         }
       } catch (e) {
-        print('⚠️ [RoomMedia] Message ${msg.id} 解密失敗');
+        print('⚠️ [RoomMedia] Message ${msg.id} 解密失敗: $e');
         result.add(msg);
       }
     }
@@ -260,7 +306,20 @@ class RoomMediaNotifier
 
   List<Message> _filterValidMedia(List<Message> messages) {
     return messages.where((msg) {
+      // 🔧 修正：link/text 類型不用 resolveFullUrl 過濾，改用 extractAllUrls
+      if (msg.type == MessageType.link || msg.type == MessageType.text) {
+        final urls = extractAllUrls(msg.content);
+        final pass = urls.isNotEmpty;
+        if (!pass) {
+          print('📦 [RoomMedia] _filterValidMedia 過濾掉 link/text: id=${msg.id} content=${msg.content.length > 60 ? '${msg.content.substring(0, 60)}...' : msg.content}');
+        }
+        return pass;
+      }
+      // 媒體類型用 resolveFullUrl 過濾
       final resolvedUrl = resolveFullUrl(msg.content);
+      if (resolvedUrl.isEmpty) {
+        print('📦 [RoomMedia] _filterValidMedia 過濾掉 media: id=${msg.id} type=${msg.type} content=${msg.content.length > 60 ? '${msg.content.substring(0, 60)}...' : msg.content}');
+      }
       return resolvedUrl.isNotEmpty;
     }).toList();
   }
@@ -282,8 +341,14 @@ class RoomMediaNotifier
         cursor: '',
         limit: 20,
       );
+      print('📦 [RoomMedia] loadInitial type=${arg.type}: API 回傳 ${result.messages.length} 筆');
+      for (final m in result.messages) {
+        print('📦 [RoomMedia]   → id=${m.id} type=${m.type} contentLen=${m.content.length} linkPreview=${m.linkPreview != null}');
+      }
       final decrypted = await _decryptMediaContent(result.messages);
+      print('📦 [RoomMedia] loadInitial: 解密後 ${decrypted.length} 筆');
       final filtered = _filterValidMedia(decrypted);
+      print('📦 [RoomMedia] loadInitial: 過濾後 ${filtered.length} 筆');
       state = state.copyWith(
         isLoading: false,
         messages: filtered,

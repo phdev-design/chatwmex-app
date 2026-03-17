@@ -154,31 +154,21 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
           borderRadius: BorderRadius.circular(12),
           child: Hero(
             tag: heroTag,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.6,
-                maxHeight: 250,
-              ),
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.6,
+              height: MediaQuery.of(context).size.width * 0.6,
               child: CachedNetworkImageWidget(
                 imageUrl: imageUrl,
                 fileKey: msg.fileKey, // 🔐 傳遞 fileKey 用於解密
                 fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-                placeholder: const SizedBox(
-                  width: 120,
-                  height: 120,
-                  child: Center(
-                    child: CircularProgressIndicator(),
-                  ),
+                alignment: Alignment.center,
+                placeholder: const Center(
+                  child: CircularProgressIndicator(),
                 ),
-                errorWidget: SizedBox(
-                  width: 120,
-                  height: 120,
-                  child: Center(
-                    child: Icon(
-                      Icons.broken_image,
-                      color: colorScheme.outline,
-                    ),
+                errorWidget: Center(
+                  child: Icon(
+                    Icons.broken_image,
+                    color: colorScheme.outline,
                   ),
                 ),
               ),

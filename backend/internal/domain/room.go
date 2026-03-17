@@ -7,19 +7,20 @@ import (
 
 // Room represents a chat room (group) or a DM conversation.
 type Room struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	AvatarURL       string    `json:"avatar_url,omitempty"`
-	OwnerID         string    `json:"owner_id,omitempty"`
-	Members         []string  `json:"members,omitempty"` // List of UserIDs
-	Type            string    `json:"type"`              // "group" or "dm"
-	LastMessage     string    `json:"last_message,omitempty"`
-	LastMessageType string    `json:"last_message_type,omitempty"` // 👉 新增這個欄位
-	LastMessageTime time.Time `json:"last_message_time,omitempty"`
-	UnreadCount     int       `json:"unread_count"`
-	LastReadAt      time.Time `json:"last_read_at,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	AvatarURL           string    `json:"avatar_url,omitempty"`
+	OwnerID             string    `json:"owner_id,omitempty"`
+	Members             []string  `json:"members,omitempty"` // List of UserIDs
+	Type                string    `json:"type"`              // "group" or "dm"
+	LastMessage         string    `json:"last_message,omitempty"`
+	LastMessageType     string    `json:"last_message_type,omitempty"`
+	LastMessageSenderID string    `json:"last_message_sender_id,omitempty"`
+	LastMessageTime     time.Time `json:"last_message_time,omitempty"`
+	UnreadCount         int       `json:"unread_count"`
+	LastReadAt          time.Time `json:"last_read_at,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // RoomRepository defines the interface for room data persistence.
