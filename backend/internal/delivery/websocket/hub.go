@@ -50,6 +50,9 @@ type Hub struct {
 	// Friend Repository for presence broadcast
 	friendRepo domain.FriendRepository
 
+	// PrivacySetting Usecase for read receipt privacy filtering
+	privacySettingUsecase domain.PrivacySettingUsecase
+
 	// RabbitMQ Client for cross-server broadcast
 	rabbitMQ *rabbitmq.RabbitMQClient
 
@@ -73,24 +76,25 @@ func (h *Hub) IsUserOnline(userID string) bool {
 }
 
 // NewHub creates a new Hub instance.
-func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService, pr domain.PendingReEncryptRepository, ldr domain.LinkedDeviceRepository, olmr domain.OfflineLinkedMessageRepository, fr domain.FriendRepository) *Hub {
+func NewHub(mu domain.MessageUsecase, ru domain.RoomUsecase, or domain.OnlineRepository, rabbit *rabbitmq.RabbitMQClient, rabbitIngress <-chan *domain.Message, rabbitEventIngress <-chan []byte, ns domain.NotificationService, pr domain.PendingReEncryptRepository, ldr domain.LinkedDeviceRepository, olmr domain.OfflineLinkedMessageRepository, fr domain.FriendRepository, psu domain.PrivacySettingUsecase) *Hub {
 	return &Hub{
-		broadcast:            make(chan *domain.Message),
-		register:             make(chan *Client),
-		unregister:           make(chan *Client),
-		clients:              make(map[*Client]bool),
-		userClients:          make(map[string]*Client),
-		messageUsecase:       mu,
-		roomUsecase:          ru,
-		onlineRepo:           or,
-		rabbitMQ:             rabbit,
-		rabbitIngress:        rabbitIngress,
-		rabbitEventIngress:   rabbitEventIngress,
-		notificationService:  ns,
-		pendingReEncryptRepo: pr,
-		linkedDeviceRepo:     ldr,
-		offlineLinkedMsgRepo: olmr,
-		friendRepo:           fr,
+		broadcast:             make(chan *domain.Message),
+		register:              make(chan *Client),
+		unregister:            make(chan *Client),
+		clients:               make(map[*Client]bool),
+		userClients:           make(map[string]*Client),
+		messageUsecase:        mu,
+		roomUsecase:           ru,
+		onlineRepo:            or,
+		rabbitMQ:              rabbit,
+		rabbitIngress:         rabbitIngress,
+		rabbitEventIngress:    rabbitEventIngress,
+		notificationService:   ns,
+		pendingReEncryptRepo:  pr,
+		linkedDeviceRepo:      ldr,
+		offlineLinkedMsgRepo:  olmr,
+		friendRepo:            fr,
+		privacySettingUsecase: psu,
 	}
 }
 
@@ -572,6 +576,20 @@ func (h *Hub) BroadcastReadStatusSync(userID, roomID string, lastReadAt time.Tim
 }
 
 func (h *Hub) SendReadReceiptToUser(senderID, readerID string) {
+	// Check privacy setting: skip broadcast if reader has disabled read receipts
+	// or if sender has disabled read receipts (mutual suppression for DMs)
+	if h.privacySettingUsecase != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		show, err := h.privacySettingUsecase.ShouldShowReadReceipt(ctx, readerID, senderID, false)
+		cancel()
+		if err != nil {
+			log.Printf("[ReadReceipt] ShouldShowReadReceipt error (fail-open): %v", err)
+		} else if !show {
+			log.Printf("[ReadReceipt] Skipping DM read receipt: readerID=%s senderID=%s (privacy setting)", readerID, senderID)
+			return
+		}
+	}
+
 	resp := map[string]interface{}{
 		"event": "read_receipt",
 		"data": map[string]interface{}{

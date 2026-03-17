@@ -239,6 +239,22 @@ func (m *mockOnlineRepository) GetOnlineUsers(ctx context.Context, userIDs []str
 	return map[string]bool{}, nil
 }
 
+func (m *mockOnlineRepository) SetUserLastSeen(ctx context.Context, userID string, t time.Time) error {
+	return nil
+}
+
+func (m *mockOnlineRepository) GetUserLastSeen(ctx context.Context, userID string) (*time.Time, error) {
+	return nil, nil
+}
+
+func (m *mockOnlineRepository) GetUsersPresence(ctx context.Context, userIDs []string) (map[string]*domain.PresenceInfo, error) {
+	return map[string]*domain.PresenceInfo{}, nil
+}
+
+func (m *mockOnlineRepository) ClearAllOnline(ctx context.Context) error {
+	return nil
+}
+
 // mockNotificationService is a mock implementation for testing
 type mockNotificationService struct{}
 
@@ -376,7 +392,7 @@ func TestBugCondition_OfflineReEncryptRequestPersistence(t *testing.T) {
 	mockPendingReEncryptRepo := &mockPendingReEncryptRepository{requests: []*domain.PendingReEncryptRequest{}}
 
 	// Create hub and controller
-	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil)
+	hub := NewHub(mockUsecase, mockRoomUsecase, mockOnlineRepo, nil, nil, nil, mockNotificationService, mockPendingReEncryptRepo, nil, nil, nil, nil)
 	controller := NewSocketController(hub, mockUsecase, mockFriendRepo, mockPendingReEncryptRepo)
 	
 	// Start hub in background

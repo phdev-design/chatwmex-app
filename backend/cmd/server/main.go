@@ -71,6 +71,7 @@ func main() {
 	onlineRepo := redis_repo.NewOnlineRepository(redisClient)
 	authRepo := redis_repo.NewAuthRepository(redisClient) // 👉 新增 AuthRepo
 	chatSettingRepo := mongo_repo.NewChatSettingRepository(db) // 👉 新增
+	privacySettingRepo := mongo_repo.NewPrivacySettingRepository(db)
 	roomLabelRepo := mongo_repo.NewRoomLabelRepository(db)
 	pendingReEncryptRepo := mongo_repo.NewPendingReEncryptRepository(db) // 👉 新增 PendingReEncryptRepo
 	linkedDeviceRepo := mongo_repo.NewLinkedDeviceRepository(db)                 // 👉 已連結裝置 Repository
@@ -81,6 +82,7 @@ func main() {
 	timeout := 5 * time.Second
 	userUsecase := usecase.NewUserUsecase(userRepo, timeout)
 	chatSettingUsecase := usecase.NewChatSettingUsecase(chatSettingRepo) // 👉 新增
+	privacySettingUsecase := usecase.NewPrivacySettingUsecase(privacySettingRepo, friendRepo)
 	roomLabelUsecase := usecase.NewRoomLabelUsecase(roomLabelRepo, timeout)
 	// Initialize Notification Service
 	// If OneSignal config is missing, use a mock or nil.
@@ -183,7 +185,7 @@ func main() {
 		}
 	}
 
-	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo, linkedDeviceRepo, offlineLinkedMsgRepo, friendRepo)
+	hub := websocket.NewHub(messageUsecase, roomUsecase, onlineRepo, rabbitClient, rabbitIn, rabbitEvents, notificationService, pendingReEncryptRepo, linkedDeviceRepo, offlineLinkedMsgRepo, friendRepo, privacySettingUsecase)
 
 	// Initialize LinkedDevice Usecase (needs hub as WebSocketNotifier)
 	linkedDeviceUsecase := usecase.NewLinkedDeviceUsecase(linkedDeviceRepo, hub, timeout)
@@ -247,12 +249,13 @@ func main() {
 	delivery.NewMessageHandler(r, messageUsecase, hub, authMiddleware)
 	delivery.NewRoomHandler(r, roomUsecase, userUsecase, authMiddleware)
 	delivery.NewMediaHandler(r, authMiddleware)
-	delivery.NewOnlineHandler(r, onlineRepo, authMiddleware)
+	delivery.NewOnlineHandler(r, onlineRepo, privacySettingUsecase, authMiddleware)
 	delivery.NewFriendHandler(r, friendUsecase, cfg.JWTSecret)
 	delivery.NewDeviceHandler(r, deviceUsecase, authMiddleware)
 	delivery.NewChatSettingHandler(r, chatSettingUsecase, authMiddleware) // 👉 新增設定的 Handler
 	delivery.NewRoomLabelHandler(r, roomLabelUsecase, authMiddleware)
 	delivery.NewLinkedDeviceHandler(r, linkedDeviceUsecase, authMiddleware)
+	delivery.NewPrivacySettingHandler(r, privacySettingUsecase, authMiddleware)
 
 	// Register WebSocket Route
 	r.GET("/ws", func(c *gin.Context) {

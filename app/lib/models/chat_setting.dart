@@ -5,6 +5,7 @@ class ChatSetting {
   final int saveToCameraRoll; // 0=依全域設定, 1=永遠開啟, 2=永遠關閉
   final int autoDownload; // 0=依全域設定, 1=永遠, 2=僅Wi-Fi, 3=永不
   final int mediaQuality; // 0=依全域設定, 1=高畫質HD, 2=節省數據
+  final bool? readReceiptsEnabled; // null=使用全域設定, true/false=覆蓋全域
 
   const ChatSetting({
     required this.chatId,
@@ -13,6 +14,7 @@ class ChatSetting {
     this.saveToCameraRoll = 0,
     this.autoDownload = 0,
     this.mediaQuality = 0,
+    this.readReceiptsEnabled,
   });
 
   factory ChatSetting.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class ChatSetting {
       saveToCameraRoll: json['save_to_camera_roll'] ?? 0,
       autoDownload: json['auto_download'] ?? 0,
       mediaQuality: json['media_quality'] ?? 0,
+      readReceiptsEnabled: json['read_receipts_enabled'] as bool?,
     );
   }
 

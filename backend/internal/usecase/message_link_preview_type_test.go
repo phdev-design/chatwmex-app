@@ -157,6 +157,29 @@ func (m *MockOnlineRepository) GetOnlineUsers(ctx context.Context, userIDs []str
 	return args.Get(0).(map[string]bool), args.Error(1)
 }
 
+func (m *MockOnlineRepository) SetUserLastSeen(ctx context.Context, userID string, t time.Time) error {
+	args := m.Called(ctx, userID, t)
+	return args.Error(0)
+}
+
+func (m *MockOnlineRepository) GetUserLastSeen(ctx context.Context, userID string) (*time.Time, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*time.Time), args.Error(1)
+}
+
+func (m *MockOnlineRepository) GetUsersPresence(ctx context.Context, userIDs []string) (map[string]*domain.PresenceInfo, error) {
+	args := m.Called(ctx, userIDs)
+	return args.Get(0).(map[string]*domain.PresenceInfo), args.Error(1)
+}
+
+func (m *MockOnlineRepository) ClearAllOnline(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 // MockRoomRepository is a mock implementation for room operations
 type MockRoomRepository struct {
 	mock.Mock

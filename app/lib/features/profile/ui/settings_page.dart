@@ -6,6 +6,7 @@ import 'package:app/features/settings/linked_devices_page.dart';
 import 'package:app/features/settings/providers/linked_devices_provider.dart';
 import 'package:app/core/backup/backup_manager.dart';
 import 'package:app/features/settings/providers/crypto_health_provider.dart';
+import 'package:app/features/privacy/privacy_settings_page.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -126,6 +127,18 @@ class SettingsPage extends ConsumerWidget {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const RoomLabelsSettingsPage(),
+                    ),
+                  ),
+                ),
+                _buildSettingsTile(
+                  icon: Icons.lock_rounded,
+                  iconBgColor: const Color(0xFFFF9500), // 橙色 Icon 底色
+                  title: '隱私設定 (Privacy)',
+                  isDark: isDark,
+                  showDivider: true,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PrivacySettingsPage(),
                     ),
                   ),
                 ),

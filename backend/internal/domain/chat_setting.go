@@ -13,9 +13,10 @@ type ChatSetting struct {
 	DisappearingTimer int       `json:"disappearing_timer"`  // Timer in seconds (e.g., 86400 for 24h, 0 for off)
 	MuteUntil         *int64    `json:"mute_until"`          // 新增：Unix timestamp，nil=不靜音，-1=永久靜音
 	SaveToCameraRoll  *int      `json:"save_to_camera_roll"` // 0=Global, 1=Always, 2=Never
-	AutoDownload      *int      `json:"auto_download"`       // 0=Global, 1=Always, 2=Wi-Fi Only, 3=Never
-	MediaQuality      *int      `json:"media_quality"`       // 0=Global, 1=HD, 2=Data Saver
-	UpdatedAt         time.Time `json:"updated_at"`
+	AutoDownload        *int      `json:"auto_download"`         // 0=Global, 1=Always, 2=Wi-Fi Only, 3=Never
+	MediaQuality        *int      `json:"media_quality"`         // 0=Global, 1=HD, 2=Data Saver
+	ReadReceiptsEnabled *bool     `json:"read_receipts_enabled"` // nil=use global setting
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // ChatSettingRepository defines the interface for persisting chat settings.

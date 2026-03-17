@@ -229,15 +229,56 @@ func (u *messageUsecase) pushToOfflineUsers(userIDs []string, msg *domain.Messag
 	}
 }
 
-// buildPushNotificationMessage creates a PushNotificationMessage from user IDs and message
+// isChatMuted returns true if the given ChatSetting indicates the chat is currently muted.
+// nil setting or nil MuteUntil → not muted.
+// MuteUntil == -1 → permanently muted.
+// *MuteUntil > time.Now().Unix() → actively muted.
+func isChatMuted(setting *domain.ChatSetting) bool {
+	if setting == nil || setting.MuteUntil == nil {
+		return false
+	}
+	muteUntil := *setting.MuteUntil
+	if muteUntil == -1 {
+		return true
+	}
+	return muteUntil > time.Now().Unix()
+}
+
+// chatIDForUser returns the canonical chatID for a given recipient user and message.
+// For group messages it is the RoomID; for DMs it is the sorted pair of sender and receiver.
+func chatIDForUser(userID string, msg *domain.Message) string {
+	if msg.RoomID != "" {
+		return msg.RoomID
+	}
+	if msg.SenderID < userID {
+		return msg.SenderID + "_" + userID
+	}
+	return userID + "_" + msg.SenderID
+}
+
+// buildPushNotificationMessage creates a PushNotificationMessage from user IDs and message.
+// Users whose chat is currently muted are excluded from the notification.
 func (u *messageUsecase) buildPushNotificationMessage(
 	ctx context.Context,
 	userIDs []string,
 	msg *domain.Message,
 ) *domain.PushNotificationMessage {
-	// Collect player IDs from device repository
+	// Collect player IDs from device repository, skipping muted users
 	playerIDs := make([]string, 0)
 	for _, userID := range userIDs {
+		// Check mute setting before sending notification (Req 4.1–4.5)
+		if u.settingUsecase != nil {
+			chatID := chatIDForUser(userID, msg)
+			setting, err := u.settingUsecase.GetChatSetting(ctx, chatID)
+			if err != nil {
+				// Fail-open: log error and continue sending (Req 4.5)
+				log.Printf("[WARN] failed to get chat setting for mute check (chatID=%s, userID=%s): %v", chatID, userID, err)
+			} else if isChatMuted(setting) {
+				log.Printf("[INFO] skipping push notification for muted chat (chatID=%s, userID=%s)", chatID, userID)
+				continue
+			}
+		}
+
 		devices, err := u.deviceRepo.GetByUserID(ctx, userID)
 		if err != nil || len(devices) == 0 {
 			continue
@@ -385,6 +426,11 @@ func (u *messageUsecase) MarkMessagesAsReadBy(ctx context.Context, userID string
 			continue
 		}
 		if err := u.messageRepo.MarkMessageAsReadBy(ctx, messageID, userID); err != nil {
+			// Skip "not found" errors — message may have been deleted or not yet synced.
+			// Don't fail the entire batch for a single missing message.
+			if strings.Contains(err.Error(), "message not found") {
+				continue
+			}
 			return err
 		}
 	}
