@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
@@ -106,17 +107,26 @@ class MediaService {
     return compressedFile;
   }
 
-  Future<bool> hasMicrophonePermission() async {
-    var status = await Permission.microphone.status;
-    if (!status.isGranted) {
-      status = await Permission.microphone.request();
-    }
-    return status.isGranted;
+Future<bool> hasMicrophonePermission() async {
+  var status = await Permission.microphone.status;
+  
+  if (status.isPermanentlyDenied) {
+    // 已被永久拒絕，無法再彈出請求，需引導去設定
+    return false;
   }
+  
+  if (!status.isGranted) {
+    status = await Permission.microphone.request();
+  }
+  
+  return status.isGranted;
+}
 
   /// Checks microphone permission without requesting it
   Future<bool> checkMicrophonePermission() async {
     final status = await Permission.microphone.status;
+    debugPrint('麥克風狀態: $status'); // granted / denied / permanentlyDenied / restricted
+
     return status.isGranted;
   }
 
