@@ -8,15 +8,18 @@ import (
 	"path/filepath"
 	"strings"
 
+	"chatwmex_backend/internal/config"
 	"chatwmex_backend/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
 
-type MediaHandler struct{}
+type MediaHandler struct {
+	cfg *config.Config
+}
 
-func NewMediaHandler(r *gin.Engine, authMiddleware gin.HandlerFunc) {
-	handler := &MediaHandler{}
+func NewMediaHandler(r *gin.Engine, authMiddleware gin.HandlerFunc, cfg *config.Config) {
+	handler := &MediaHandler{cfg: cfg}
 
 	api := r.Group("/api/v1/media")
 	api.Use(authMiddleware)
@@ -96,8 +99,18 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 		return
 	}
 
+	relativePath := "/uploads/" + dirType + "/" + fileName
+	fullURL := relativePath
+	if h.cfg != nil && h.cfg.StorageBaseURL != "" {
+		// StorageBaseURL may or may not include "/uploads" suffix — normalise it
+		base := strings.TrimRight(h.cfg.StorageBaseURL, "/")
+		// If base already ends with "/uploads", strip it so we don't double-append
+		base = strings.TrimSuffix(base, "/uploads")
+		fullURL = base + relativePath
+	}
+
 	response.Success(c, gin.H{
-		"url": "/uploads/" + dirType + "/" + fileName,
+		"url": fullURL,
 	})
 }
 

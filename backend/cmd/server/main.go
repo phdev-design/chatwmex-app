@@ -254,7 +254,7 @@ func main() {
 	delivery.NewUserHandler(r, userUsecase, cfg.JWTSecret, hub, linkedDeviceUsecase)
 	delivery.NewMessageHandler(r, messageUsecase, hub, authMiddleware)
 	delivery.NewRoomHandler(r, roomUsecase, userUsecase, authMiddleware)
-	delivery.NewMediaHandler(r, authMiddleware)
+	delivery.NewMediaHandler(r, authMiddleware, cfg)
 	delivery.NewOnlineHandler(r, onlineRepo, privacySettingUsecase, authMiddleware)
 	delivery.NewFriendHandler(r, friendUsecase, cfg.JWTSecret)
 	delivery.NewDeviceHandler(r, deviceUsecase, authMiddleware)

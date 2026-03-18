@@ -1,0 +1,47 @@
+version: '3.8'
+services:
+  chatwmex-backend:
+    image: 192.168.100.104:5100/chatwmex-backend:v20260318.1805
+    container_name: chatwmex-backend
+    restart: always
+    ports:
+      - "9554:8080"
+    environment:
+      - APP_ENV=release
+      - SERVER_PORT=:8080
+      - LOG_LEVEL=info
+      - MONGO_URI=mongodb://cph0325:pp325325@mongodb:27017
+      - MONGO_DB_NAME=chatwme_db
+      - REDIS_ADDR=redis_stack:6379
+      - REDIS_PASSWORD=
+      - JWT_SECRET=a_very_secret_key_that_should_be_changed
+      - ENCRYPTION_SECRET=this-is-a-32-byte-secret-key-!!!
+      - ONESIGNAL_APP_ID=88247551-a540-4ffc-89aa-e6ea9478b7be
+      - ONESIGNAL_API_KEY=os_v2_app_rashkunfibh7zcnk43vji6fxxztyh7kjju4efqfhj4zpxxd4cl2eky4zaeckn43m4cx2vsfk2fiqkptqrftzv4ipafraqtuftlomrsq
+      - USE_CLOUDFLARE=true
+      - TEST_HOST=api-chat2mex.phdev.uk
+      - STORAGE_BASE_URL=https://api-chat2mex.phdev.uk/uploads
+      - UPLOAD_PATH=./cmd/server/uploads
+      - MAX_VOICE_FILE_SIZE=5242880
+      - RABBITMQ_URL=amqp://guest:guest@billmate-rabbitmq:5672/chat2mex
+    volumes:
+      - /volume1/docker/chat2mex-backend/uploads:/app/cmd/server/uploads
+    networks:
+      - shared_db_net
+
+  # ✅ 新增前端 service
+  chatwmex-frontend:
+    image: 192.168.100.104:5100/chatwmex-frontend:latest
+    container_name: chatwmex-frontend
+    restart: always
+    ports:
+      - "9555:80"       # NAS port 9555 → container Nginx port 80
+    depends_on:
+      - chatwmex-backend
+    networks:
+      - shared_db_net
+
+networks:
+  shared_db_net:
+    external: true
+    name: callnmovex-mongodb-redis_app_network

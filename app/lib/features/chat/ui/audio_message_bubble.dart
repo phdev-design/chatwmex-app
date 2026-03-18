@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/core/media/audio_cache_service.dart';
+import 'package:app/core/network/network_service.dart';
 import 'package:app/models/message.dart';
 
 enum AudioPlaybackState {
@@ -167,9 +168,10 @@ class _AudioMessageBubbleState extends ConsumerState<AudioMessageBubble> {
     debugPrint('⬇️ Downloading legacy audio for message: ${widget.message.id}');
     
     // Download audio directly (no decryption needed)
+    final resolvedUrl = NetworkService.resolveUrl(audioUrl);
     final dio = Dio();
     final response = await dio.get<List<int>>(
-      audioUrl,
+      resolvedUrl,
       options: Options(
         responseType: ResponseType.bytes,
         receiveTimeout: const Duration(seconds: 30),

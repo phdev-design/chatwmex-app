@@ -19,6 +19,7 @@ type Config struct {
 	JWTSecret       string `mapstructure:"JWT_SECRET"`
 	OneSignalAppID  string `mapstructure:"ONESIGNAL_APP_ID"`
 	OneSignalAPIKey string `mapstructure:"ONESIGNAL_API_KEY"`
+	StorageBaseURL  string `mapstructure:"STORAGE_BASE_URL"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -62,6 +63,7 @@ func LoadConfig() (*Config, error) {
 	v.BindEnv("JWT_SECRET")
 	v.BindEnv("ONESIGNAL_APP_ID")
 	v.BindEnv("ONESIGNAL_API_KEY")
+	v.BindEnv("STORAGE_BASE_URL")
 	// ------------------------------------
 
 	if err := v.ReadInConfig(); err != nil {
