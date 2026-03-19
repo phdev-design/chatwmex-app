@@ -5,6 +5,8 @@ import 'package:app/features/chat/ui/theme/chat_theme_tokens.dart';
 import 'package:app/features/chat/ui/audio_message_bubble.dart';
 import 'package:app/features/chat/ui/widgets/chat_avatar.dart';
 import 'package:app/features/chat/utils/chat_url_utils.dart';
+import 'package:app/features/chat/utils/youtube_detector.dart';
+import 'package:app/features/chat/ui/widgets/youtube_preview_card.dart';
 import 'package:app/models/message.dart';
 import 'package:app/core/media/cached_network_image_widget.dart';
 import 'package:flutter/material.dart';
@@ -316,9 +318,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       content = Text(msg.content, style: const TextStyle(fontSize: 15));
     }
     
+    // YouTube 連結偵測：僅在文字訊息且非特殊狀態下執行
+    final youtubeVideoId = (!msg.isUnsent &&
+        !isDecryptionFailure &&
+        !isDecryptingRetry &&
+        msg.type == MessageType.text)
+        ? YouTubeDetector.extractVideoId(msg.content)
+        : null;
+
     final preview = msg.linkPreview;
     // 嚴格防止 Link Preview 在未解密、錯誤或重試狀態下被觸發
     final hasPreview =
+        youtubeVideoId == null &&
         !msg.isUnsent &&
         !isDecryptionFailure &&
         !isDecryptingRetry &&
@@ -700,7 +711,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                                             style: TextStyle(color: textColor),
                                             child: content,
                                           ),
-                                    if (linkPreviewCard != null) linkPreviewCard,
+                                    if (youtubeVideoId != null)
+                                      YouTubePreviewCard(
+                                        videoId: youtubeVideoId,
+                                        isMe: isMe,
+                                        maxWidth: MediaQuery.of(context).size.width * 0.65,
+                                      )
+                                    else if (linkPreviewCard != null)
+                                      linkPreviewCard,
                                     const SizedBox(height: 2),
                                     Row(
                                       mainAxisSize: MainAxisSize.min,

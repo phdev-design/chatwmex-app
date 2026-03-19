@@ -75,6 +75,7 @@ dependencies:
   share_plus: ^10.1.4
   image_cropper: ^9.0.0
   gal: ^2.3.0
+  youtube_player_flutter: ^9.1.1
 
 
 dev_dependencies:

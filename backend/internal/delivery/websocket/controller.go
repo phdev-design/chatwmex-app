@@ -405,4 +405,13 @@ func (c *SocketController) OnReEncryptResponse(client *Client, data []byte) {
 	
 	// 轉發給接收方（不寫入資料庫）
 	c.hub.SendNotification(payload.ReceiverID, "re_encrypt_response", payload)
+
+	// 新增：response 成功後清理 pending record
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := c.pendingReEncryptRepo.DeleteByMessageID(ctx, payload.MessageID, payload.ReceiverID); err != nil {
+			log.Printf("⚠️ [E2EE] Failed to delete pending re_encrypt after response: %v", err)
+		}
+	}()
 }

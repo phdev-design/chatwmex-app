@@ -79,25 +79,44 @@ func (r *PendingReEncryptRepository) EnsureIndexes(ctx context.Context) error {
 	return nil
 }
 
-// Store saves a pending re-encrypt request to MongoDB.
 func (r *PendingReEncryptRepository) Store(ctx context.Context, req *domain.PendingReEncryptRequest) error {
-	mongoReq := &mongoPendingReEncryptRequest{
-		MessageID:  req.MessageID,
-		SenderID:   req.SenderID,
-		ReceiverID: req.ReceiverID,
-		RoomID:     req.RoomID,
-		CreatedAt:  req.CreatedAt,
-		ExpiresAt:  req.ExpiresAt,
+	now := req.CreatedAt
+	if now.IsZero() {
+		now = time.Now()
+	}
+	expiresAt := req.ExpiresAt
+	if expiresAt.IsZero() {
+		expiresAt = now.Add(7 * 24 * time.Hour)
 	}
 
-	result, err := r.collection.InsertOne(ctx, mongoReq)
+	filter := bson.M{
+		"message_id":  req.MessageID,
+		"receiver_id": req.ReceiverID,
+	}
+	update := bson.M{
+		"$setOnInsert": bson.M{
+			"message_id":  req.MessageID,
+			"sender_id":   req.SenderID,
+			"receiver_id": req.ReceiverID,
+			"room_id":     req.RoomID,
+			"created_at":  now,
+		},
+		"$set": bson.M{
+			"expires_at": expiresAt, // 每次重試都刷新 TTL
+		},
+	}
+	opts := options.Update().SetUpsert(true)
+
+	result, err := r.collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
 		return err
 	}
 
-	// Set the generated ID back to the domain object
-	if oid, ok := result.InsertedID.(primitive.ObjectID); ok {
-		req.ID = oid.Hex()
+	// 如果是新插入的文件，回填 ID
+	if result.UpsertedID != nil {
+		if oid, ok := result.UpsertedID.(primitive.ObjectID); ok {
+			req.ID = oid.Hex()
+		}
 	}
 
 	return nil

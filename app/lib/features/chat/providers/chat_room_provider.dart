@@ -392,8 +392,12 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       _retrySchedulerTimer?.cancel();
     });
 
-    Future.microtask(() => loadHistory());
-    Future.microtask(() => _initializeAutoResend());
+    // 🔐 修復：先等 loadHistory 完成後再初始化 auto-resend
+    // 避免 loadHistory 解密過程中同時觸發 re_encrypt_request，造成重複請求
+    Future.microtask(() async {
+      await loadHistory();
+      await _initializeAutoResend();
+    });
 
     return ChatRoomState(
       isConnected: true,
@@ -926,6 +930,32 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         return;
       }
       
+      // 🔐 修復：確保重新加密的是明文內容
+      // 如果發送方 DB 裡存的 content 看起來是密文（舊格式），先嘗試解密
+      String plaintextContent = originalMessage.content;
+      final isMediaMsg = originalMessage.type == MessageType.image ||
+          originalMessage.type == MessageType.video ||
+          originalMessage.type == MessageType.voice ||
+          originalMessage.type == MessageType.file;
+      final contentLooksEncrypted = _looksLikeE2EECiphertext(originalMessage.content) &&
+          !originalMessage.content.startsWith('http') &&
+          !originalMessage.content.startsWith('/uploads/');
+      if (isMediaMsg && contentLooksEncrypted) {
+        debugPrint('[E2EE Re-Encrypt Request] ⚠️ Sender content looks like ciphertext, attempting self-decrypt first');
+        try {
+          final selfPubKey = _cryptoService.publicKeyBase64;
+          if (selfPubKey != null) {
+            final decoded = await _cryptoService.decryptMessage(originalMessage.content, selfPubKey);
+            if (decoded != originalMessage.content) {
+              plaintextContent = decoded;
+              debugPrint('[E2EE Re-Encrypt Request] ✅ Self-decrypted content before re-encrypt');
+            }
+          }
+        } catch (e) {
+          debugPrint('[E2EE Re-Encrypt Request] ⚠️ Self-decrypt failed, using content as-is: $e');
+        }
+      }
+      
       debugPrint('[E2EE Re-Encrypt Request] 🔑 Fetching receiver public key...');
       final receiverPublicKey = await _publicKeyCacheService.getPublicKey(receiverId);
       if (receiverPublicKey == null) {
@@ -940,7 +970,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         if (arg.isRoom) {
           debugPrint('[E2EE Re-Encrypt Request]   Mode: Group message (fanout)');
           final ciphertext = await _cryptoService.encryptMessage(
-            originalMessage.content,
+            plaintextContent,
             receiverPublicKey,
           );
           final fanoutPayload = {
@@ -951,7 +981,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         } else {
           debugPrint('[E2EE Re-Encrypt Request]   Mode: Direct message');
           reEncryptedContent = await _cryptoService.encryptMessage(
-            originalMessage.content,
+            plaintextContent,
             receiverPublicKey,
           );
         }
@@ -976,10 +1006,10 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           'room_id': roomId,
           're_encrypted_content': reEncryptedContent,
         };
-        // 🔐 DM 媒體訊息：同時傳遞 file_key，讓 receiver 能解密音訊/圖片/影片
-        if (!arg.isRoom && originalMessage.fileKey != null && originalMessage.fileKey!.isNotEmpty) {
+        // 🔐 媒體訊息（DM 或群組）：同時傳遞 file_key，讓 receiver 能解密音訊/圖片/影片
+        if (originalMessage.fileKey != null && originalMessage.fileKey!.isNotEmpty) {
           responsePayload['file_key'] = originalMessage.fileKey!;
-          debugPrint('[E2EE Re-Encrypt Request] 🔑 Including file_key in response for DM media message');
+          debugPrint('[E2EE Re-Encrypt Request] 🔑 Including file_key in response for media message (isRoom=${arg.isRoom})');
         }
         await _wsService.send('re_encrypt_response', responsePayload);
         debugPrint('[E2EE Auto-Resend] ✅ re_encrypt_response sent successfully');
@@ -1121,19 +1151,21 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         debugPrint('[E2EE Re-Encrypt Response] 🖼️ Content looks like base64: ${!decryptedContent.contains(' ') && decryptedContent.length > 40}');
         
         // 如果解密後的內容看起來還是 base64（不是 URL），可能需要二次解密
+        // 🔐 修復：優先使用 incomingFileKey（剛收到的），fallback 到 originalMessage.fileKey
+        final effectiveFileKey = incomingFileKey ?? originalMessage.fileKey;
         if (!decryptedContent.startsWith('http') && 
             !decryptedContent.contains(' ') && 
             decryptedContent.length > 40 &&
-            originalMessage.fileKey != null) {
+            effectiveFileKey != null) {
           try {
             debugPrint('[E2EE Re-Encrypt Response] 🔓 Attempting secondary AES decryption with fileKey...');
-            debugPrint('[E2EE Re-Encrypt Response] 🔑 FileKey available: ${originalMessage.fileKey != null}');
+            debugPrint('[E2EE Re-Encrypt Response] 🔑 Using ${incomingFileKey != null ? "incoming" : "original"} fileKey');
             
             // 使用 fileKey 進行 AES 解密
             final encryptedBytes = base64Decode(decryptedContent);
             final decryptedBytes = await _cryptoService.decryptBytes(
               encryptedBytes,
-              originalMessage.fileKey!,
+              effectiveFileKey,
             );
             finalContent = utf8.decode(decryptedBytes);
             
@@ -1462,21 +1494,68 @@ if (arg.isRoom) {
           : m.senderId;
       if (opponentId == null) return m;
 
-      // 🔐 DM 媒體訊息（voice/image/video/file）的 content 是明文 URL，不需要 ECDH 解密
-      // 只需確保 file_key 存在即可播放/顯示
+      // 🔐 DM 媒體訊息（voice/image/video/file）
+      // content 通常是明文 URL，但舊訊息可能是密文；fileKey 用於解密媒體本身
       final isDmMedia = (m.type == MessageType.voice ||
           m.type == MessageType.image ||
           m.type == MessageType.video ||
           m.type == MessageType.file);
       if (isDmMedia) {
-        if (m.fileKey != null && m.fileKey!.isNotEmpty) {
-          // file_key 存在，content 是明文 URL，直接標記為已解密
+        final contentIsUrl = m.content.startsWith('http://') ||
+            m.content.startsWith('https://') ||
+            m.content.startsWith('/uploads/');
+        final contentIsCiphertext = !contentIsUrl && _looksLikeE2EECiphertext(m.content);
+
+        // 情況 1：content 是密文 → 先 ECDH 解密 content，再補 fileKey
+        if (contentIsCiphertext) {
+          debugPrint('[E2EE] DM media message has encrypted content, decrypting: ${m.id}');
+          final pubKey = await _getPublicKey(opponentId);
+          if (pubKey != null) {
+            try {
+              final decryptedUrl = await _cryptoService.decryptMessage(
+                m.content, pubKey, messageId: m.id, senderId: m.senderId,
+              );
+              if (decryptedUrl != m.content && (decryptedUrl.startsWith('http') || decryptedUrl.startsWith('/uploads/'))) {
+                await LocalDbService().updateMessageContentAndStatus(
+                  messageId: m.id, newContent: decryptedUrl, newStatus: MessageStatus.delivered,
+                );
+                await LocalDbService().markMessageAsDecrypted(m.id);
+                debugPrint('[E2EE] ✅ DM media URL decrypted: ${m.id}');
+                // fileKey 仍缺失時繼續觸發 re_encrypt_request 補回
+                if (m.fileKey == null || m.fileKey!.isEmpty) {
+                  final exception = DecryptionFailureException(
+                    messageId: m.id, senderId: m.senderId,
+                    originalCiphertext: m.content, reason: 'DM media missing file_key after URL decrypt',
+                  );
+                  await _handleDecryptionFailure(m.copyWith(content: decryptedUrl), exception);
+                  return m.copyWith(content: decryptedUrl, isDecrypted: false);
+                }
+                return m.copyWith(content: decryptedUrl, isDecrypted: true);
+              }
+            } on DecryptionFailureException catch (e) {
+              await _handleDecryptionFailure(m, e);
+              return m;
+            }
+          }
+          // 公鑰取不到，觸發 re_encrypt_request
+          final exception = DecryptionFailureException(
+            messageId: m.id, senderId: m.senderId,
+            originalCiphertext: m.content, reason: 'DM media: public key unavailable',
+          );
+          await _handleDecryptionFailure(m, exception);
+          return m;
+        }
+
+        // 情況 2：content 是明文 URL，fileKey 存在 → 直接標記已解密
+        if (contentIsUrl && m.fileKey != null && m.fileKey!.isNotEmpty) {
           if (!m.isDecrypted) {
             await LocalDbService().markMessageAsDecrypted(m.id);
           }
           return m.copyWith(isDecrypted: true);
-        } else {
-          // file_key 不存在（可能是歷史訊息或 re_encrypt 流程中），觸發 re_encrypt_request
+        }
+
+        // 情況 3：content 是明文 URL，但 fileKey 遺失 → 觸發 re_encrypt_request 補回 fileKey
+        if (contentIsUrl && (m.fileKey == null || m.fileKey!.isEmpty)) {
           debugPrint('[E2EE] DM media message missing file_key, triggering re_encrypt_request: ${m.id}');
           final exception = DecryptionFailureException(
             messageId: m.id,
@@ -1487,6 +1566,9 @@ if (arg.isRoom) {
           await _handleDecryptionFailure(m, exception);
           return m;
         }
+
+        // 情況 4：content 為空或其他情況，直接返回
+        return m;
       }
 
       final pubKey = await _getPublicKey(opponentId);
