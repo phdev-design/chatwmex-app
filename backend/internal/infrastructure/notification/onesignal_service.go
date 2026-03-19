@@ -89,7 +89,7 @@ func (s *OneSignalService) SendNotification(userID, event string, data interface
 	body, _ := json.Marshal(payload)
 	req, _ := http.NewRequest("POST", "https://onesignal.com/api/v1/notifications", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("Authorization", "Basic "+s.APIKey)
+	req.Header.Set("Authorization", "Key "+s.APIKey)
 
 	go func() {
 		resp, err := s.Client.Do(req)
@@ -129,7 +129,7 @@ func (s *OneSignalService) SendNotificationToDevices(playerIDs []string, title s
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("Authorization", "Basic "+s.APIKey)
+	req.Header.Set("Authorization", "Key "+s.APIKey)
 
 	resp, err := s.Client.Do(req)
 	if err != nil {

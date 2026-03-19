@@ -970,12 +970,18 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
       debugPrint('[E2EE Auto-Resend] Sending re_encrypt_response for message: $messageId to receiver: $receiverId');
       debugPrint('[E2EE Auto-Resend]   Payload: message_id=$messageId, receiver_id=$receiverId, room_id=$roomId');
       try {
-        await _wsService.send('re_encrypt_response', {
+        final responsePayload = <String, dynamic>{
           'message_id': messageId,
           'receiver_id': receiverId,
           'room_id': roomId,
           're_encrypted_content': reEncryptedContent,
-        });
+        };
+        // 🔐 DM 媒體訊息：同時傳遞 file_key，讓 receiver 能解密音訊/圖片/影片
+        if (!arg.isRoom && originalMessage.fileKey != null && originalMessage.fileKey!.isNotEmpty) {
+          responsePayload['file_key'] = originalMessage.fileKey!;
+          debugPrint('[E2EE Re-Encrypt Request] 🔑 Including file_key in response for DM media message');
+        }
+        await _wsService.send('re_encrypt_response', responsePayload);
         debugPrint('[E2EE Auto-Resend] ✅ re_encrypt_response sent successfully');
       } catch (e) {
         debugPrint('[E2EE Auto-Resend] Failed to send re_encrypt_response: $e');
@@ -991,7 +997,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
     final messageId = payload['message_id'] as String?;
     final content = (payload['re_encrypted_content'] ?? payload['content']) as String?;
     final receiverId = payload['receiver_id'] as String?;
-    
+    final incomingFileKey = payload['file_key'] as String?; // 🔐 DM 媒體訊息的 file_key
     debugPrint('[E2EE Re-Encrypt Response] 📥 Received re_encrypt_response');
     debugPrint('[E2EE Re-Encrypt Response]   message_id: $messageId');
     debugPrint('[E2EE Re-Encrypt Response]   receiver_id: $receiverId');
@@ -1148,8 +1154,9 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
         messageId: messageId,
         newContent: finalContent,
         newStatus: MessageStatus.delivered,
+        fileKey: incomingFileKey, // 🔐 DM 媒體訊息：同時更新 file_key
       );
-      debugPrint('[E2EE Re-Encrypt Response] ✅ LocalDB updated: status=delivered, content updated');
+      debugPrint('[E2EE Re-Encrypt Response] ✅ LocalDB updated: status=delivered, content updated${incomingFileKey != null ? ', file_key updated' : ''}');
       
       // 🔐 標記訊息為已解密
       debugPrint('[E2EE Re-Encrypt Response] 🔐 Marking message as decrypted (is_decrypted=1)...');
@@ -1171,6 +1178,7 @@ class ChatRoomViewModel extends FamilyNotifier<ChatRoomState, ChatRoomParams> {
           content: finalContent,
           status: MessageStatus.delivered,
           isDecrypted: true,  // 🔐 更新記憶體中的解密狀態
+          fileKey: incomingFileKey ?? originalMessage.fileKey, // 🔐 更新 file_key
         );
         final messages = [...state.messages];
         messages[index] = updated;
@@ -1453,6 +1461,33 @@ if (arg.isRoom) {
           ? m.receiverId
           : m.senderId;
       if (opponentId == null) return m;
+
+      // 🔐 DM 媒體訊息（voice/image/video/file）的 content 是明文 URL，不需要 ECDH 解密
+      // 只需確保 file_key 存在即可播放/顯示
+      final isDmMedia = (m.type == MessageType.voice ||
+          m.type == MessageType.image ||
+          m.type == MessageType.video ||
+          m.type == MessageType.file);
+      if (isDmMedia) {
+        if (m.fileKey != null && m.fileKey!.isNotEmpty) {
+          // file_key 存在，content 是明文 URL，直接標記為已解密
+          if (!m.isDecrypted) {
+            await LocalDbService().markMessageAsDecrypted(m.id);
+          }
+          return m.copyWith(isDecrypted: true);
+        } else {
+          // file_key 不存在（可能是歷史訊息或 re_encrypt 流程中），觸發 re_encrypt_request
+          debugPrint('[E2EE] DM media message missing file_key, triggering re_encrypt_request: ${m.id}');
+          final exception = DecryptionFailureException(
+            messageId: m.id,
+            senderId: m.senderId,
+            originalCiphertext: m.content,
+            reason: 'DM media message missing file_key',
+          );
+          await _handleDecryptionFailure(m, exception);
+          return m;
+        }
+      }
 
       final pubKey = await _getPublicKey(opponentId);
       if (pubKey == null) return m;

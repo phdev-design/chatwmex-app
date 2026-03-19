@@ -409,17 +409,23 @@ class LocalDbService {
     required String messageId,
     required String newContent,
     required MessageStatus newStatus,
+    String? fileKey, // 🔐 可選：同時更新 file_key（用於 DM 媒體訊息 re_encrypt_response）
   }) async {
     if (messageId.isEmpty) return;
     final db = await initDB();
     
+    final values = <String, dynamic>{
+      'content': newContent,
+      'status': newStatus.name,
+      'decrypt_retry_count': 0,  // 重置重試計數器
+    };
+    if (fileKey != null) {
+      values['file_key'] = fileKey;
+    }
+    
     await db.update(
       'messages',
-      {
-        'content': newContent,
-        'status': newStatus.name,
-        'decrypt_retry_count': 0,  // 重置重試計數器
-      },
+      values,
       where: 'id = ? OR client_msg_id = ?',
       whereArgs: [messageId, messageId],
     );

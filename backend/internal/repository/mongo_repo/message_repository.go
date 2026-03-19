@@ -611,7 +611,8 @@ func (r *MessageRepository) GetLastRoomMessage(ctx context.Context, roomID strin
 func (r *MessageRepository) MarkMessageAsReadBy(ctx context.Context, messageID string, userID string) error {
 	oid, err := primitive.ObjectIDFromHex(messageID)
 	if err != nil {
-		return fmt.Errorf("invalid object ID: %w", err)
+		// messageID 不是合法的 ObjectID（可能是 client_msg_id / UUID），靜默跳過
+		return nil
 	}
 	update := bson.M{"$addToSet": bson.M{"read_by": userID}}
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": oid}, update)
@@ -636,7 +637,8 @@ func (r *MessageRepository) GetRoomMessageMap(ctx context.Context, messageIDs []
 		}
 		oid, err := primitive.ObjectIDFromHex(id)
 		if err != nil {
-			return nil, fmt.Errorf("invalid object ID: %w", err)
+			// 非合法 ObjectID（可能是 client_msg_id），跳過
+			continue
 		}
 		objectIDs = append(objectIDs, oid)
 	}
@@ -842,7 +844,8 @@ func (r *MessageRepository) ClearRoomMessages(ctx context.Context, roomID, userI
 func (r *MessageRepository) UpdateMessageStatus(ctx context.Context, messageID string, status string) error {
 	oid, err := primitive.ObjectIDFromHex(messageID)
 	if err != nil {
-		return fmt.Errorf("invalid object ID: %w", err)
+		// messageID 不是合法的 ObjectID（可能是 client_msg_id / UUID），靜默跳過
+		return nil
 	}
 
 	filter := bson.M{"_id": oid}

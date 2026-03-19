@@ -380,9 +380,10 @@ func (c *SocketController) OnReEncryptRequest(client *Client, data []byte) {
 // It is only forwarded to the original receiver via WebSocket.
 func (c *SocketController) OnReEncryptResponse(client *Client, data []byte) {
 	type ReEncryptResponsePayload struct {
-		MessageID      string `json:"message_id"`       // 原始訊息 ID
-		ReceiverID     string `json:"receiver_id"`      // 接收方 ID
+		MessageID          string `json:"message_id"`           // 原始訊息 ID
+		ReceiverID         string `json:"receiver_id"`          // 接收方 ID
 		ReEncryptedContent string `json:"re_encrypted_content"` // 重新加密的密文
+		FileKey            string `json:"file_key,omitempty"`   // 🔐 DM 媒體訊息的 file_key
 	}
 	
 	var payload ReEncryptResponsePayload
